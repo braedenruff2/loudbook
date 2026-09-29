@@ -1,0 +1,6 @@
+downloads/
+parts/
+build/
+_to_delete/
+*.apk
+tools/last-publish.txt

@@ -1,0 +1,40 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root{--bg:#14120f;--panel:#1e1b17;--line:#2e2a24;--ink:#ede6da;--dim:#a79e90;--amber:#e8aa46}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif;padding:20px 16px 40px}
+  h1{font:600 26px/1.2 Georgia,serif;margin:8px 0 4px} p{color:var(--dim);margin:0 0 18px}
+  .resume{display:block;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:12px;padding:14px;margin:0 0 22px;color:var(--ink);text-decoration:none}
+  .resume small{display:block;color:var(--amber);letter-spacing:.08em;text-transform:uppercase;font-size:11px}
+  .resume b{display:block;font:600 17px/1.3 Georgia,serif;margin:4px 0 2px} .resume span{color:var(--dim);font-size:13px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .grid a{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 12px;color:var(--ink);text-decoration:none;font-weight:600}
+  .grid a span{display:block;color:var(--dim);font-weight:400;font-size:12px;margin-top:2px}
+  .tip{margin-top:22px;color:var(--dim);font-size:13px}
+</style></head><body>
+<h1>Loudbook</h1>
+<p>Open a chapter, press play. It reads on with the screen off and turns the page for you.</p>
+<a class="resume" id="resume" href="#" hidden><small>Continue listening</small><b id="rt"></b><span id="rs"></span></a>
+<div class="grid">
+  <a href="https://www.royalroad.com/fictions/best-rated">Royal Road<span>best rated</span></a>
+  <a href="https://archiveofourown.org/">AO3<span>Archive of Our Own</span></a>
+  <a href="https://www.wattpad.com/">Wattpad<span>stories</span></a>
+  <a href="https://www.fanfiction.net/">FanFiction.net<span>fanfic</span></a>
+  <a href="https://www.webnovel.com/">WebNovel<span>novels</span></a>
+  <a href="https://www.wuxiaworld.com/">Wuxiaworld<span>translations</span></a>
+  <a href="https://www.scribblehub.com/">Scribble Hub<span>originals</span></a>
+  <a href="https://forums.spacebattles.com/forums/creative-writing.18/">SpaceBattles<span>creative writing</span></a>
+</div>
+<p class="tip">Tip: in Chrome, tap Share on any chapter and pick Loudbook. Long-press a paragraph to read from there. The ⚙ button has voices, speed, sleep timer and pronunciation fixes.</p>
+<script>
+  try {
+    const d = JSON.parse(LoudbookNative.home());
+    if (d.lastUrl) {
+      document.getElementById('rt').textContent = d.lastFiction || d.lastTitle;
+      document.getElementById('rs').textContent = [d.lastFiction ? d.lastTitle : '', d.lastPct ? d.lastPct + '% through' : ''].filter(Boolean).join(' · ');
+      const r = document.getElementById('resume'); r.hidden = false;
+      r.onclick = (e) => { e.preventDefault(); LoudbookNative.resume(d.lastUrl); };
+    }
+  } catch (e) {}
+</script>
+</body></html>

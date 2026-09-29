@@ -1,0 +1,51 @@
+# Builds Loudbook on every push and publishes it as a GitHub release. The app on the phone
+# checks the latest release and updates itself.
+name: Build Loudbook
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**/*.md', '*.bat', 'tools/publish.*', 'test/**']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: build
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/cache@v4
+        with:
+          path: downloads
+          key: parts-sherpa-v1.13.8-kokoro-v1_0
+      - name: Get parts
+        run: bash tools/ci-parts.sh
+      - name: Build the APK
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          export LB_CODE=$((100 + GITHUB_RUN_NUMBER)) LB_NAME="0.2.$GITHUB_RUN_NUMBER" LB_REPO="$GITHUB_REPOSITORY"
+          bash build.sh
+          echo "LB_CODE=$LB_CODE" >> "$GITHUB_ENV"; echo "LB_NAME=$LB_NAME" >> "$GITHUB_ENV"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          K=parts/kokoro-multi-lang-v1_0
+          # the voice files, once: the app downloads them on first run
+          gh release view voice-1 >/dev/null 2>&1 || gh release create voice-1 --latest=false \
+            --title "Voice files (Kokoro v1.0)" --notes "Downloaded by the app the first time it runs."
+          have=$(gh release view voice-1 --json assets -q '.assets[] | "\(.name) \(.size)"')
+          for f in model.onnx voices.bin; do
+            echo "$have" | grep -qx "$f $(stat -c %s "$K/$f")" || gh release upload voice-1 "$K/$f" --clobber
+          done
+          gh release create "v$LB_CODE" build/Loudbook.apk build/version.json --latest \
+            --title "Loudbook $LB_NAME" --notes "$(git log -1 --pretty=%B)
+
+          To install: open this page on your Android phone and tap **Loudbook.apk**. After that the app updates itself."
