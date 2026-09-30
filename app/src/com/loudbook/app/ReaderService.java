@@ -44,7 +44,7 @@ public class ReaderService extends Service {
     static final String ACT_PLAY = "lb.play", ACT_PAUSE = "lb.pause", ACT_TOGGLE = "lb.toggle",
         ACT_BACK = "lb.back", ACT_FWD = "lb.fwd", ACT_STOP = "lb.stop";
     static final int NOTIF_ID = 7;
-    static final int READ_AHEAD = 3;
+    static final int READ_AHEAD = 8;
 
     /** What the screen hears about. Always called on the main thread. */
     interface Listener {
@@ -297,8 +297,6 @@ public class ReaderService extends Service {
                 return c;
             });
             clips.put(i, f);
-            // forget clips well behind us
-            clips.keySet().removeIf(k -> k < i - 2);
             return f;
         }
     }
@@ -331,8 +329,13 @@ public class ReaderService extends Service {
                 }
                 if (next == pos && !voice.ready()) main.post(() -> status("Getting the voice ready…", false));
                 if (marks.isEmpty()) { final int here = next; main.post(() -> { if (listener != null && gen == myGen) listener.onSpeaking(ch, here); }); }
-                for (int k = 1; k <= READ_AHEAD; k++) clipFor(next + k);        // read ahead
+                // this sentence first, then the ones after it; forget what's been played. (This used
+                // to drop the current sentence while reading ahead, so each one was made twice and
+                // waited behind the read-ahead: the pause at every sentence.)
                 Future<Voice.Clip> f = clipFor(next);
+                for (int k = 1; k <= READ_AHEAD; k++) clipFor(next + k);
+                final int keepFrom = next - 1;
+                synchronized (clips) { clips.keySet().removeIf(k -> k < keepFrom); }
                 if (f == null) return;
                 Voice.Clip c = null;
                 while (gen == myGen) {

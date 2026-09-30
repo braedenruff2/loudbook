@@ -4,7 +4,7 @@ name: Build Loudbook
 on:
   push:
     branches: [main]
-    paths-ignore: ['**/*.md', '*.bat', 'tools/publish.*', 'test/**']
+    paths-ignore: ['**/*.md', '*.bat', 'tools/publish.*', 'test/**', 'tools/bench/**', '.github/workflows/bench.yml']
   workflow_dispatch:
 permissions:
   contents: write

@@ -1,0 +1,24 @@
+# Measures Kokoro's speed on an ARM64 CPU (fp32 vs int8). Runs when tools/bench changes.
+name: Voice speed test
+on:
+  push:
+    branches: [main]
+    paths: ['tools/bench/**', '.github/workflows/bench.yml']
+  workflow_dispatch:
+jobs:
+  bench:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: downloads
+          key: kokoro-v1_0-arm
+      - name: Get the model
+        run: |
+          mkdir -p downloads parts
+          [ -s downloads/kokoro.tar.bz2 ] || curl -fsSL --retry 5 -o downloads/kokoro.tar.bz2 https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2
+          tar xjf downloads/kokoro.tar.bz2 -C parts
+          pip install -q sherpa-onnx onnx onnxruntime numpy
+      - name: Measure
+        run: python3 tools/bench/bench.py parts/kokoro-multi-lang-v1_0

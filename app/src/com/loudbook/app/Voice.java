@@ -80,7 +80,7 @@ final class Voice {
     /** Slow (several seconds): call off the main thread. The voice files must be ready. */
     synchronized void load(Context ctx) throws Exception {
         if (tts != null) return;
-        threads = Math.max(1, Math.min(4, Runtime.getRuntime().availableProcessors() / 2));
+        threads = fastCores();
         long t0 = System.currentTimeMillis();
         if (packInApk(ctx)) {
             AssetManager am = ctx.getAssets();
@@ -99,6 +99,7 @@ final class Voice {
             tts = new OfflineTts(config);
         }
         sampleRate = tts.getSampleRate();
+        try { tts.generate("Ready.", 3, 1.0f); } catch (Throwable t) { Log.w(TAG, "warm-up", t); }   // the first run is slow
         Log.i(TAG, "Kokoro loaded in " + (System.currentTimeMillis() - t0) + " ms, " + threads + " threads, " + tts.getNumSpeakers() + " voices");
     }
 
@@ -111,6 +112,28 @@ final class Voice {
     }
 
     boolean ready() { return tts != null; }
+
+    /**
+     * How many threads to give Kokoro: one per fast core. Phones mix fast and slow cores, and a
+     * thread that lands on a slow core holds all the others up, so the slow ones are left out.
+     */
+    static int fastCores() {
+        int n = Math.max(1, Runtime.getRuntime().availableProcessors());
+        java.util.List<Long> f = new java.util.ArrayList<>();
+        File[] cpus = new File("/sys/devices/system/cpu").listFiles();
+        if (cpus != null) for (File c : cpus) {
+            if (!c.getName().matches("cpu\\d+")) continue;
+            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader(new File(c, "cpufreq/cpuinfo_max_freq")))) {
+                f.add(Long.parseLong(r.readLine().trim()));
+            } catch (Exception ignored) { }
+        }
+        long top = 0;
+        for (long x : f) top = Math.max(top, x);
+        if (top == 0) return Math.max(1, Math.min(4, n / 2));
+        int fast = 0;
+        for (long x : f) if (x >= top * 0.7) fast++;
+        return Math.max(1, Math.min(4, Math.min(fast, n)));
+    }
 
     /** One chunk of speech. sid: speaker number; speed: 1.0 = normal. */
     Clip speak(String text, int sid, float speed) {
