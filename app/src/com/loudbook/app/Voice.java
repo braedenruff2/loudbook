@@ -117,7 +117,24 @@ final class Voice {
         long t0 = System.currentTimeMillis();
         GeneratedAudio a;
         synchronized (this) { a = tts.generate(text, sid, speed); }
-        return new Clip(a.getSamples(), a.getSampleRate(), speed, System.currentTimeMillis() - t0);
+        return new Clip(trim(a.getSamples(), a.getSampleRate()), a.getSampleRate(), speed, System.currentTimeMillis() - t0);
+    }
+
+    /** Kokoro pads each sentence with silence; keep just a natural sliver so sentences and
+     *  paragraphs run on like speech. */
+    static float[] trim(float[] s, int rate) {
+        if (s == null || s.length == 0) return s;
+        final float quiet = 0.004f;
+        int first = 0, last = s.length - 1;
+        while (first < s.length && Math.abs(s[first]) < quiet) first++;
+        while (last > first && Math.abs(s[last]) < quiet) last--;
+        if (first >= last) return s;
+        int from = Math.max(0, first - rate * 40 / 1000);
+        int to = Math.min(s.length, last + 1 + rate * 140 / 1000);
+        if (from == 0 && to == s.length) return s;
+        float[] out = new float[to - from];
+        System.arraycopy(s, from, out, 0, out.length);
+        return out;
     }
 
     // ---------------------------------------------------------------- assets

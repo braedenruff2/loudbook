@@ -305,46 +305,104 @@ public class ReaderService extends Service {
 
     private volatile Voice.Clip current;
 
+    /**
+     * The player thread. Sentences are streamed into the AudioTrack back to back, with no waiting
+     * for one to finish before the next goes in: that is what keeps paragraphs flowing without a
+     * gap. Which sentence is being heard is worked out from the track's playback position.
+     */
     private void loop(int myGen) {
+        java.util.ArrayDeque<long[]> marks = new java.util.ArrayDeque<>();   // {first frame, sentence}
         try {
+            final Chapter ch = chapter;
+            if (ch == null) return;
+            int next = pos;
             while (gen == myGen) {
                 if (sleepAt > 0 && System.currentTimeMillis() >= sleepAt) {
                     sleepAt = 0;
                     main.post(() -> { pause(); status("Sleep timer: paused.", false); });
                     return;
                 }
-                Chapter ch = chapter;
-                if (ch == null) return;
-                if (pos >= ch.size()) { endOfChapter(myGen, ch); return; }
-                if (pos == 0 && !voice.ready()) main.post(() -> status("Getting the voice ready…", false));
-                final int here = pos;
-                main.post(() -> { if (listener != null && gen == myGen) listener.onSpeaking(ch, here); });
-                for (int k = 1; k <= READ_AHEAD; k++) clipFor(here + k);        // read ahead
-                Future<Voice.Clip> f = clipFor(here);
+                if (chapter != ch) return;
+                if (next >= ch.size()) {
+                    if (!drain(myGen, ch, marks)) return;          // let the last words finish
+                    pos = ch.size();
+                    endOfChapter(myGen, ch);
+                    return;
+                }
+                if (next == pos && !voice.ready()) main.post(() -> status("Getting the voice ready…", false));
+                if (marks.isEmpty()) { final int here = next; main.post(() -> { if (listener != null && gen == myGen) listener.onSpeaking(ch, here); }); }
+                for (int k = 1; k <= READ_AHEAD; k++) clipFor(next + k);        // read ahead
+                Future<Voice.Clip> f = clipFor(next);
                 if (f == null) return;
-                Voice.Clip c;
-                try { c = f.get(); }
-                catch (Exception e) { if (gen != myGen) return; Log.w(TAG, "sentence failed", e); c = null; }
+                Voice.Clip c = null;
+                while (gen == myGen) {
+                    try { c = f.get(20, java.util.concurrent.TimeUnit.MILLISECONDS); break; }
+                    catch (java.util.concurrent.TimeoutException te) { heard(ch, marks, myGen); }
+                    catch (Exception e) { if (gen != myGen) return; Log.w(TAG, "sentence failed", e); c = null; break; }
+                }
                 if (gen != myGen) return;
                 if (c != null) {
-                    main.post(() -> status("", false));
+                    if (next == pos) main.post(() -> status("", false));
                     AudioTrack t = ensureTrack(c.rate);
-                    if (t.getPlayState() != AudioTrack.PLAYSTATE_PLAYING && !paused) t.play();
                     current = c;
-                    if (!writeClip(t, c, myGen)) return;
+                    marks.add(new long[]{framesWritten, next});
+                    if (!stream(t, c, myGen, ch, marks)) return;
                 }
-                // a breath between paragraphs, a shorter one after the title
-                Chapter.Chunk now = ch.chunks.get(here);
-                Chapter.Chunk next = here + 1 < ch.size() ? ch.chunks.get(here + 1) : null;
-                if (next != null && next.block != now.block) silence(now.block == -1 ? 0.45 : 0.17, myGen);
-                if (gen != myGen) return;
-                pos = here + 1;
-                if (pos % 3 == 0) saveProgress();
+                next++;
             }
         } catch (Throwable t) {
             Log.e(TAG, "player", t);
             main.post(() -> status("Playback stopped: " + t.getMessage(), true));
         }
+    }
+
+    /** Queues one sentence's audio behind whatever is already playing. false = interrupted. */
+    private boolean stream(AudioTrack t, Voice.Clip c, int myGen, Chapter ch, java.util.ArrayDeque<long[]> marks) {
+        applyRate(t, c);
+        float[] s = c.samples;
+        int off = 0;
+        while (off < s.length) {
+            if (gen != myGen) return false;
+            if (paused) { sleep(40); continue; }
+            if (t.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) t.play();
+            int n = t.write(s, off, Math.min(2048, s.length - off), AudioTrack.WRITE_BLOCKING);
+            if (n < 0) return false;
+            off += n;
+            framesWritten += n;
+            heard(ch, marks, myGen);
+        }
+        return gen == myGen;
+    }
+
+    /** Moves the highlight (and saved place) to the sentence now coming out of the speaker. */
+    private void heard(Chapter ch, java.util.ArrayDeque<long[]> marks, int myGen) {
+        AudioTrack t = track;
+        if (t == null || marks.isEmpty()) return;
+        long head = t.getPlaybackHeadPosition() & 0xffffffffL;
+        int reached = -1;
+        while (!marks.isEmpty() && head >= marks.peek()[0]) reached = (int) marks.poll()[1];
+        if (reached < 0 || gen != myGen) return;
+        final int here = reached;
+        pos = here;
+        main.post(() -> { if (listener != null && gen == myGen) listener.onSpeaking(ch, here); });
+        if (here % 3 == 0) saveProgress();
+    }
+
+    /** Waits for everything queued to be heard. false = interrupted. */
+    private boolean drain(int myGen, Chapter ch, java.util.ArrayDeque<long[]> marks) {
+        AudioTrack t = track;
+        if (t == null) return gen == myGen;
+        long lastHead = -1, stuckSince = System.currentTimeMillis();
+        while (gen == myGen) {
+            if (paused) { sleep(40); stuckSince = System.currentTimeMillis(); continue; }
+            heard(ch, marks, myGen);
+            long head = t.getPlaybackHeadPosition() & 0xffffffffL;
+            if (head >= framesWritten - 32) return true;
+            if (head != lastHead) { lastHead = head; stuckSince = System.currentTimeMillis(); }
+            else if (System.currentTimeMillis() - stuckSince > 1500) return true;   // the track stalled: don't hang
+            sleep(15);
+        }
+        return false;
     }
 
     private void endOfChapter(int myGen, Chapter ch) {
@@ -376,9 +434,13 @@ public class ReaderService extends Service {
                 .setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
             .setAudioFormat(new AudioFormat.Builder()
                 .setEncoding(AudioFormat.ENCODING_PCM_FLOAT).setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
-            .setBufferSizeInBytes(Math.max(min * 4, rate))   // ~1 s of floats
+            .setBufferSizeInBytes(Math.max(min * 4, rate * 2))   // ~0.5 s of floats
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build();
+        if (Build.VERSION.SDK_INT >= 31) {
+            // after running dry (a slow sentence), start again as soon as a little audio is in
+            try { track.setStartThresholdInFrames(rate / 20); } catch (Exception e) { Log.w(TAG, "threshold", e); }
+        }
         framesWritten = 0;
         return track;
     }
@@ -391,7 +453,7 @@ public class ReaderService extends Service {
         } catch (Exception e) { Log.w(TAG, "rate", e); }
     }
 
-    /** Writes one clip and waits until it has actually been heard. false = interrupted. */
+    /** Writes one clip and waits until it has been heard (the voice preview). false = interrupted. */
     private boolean writeClip(AudioTrack t, Voice.Clip c, int myGen) {
         applyRate(t, c);
         float[] s = c.samples;
@@ -411,13 +473,6 @@ public class ReaderService extends Service {
             sleep(15);
         }
         return false;
-    }
-
-    private void silence(double secs, int myGen) {
-        AudioTrack t = track;
-        if (t == null) return;
-        float[] z = new float[(int) (t.getSampleRate() * secs)];
-        writeClip(t, new Voice.Clip(z, t.getSampleRate(), speed, 0), myGen);
     }
 
     private static void sleep(long ms) { try { Thread.sleep(ms); } catch (InterruptedException ignored) {} }
