@@ -72,4 +72,5 @@ for name, path in models:
     if name != "fp32" and os.path.exists(path):
         os.makedirs("out", exist_ok=True); shutil.copy(path, f"out/model.{name}.onnx")
 open(OUT, "a").write("\n".join(lines) + "\n")
+open("results.md", "w").write("\n".join(lines) + "\n")
 print("\n".join(lines))

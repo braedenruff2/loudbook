@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths: ['tools/bench/**', '.github/workflows/bench.yml']
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   bench:
     runs-on: ubuntu-24.04-arm
@@ -22,3 +24,9 @@ jobs:
           pip install -q sherpa-onnx onnx onnxruntime numpy
       - name: Measure
         run: python3 tools/bench/bench.py parts/kokoro-multi-lang-v1_0
+      - name: Publish the results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view bench >/dev/null 2>&1 || gh release create bench --latest=false --title "Voice speed test" --notes "Output of tools/bench: results.md and the int8 models it made."
+          gh release upload bench results.md out/*.onnx --clobber
