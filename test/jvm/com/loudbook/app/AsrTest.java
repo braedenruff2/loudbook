@@ -36,41 +36,44 @@ public class AsrTest {
                 .setTokens(k + "/tokens.txt").setLexicon(k + "/lexicon-us-en.txt").setDataDir(k + "/espeak-ng-data").build())
             .setNumThreads(2).setDebug(false).build()).build());
         java.util.Random rnd = new java.util.Random(7);
+        int R = 3, N = TEXT.length * R;                 // a longer chapter: the passage three times over
+        String[] all = new String[N];
+        for (int i = 0; i < N; i++) all[i] = TEXT[i % TEXT.length];
         java.io.ByteArrayOutputStream pcm = new java.io.ByteArrayOutputStream();
-        double[] truth = new double[TEXT.length];
-        int[] chars = new int[TEXT.length];
+        double[] truth = new double[N];
+        int[] chars = new int[N];
         int rate = 24000; long n = 0;
-        for (int round = 0; round < 3; round++) {                      // a longer chapter: the passage three times
-            for (int i = 0; i < TEXT.length; i++) {
-                if (round == 0) chars[i] = TEXT[i].length();
-                float[] x = Voice.trim(tts.generate(TEXT[i], 3, 1.0f).getSamples(), rate);
-                if (round == 0) truth[i] = n / (double) rate;
-                for (float f : x) { short s = (short) (f * 32767); pcm.write(s & 0xff); pcm.write((s >> 8) & 0xff); n++; }
-                int gap = (int) (rate * (TEXT[i].endsWith("\"") ? 0.15 + rnd.nextDouble() * 0.25 : 0.3 + rnd.nextDouble() * 0.5));
-                for (int g = 0; g < gap; g++) { pcm.write(0); pcm.write(0); n++; }
-            }
+        for (int i = 0; i < N; i++) {
+            chars[i] = all[i].length();
+            float[] x = Voice.trim(tts.generate(all[i], 3, 1.0f).getSamples(), rate);
+            truth[i] = n / (double) rate;
+            for (float f : x) { short s = (short) (f * 32767); pcm.write(s & 0xff); pcm.write((s >> 8) & 0xff); n++; }
+            int gap = (int) (rate * (all[i].endsWith("\"") ? 0.15 + rnd.nextDouble() * 0.25 : 0.3 + rnd.nextDouble() * 0.5));
+            for (int g = 0; g < gap; g++) { pcm.write(0); pcm.write(0); n++; }
         }
+        byte[] bytes = pcm.toByteArray();
+        // as if Google stopped the recording early: cut it off in the middle of sentence 44
+        int cutSentence = 44;
+        long cutAt = (long) ((truth[cutSentence] + 1.3) * rate) * 2;
         java.io.File f = new java.io.File(files, "chapter.pcm");
-        java.nio.file.Files.write(f.toPath(), pcm.toByteArray());
-        CloudVoice.Pcm p = new CloudVoice.Pcm(f, 0, f.length(), rate);
-        int N = TEXT.length;
-        // only the first round's sentences are asked for: the rest looks like a cut-off recording would
+        java.nio.file.Files.write(f.toPath(), java.util.Arrays.copyOf(bytes, (int) cutAt));
+        CloudVoice.Pcm p = new CloudVoice.Pcm(f, 0, cutAt, rate);
         Align.Result r = Align.align(p, chars, 0);
-        System.out.println("pause timing: found " + r.count + " of " + N + ", cut short " + r.cutShort);
+        System.out.println("pause timing: found " + r.count + " of " + N + " (really " + cutSentence + " whole ones), cut short " + r.cutShort);
         AsrAligner asr = new AsrAligner();
         long t0 = System.currentTimeMillis();
         asr.load(new java.io.File(files, "asr"));
-        java.util.List<AsrAligner.Word> words = asr.words(p, 0, (long) (truth[N - 1] * rate + rate * 8));
-        System.out.println("recogniser: " + words.size() + " words in " + (System.currentTimeMillis() - t0) + " ms; first: " + words.subList(0, Math.min(12, words.size())));
-        double[] st = AsrAligner.sentenceStarts(words, java.util.Arrays.asList(TEXT));
+        java.util.List<AsrAligner.Word> words = asr.words(p, 0, p.samples());
+        System.out.println("recogniser: " + words.size() + " words in " + (System.currentTimeMillis() - t0) + " ms for " + (int) (p.samples() / rate) + " s; first: " + words.subList(0, Math.min(10, words.size())));
+        double[] st = AsrAligner.sentenceStarts(words, java.util.Arrays.asList(all).subList(0, r.count));
         double errPause = 0, errAsr = 0; int nAsr = 0;
-        for (int i = 0; i < N; i++) {
-            double pz = i < r.count ? r.start[i] / (double) rate : Double.NaN;
-            System.out.printf("%2d truth %6.2f  pauses %6.2f  words %6.2f  %s%n", i, truth[i], pz, st[i], TEXT[i].length() > 40 ? TEXT[i].substring(0, 40) : TEXT[i]);
-            if (!Double.isNaN(pz)) errPause = Math.max(errPause, Math.abs(pz - truth[i]));
+        for (int i = 0; i < r.count; i++) {
+            double pz = r.start[i] / (double) rate;
+            System.out.printf("%2d truth %6.2f  pauses %6.2f  words %6.2f  %s%n", i, truth[i], pz, st[i], all[i].length() > 40 ? all[i].substring(0, 40) : all[i]);
+            errPause = Math.max(errPause, Math.abs(pz - truth[i]));
             if (!Double.isNaN(st[i])) { errAsr = Math.max(errAsr, Math.abs(st[i] - truth[i])); nAsr++; }
         }
-        System.out.printf("worst error: pauses %.2f s, words %.2f s (%d of %d sentences timed by words)%n", errPause, errAsr, nAsr, N);
+        System.out.printf("worst error: pauses %.2f s, words %.2f s (%d of %d sentences timed by words)%n", errPause, errAsr, nAsr, r.count);
         System.out.println("ALL OK");
     }
 }

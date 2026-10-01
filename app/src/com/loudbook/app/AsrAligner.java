@@ -78,10 +78,11 @@ final class AsrAligner {
         StringBuilder w = null; double t = 0;
         for (int i = 0; i < tok.length; i++) {
             String k = tok[i];
-            boolean starts = k.startsWith("▁");
+            // a new word starts with the word-boundary mark (or a space, once decoded)
+            boolean starts = k.startsWith("\u2581") || k.startsWith(" ");
             if (starts && w != null && w.length() > 0) out.add(new Word(w.toString(), t));
             if (starts || w == null) { w = new StringBuilder(); t = i < ts.length ? ts[i] : t; }
-            w.append(k.replace("▁", ""));
+            w.append(k.replace("\u2581", "").trim());
         }
         if (w != null && w.length() > 0) out.add(new Word(w.toString(), t));
         return out;
