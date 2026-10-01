@@ -367,7 +367,7 @@ def discovery(stop):
 def serve(fake=False):
     cert, key = ensure_cert()
     Handler.fp = fingerprint()
-    print("Loudbook PC voice: loading the voice…", flush=True)
+    print("Loudbook PC voice: loading the voice...", flush=True)
     Handler.engine = FakeEngine() if fake else Engine()
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.minimum_version = ssl.TLSVersion.TLSv1_2
@@ -376,7 +376,7 @@ def serve(fake=False):
     httpd = Server(("0.0.0.0", PORT), Handler)
     stop = threading.Event()
     threading.Thread(target=discovery, args=(stop,), daemon=True).start()
-    print(f"Loudbook PC voice: ready on port {PORT} ({Handler.engine.name}), fingerprint {Handler.fp.hex()[:16]}…", flush=True)
+    print(f"Loudbook PC voice: ready on port {PORT} ({Handler.engine.name}), fingerprint {Handler.fp.hex()[:16]}...", flush=True)
     try: httpd.serve_forever()
     finally: stop.set()
 
@@ -411,7 +411,7 @@ def pair():
     print("  PC address:   " + (", ".join(local_addresses()) or "see ipconfig"))
     print("  Code:         " + shown)
     print()
-    print(f"  The code works once, for {PAIR_MINUTES} minutes. Waiting for the phone…")
+    print(f"  The code works once, for {PAIR_MINUTES} minutes. Waiting for the phone...")
     end = time.time() + PAIR_MINUTES * 60
     try:
         while time.time() < end:
