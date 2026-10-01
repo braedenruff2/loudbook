@@ -46,6 +46,19 @@ To pause publishing, turn off "Loudbook publish" in Windows Task Scheduler.
 The same sites as the extension: Royal Road, AO3, FanFiction.net / FictionPress, Wattpad, WebNovel,
 Wuxiaworld, Scribble Hub, SpaceBattles / Sufficient Velocity / QQ, plus other article-style pages.
 
+## The best voice: Google Gemini (online, optional)
+
+Gemini's text-to-speech is one of the best-rated voices available. To use it, get a free API key
+at [aistudio.google.com](https://aistudio.google.com) (**Get API key**), then paste it in ⚙ › **Best
+voice**. Pick a voice ("Sulafat" is warm; "Charon" is a clear storyteller) and tap **Save and hear
+it**.
+
+- **What it sends:** the chapter text goes to Google a paragraph at a time.
+- **Free tier:** has daily limits, and Google may use what's sent to improve its products.
+- **Paid tier:** Google charges roughly $0.81 per hour of listening.
+- **Fallback:** when the limit is hit or there's no connection, the PC voice or the phone's voice
+  takes over by itself.
+
 ## Voice on your PC (saves battery)
 
 The PC can make the speech instead of the phone. The phone only plays it, which uses much less

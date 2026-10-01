@@ -124,16 +124,74 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             if (prev != null) prev.uncaughtException(t, e);
         });
     }
+    /**
+     * Android's own record of how Loudbook last ended. Catches what the Java crash catcher can't:
+     * crashes in native code (the voice engines), being killed for memory, or quitting from native.
+     */
+    private String lastNativeExit() {
+        if (Build.VERSION.SDK_INT < 30) return null;
+        try {
+            android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE);
+            java.util.List<android.app.ApplicationExitInfo> l = am.getHistoricalProcessExitReasons(getPackageName(), 0, 10);
+            long seen = prefs.getLong("exitSeen", 0);
+            long since = seen > 0 ? seen : System.currentTimeMillis() - 3 * 24 * 3600_000L;   // first time: the last few days
+            if (!l.isEmpty()) prefs.edit().putLong("exitSeen", l.get(0).getTimestamp()).apply();
+            android.app.ApplicationExitInfo x = null;
+            for (android.app.ApplicationExitInfo e : l) {                    // newest first: the latest bad ending
+                if (e.getTimestamp() <= since) break;
+                int r = e.getReason();
+                if (r == android.app.ApplicationExitInfo.REASON_CRASH_NATIVE || r == android.app.ApplicationExitInfo.REASON_SIGNALED
+                    || r == android.app.ApplicationExitInfo.REASON_ANR || r == android.app.ApplicationExitInfo.REASON_LOW_MEMORY
+                    || r == android.app.ApplicationExitInfo.REASON_INITIALIZATION_FAILURE
+                    || (r == android.app.ApplicationExitInfo.REASON_EXIT_SELF && e.getStatus() != 0)) { x = e; break; }
+            }
+            if (x == null) return null;
+            int r = x.getReason();
+            StringBuilder sb = new StringBuilder();
+            String[] names = {"unknown", "exit self", "signaled", "low memory", "crash", "native crash", "ANR", "init failure", "permission change",
+                "excessive resource use", "user requested", "user stopped", "dependency died", "other", "freezer", "package state", "package updated"};
+            sb.append("Loudbook ").append(BuildInfo.VERSION).append(" on Android ").append(Build.VERSION.RELEASE).append(" (")
+              .append(Build.MANUFACTURER).append(' ').append(Build.MODEL).append(")\n")
+              .append("Ended: ").append(r < names.length ? names[r] : String.valueOf(r)).append(", status ").append(x.getStatus())
+              .append(", ").append(String.valueOf(x.getDescription())).append(", ")
+              .append(android.text.format.DateFormat.format("MMM d HH:mm", x.getTimestamp())).append("\n");
+            try (java.io.InputStream in = x.getTraceInputStream()) {
+                if (in != null) {
+                    // the native trace is binary; its readable parts (libraries, functions, the abort message) are what matter
+                    byte[] all = readAllBytes(in, 400_000);
+                    StringBuilder run = new StringBuilder(); int lines = 0;
+                    for (byte b : all) {
+                        char ch = (char) (b & 0xff);
+                        if (ch >= 32 && ch < 127) run.append(ch);
+                        else { if (run.length() >= 6 && lines < 120) { sb.append(run).append('\n'); lines++; } run.setLength(0); }
+                    }
+                }
+            }
+            return sb.toString();
+        } catch (Throwable t) { return null; }
+    }
+    private static byte[] readAllBytes(java.io.InputStream in, int max) throws java.io.IOException {
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        byte[] b = new byte[8192]; int n;
+        while ((n = in.read(b)) > 0 && out.size() < max) out.write(b, 0, n);
+        return out.toByteArray();
+    }
+
     private void showLastCrash() {
         java.io.File f = new java.io.File(getFilesDir(), "last-crash.txt");
-        if (!f.exists()) return;
         String text;
-        try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
-            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-            byte[] b = new byte[8192]; int n; while ((n = in.read(b)) > 0) out.write(b, 0, n);
-            text = out.toString("UTF-8");
-        } catch (Exception e) { text = String.valueOf(e); }
-        f.delete();
+        String nat = lastNativeExit();
+        if (!f.exists()) {
+            if (nat == null) return;
+            text = nat;
+        } else {
+            try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                byte[] b = new byte[8192]; int n; while ((n = in.read(b)) > 0) out.write(b, 0, n);
+                text = out.toString("UTF-8");
+            } catch (Exception e) { text = String.valueOf(e); }
+            f.delete();
+        }
         final String report = text;
         TextView t = text(12, C_INK, false);
         t.setText(report); t.setTextIsSelectable(true); t.setPadding(dp(20), dp(8), dp(20), dp(8));
@@ -594,6 +652,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     }
 
     // ---------------------------------------------------------------- settings
+    private Runnable settingsSave;
     private void showSettings() {
         LinearLayout box = vbox(dp(20), dp(8));
         box.addView(label("Voice"));
@@ -664,6 +723,62 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             info.setText("Kokoro on this phone: " + svc.threads() + " processor threads" + (rt > 0 ? String.format(java.util.Locale.US, ", making speech %.1f× faster than it's spoken", rt) : "") + ".");
         }
         box.addView(info);
+
+        box.addView(label("Best voice: Google Gemini (online)"));
+        TextView gInfo = label("");
+        box.addView(gInfo);
+        Switch gOn = toggle("Read with Gemini", prefs.getBoolean("cloudOn", false), null);
+        box.addView(gOn);
+        EditText gKey = new EditText(this);
+        gKey.setSingleLine(true); gKey.setTextColor(C_INK); gKey.setHint("Paste your Gemini API key");
+        gKey.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        gKey.setText(prefs.getString("cloudKey", ""));
+        box.addView(gKey);
+        Spinner gVoice = new Spinner(this);
+        String[] gvn = new String[CloudVoice.VOICES.length];
+        int gsel2 = 0;
+        for (int i = 0; i < gvn.length; i++) { gvn[i] = CloudVoice.VOICES[i][0] + " \u2014 " + CloudVoice.VOICES[i][1]; if (CloudVoice.VOICES[i][0].equals(prefs.getString("cloudVoice", "Sulafat"))) gsel2 = i; }
+        gVoice.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, gvn));
+        gVoice.setSelection(gsel2);
+        box.addView(gVoice);
+        Spinner gModel = new Spinner(this);
+        String[] gml = {"Gemini Flash TTS (best)", "Gemini Flash-Lite TTS (cheaper, faster)"};
+        gModel.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, gml));
+        gModel.setSelection(prefs.getString("cloudModel", "gemini-3.8-flash-tts").contains("lite") ? 1 : 0);
+        box.addView(gModel);
+        EditText gStyle = new EditText(this);
+        gStyle.setTextColor(C_INK); gStyle.setTextSize(13); gStyle.setMinLines(2);
+        gStyle.setText(prefs.getString("cloudStyle", CloudVoice.DEFAULT_STYLE));
+        box.addView(gStyle);
+        Button gHear = smallButton("Save and hear it");
+        box.addView(gHear);
+        Runnable showG = () -> {
+            String err = svc != null ? svc.cloudError : "";
+            gInfo.setText("Google's Gemini voice is one of the best-rated anywhere. It needs a free API key from aistudio.google.com (Get API key). "
+                + "The free tier has daily limits, and Google may use what's sent to improve its products; past that, Google charges about $0.81 per hour of listening. "
+                + "Whenever Gemini can't be reached or the limit is hit, your PC or the phone reads instead."
+                + (err.isEmpty() ? "" : "\nLast problem: " + err));
+        };
+        showG.run();
+        Runnable saveG = () -> {
+            String m = gModel.getSelectedItemPosition() == 1 ? "gemini-3.8-flash-lite-tts" : "gemini-3.8-flash-tts";
+            String st = gStyle.getText().toString().trim();
+            boolean changed = !gKey.getText().toString().trim().equals(prefs.getString("cloudKey", "")) || gOn.isChecked() != prefs.getBoolean("cloudOn", false)
+                || !CloudVoice.VOICES[gVoice.getSelectedItemPosition()][0].equals(prefs.getString("cloudVoice", "Sulafat"))
+                || !m.equals(prefs.getString("cloudModel", "gemini-3.8-flash-tts")) || !st.equals(prefs.getString("cloudStyle", CloudVoice.DEFAULT_STYLE));
+            prefs.edit().putString("cloudKey", gKey.getText().toString().trim()).putBoolean("cloudOn", gOn.isChecked())
+                .putString("cloudVoice", CloudVoice.VOICES[gVoice.getSelectedItemPosition()][0]).putString("cloudModel", m)
+                .putString("cloudStyle", st.isEmpty() ? CloudVoice.DEFAULT_STYLE : st).apply();
+            if (changed && svc != null) svc.cloudChanged();
+        };
+        gOn.setOnCheckedChangeListener((b, on) -> saveG.run());
+        gHear.setOnClickListener(v -> {
+            saveG.run();
+            if (gKey.getText().toString().trim().isEmpty()) { gInfo.setText("Paste your Gemini API key first."); return; }
+            if (!gOn.isChecked()) gOn.setChecked(true);
+            if (svc != null) { svc.preview(); main.postDelayed(showG, 6000); }
+        });
+        settingsSave = saveG;
 
         box.addView(label("Voice on your PC (saves battery)"));
         TextView pcInfo = label("");
@@ -767,6 +882,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             .setTitle("Loudbook")
             .setView(sv)
             .setPositiveButton("Done", (d, w) -> {
+                if (settingsSave != null) settingsSave.run();
                 if (svc != null) {
                     svc.setVoice(Integer.parseInt(Voice.VOICES[voices.getSelectedItemPosition()][0]));
                     int k = sleep.getSelectedItemPosition();

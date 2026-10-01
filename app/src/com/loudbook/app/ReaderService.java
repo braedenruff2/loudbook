@@ -148,6 +148,8 @@ public class ReaderService extends Service {
         commands.stop();
         cmdThread.shutdownNow();
         loader.shutdownNow();
+        cloudPool.shutdownNow();
+        waiters.shutdownNow();
         if (beeper != null) beeper.release();
         stopPlayback();
         synth.shutdownNow();
@@ -220,7 +222,7 @@ public class ReaderService extends Service {
         if (id == sid) return;
         sid = id;
         prefs.edit().putInt("voice", id).apply();
-        synchronized (clips) { for (Future<Voice.Clip> f : clips.values()) f.cancel(false); clips.clear(); clipsGen++; }
+        dropClips();
         if (playing) seek(pos);                       // say the current sentence again in the new voice
     }
     void setAutoNext(boolean on) { autoNext = on; prefs.edit().putBoolean("autoNext", on).apply(); }
@@ -233,11 +235,21 @@ public class ReaderService extends Service {
 
     /** A short sample in the chosen voice. */
     void preview() {
-        if (!voice.ready() || playing) return;
+        if ((!voice.ready() && !cloudOn()) || playing) return;
         final int myGen = ++gen;
         synth.submit(() -> {
-            Voice.Clip c = voice.speak("Hello. This is how I sound when I read your chapters to you.", sid, speed);
-            new Thread(() -> { AudioTrack t = ensureTrack(c.rate); t.play(); writeClip(t, c, myGen); }).start();
+            String hello = "Hello. This is how I sound when I read your chapters to you.";
+            Voice.Clip c;
+            if (cloudOn()) {
+                try {
+                    CloudVoice.Audio a = CloudVoice.speak(prefs.getString("cloudKey", ""), prefs.getString("cloudModel", "gemini-3.8-flash-tts"),
+                        prefs.getString("cloudVoice", "Sulafat"), prefs.getString("cloudStyle", CloudVoice.DEFAULT_STYLE), hello, 60_000);
+                    c = new Voice.Clip(Voice.trim(a.samples, a.rate), a.rate, 1f, 0);
+                    cloudError = "";
+                } catch (Exception e) { cloudError = String.valueOf(e.getMessage()); main.post(() -> status("Gemini: " + cloudError, true)); return null; }
+            } else c = voice.speak(hello, sid, speed);
+            final Voice.Clip clip = c;
+            new Thread(() -> { AudioTrack t = ensureTrack(clip.rate); t.play(); writeClip(t, clip, myGen); }).start();
             return null;
         });
     }
@@ -252,7 +264,7 @@ public class ReaderService extends Service {
         stopPlayback();
         chapter = ch;
         pos = Math.max(0, Math.min(startAt, ch.size() - 1));
-        synchronized (clips) { for (Future<Voice.Clip> f : clips.values()) f.cancel(false); clips.clear(); clipsGen++; }
+        dropClips();
         updateMetadata();
         if (listener != null) listener.onSpeaking(chapter, pos);
         if (play) play(); else state();
@@ -305,6 +317,16 @@ public class ReaderService extends Service {
         state();
     }
 
+    /** Forgets every sentence made or being made (new chapter, voice or engine). */
+    private void dropClips() {
+        synchronized (clips) {
+            for (Future<Voice.Clip> f : clips.values()) f.cancel(false);
+            clips.clear(); clipsGen++;
+            for (Future<java.util.List<Voice.Clip>> g : groups.values()) g.cancel(false);
+            groups.clear(); joined.clear();
+        }
+    }
+
     private Future<Voice.Clip> clipFor(int i) {
         synchronized (clips) {
             Future<Voice.Clip> f = clips.get(i);
@@ -313,7 +335,35 @@ public class ReaderService extends Service {
             final int want = sid; final float sp = speed;
             if (ch == null || i < 0 || i >= ch.size()) return null;
             final String text = ch.chunks.get(i).say;
-            f = synth.submit(() -> {
+            if (cloudOn()) {
+                // Gemini: the sentence's paragraph (or a piece of it) is made in one go
+                int[] g = groupOf(ch, i);
+                Future<java.util.List<Voice.Clip>> gf = groups.get(g[0]);
+                if (gf == null) { final int gs = g[0], ge = g[1]; gf = cloudPool.submit(() -> cloudGroup(ch, gs, ge)); groups.put(gs, gf); }
+                final Future<java.util.List<Voice.Clip>> fg = gf;
+                final int idx = i - g[0];
+                f = waiters.submit(() -> {
+                    try { return learned(fg.get().get(idx), want); }
+                    catch (java.util.concurrent.ExecutionException e) { return learned(makeHere(text, want, sp), want); }   // Google failed: another voice reads it
+                });
+                clips.put(i, f);
+                return f;
+            }
+            f = synth.submit(() -> learned(makeHere(text, want, sp), want));
+            clips.put(i, f);
+            return f;
+        }
+    }
+
+    private Voice.Clip learned(Voice.Clip c, int want) {
+        if (commands.loaded()) cmdThread.submit(() -> commands.learnReader(want, c.samples, c.rate));
+        return c;
+    }
+
+    /** A sentence from the PC or the phone (not Gemini). */
+    private Voice.Clip makeHere(String text, int want, float sp) throws Exception {
+        {
+            {
                 Voice.Clip c = null;
                 for (int attempt = 0; c == null; attempt++) {
                     while (!voice.ready()) Thread.sleep(100);        // first run: model still loading
@@ -324,14 +374,64 @@ public class ReaderService extends Service {
                         Thread.sleep(300);
                     }
                 }
-                final Voice.Clip made = c;
-                audioSecs += made.seconds(); workSecs += made.ms / 1000.0;
-                if (commands.loaded()) cmdThread.submit(() -> commands.learnReader(want, made.samples, made.rate));
-                return made;
-            });
-            clips.put(i, f);
-            return f;
+                audioSecs += c.seconds(); workSecs += c.ms / 1000.0;
+                return c;
+            }
         }
+    }
+
+    // ---------------------------------------------------------------- Gemini (online voice)
+    private final ExecutorService cloudPool = Executors.newFixedThreadPool(2);
+    private final ExecutorService waiters = Executors.newCachedThreadPool();
+    private final Map<Integer, Future<java.util.List<Voice.Clip>>> groups = new HashMap<>();
+    /** Sentences whose pause is already in Gemini's audio (the next one came in the same piece). */
+    private final java.util.Set<Integer> joined = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+    volatile String cloudError = "";
+    volatile long cloudRetryAt = 0;
+
+    boolean cloudOn() {
+        return prefs.getBoolean("cloudOn", false) && !prefs.getString("cloudKey", "").trim().isEmpty()
+            && System.currentTimeMillis() >= cloudRetryAt;
+    }
+    void cloudChanged() { cloudRetryAt = 0; cloudError = ""; dropClips(); if (playing && !paused) seek(pos); }
+
+    /** The sentences read together with sentence i: its paragraph, in pieces of up to ~700 characters. */
+    static int[] groupOf(Chapter ch, int i) {
+        int b = ch.chunks.get(i).block;
+        int s = i;
+        while (s > 0 && b >= 0 && ch.chunks.get(s - 1).block == b) s--;
+        int start = s, len = 0, k = s;
+        for (; k < ch.size() && (k == s || (b >= 0 && ch.chunks.get(k).block == b)); k++) {
+            int l = ch.chunks.get(k).say.length();
+            if (k > start && len + l > 700) { if (i < k) return new int[]{start, k}; start = k; len = 0; }
+            len += l;
+        }
+        return new int[]{start, k};
+    }
+
+    private java.util.List<Voice.Clip> cloudGroup(Chapter ch, int s, int e) throws Exception {
+        StringBuilder text = new StringBuilder();
+        int[] chars = new int[e - s];
+        for (int k = s; k < e; k++) { String t = ch.chunks.get(k).say; text.append(t).append(' '); chars[k - s] = t.length(); }
+        long t0 = System.currentTimeMillis();
+        CloudVoice.Audio a;
+        try {
+            a = CloudVoice.speak(prefs.getString("cloudKey", ""), prefs.getString("cloudModel", "gemini-3.8-flash-tts"),
+                prefs.getString("cloudVoice", "Sulafat"), prefs.getString("cloudStyle", CloudVoice.DEFAULT_STYLE), text.toString().trim(), 90_000);
+            cloudError = "";
+        } catch (Exception ex) {
+            cloudError = String.valueOf(ex.getMessage());
+            cloudRetryAt = System.currentTimeMillis() + (cloudError.contains("limit") ? 10 * 60_000 : 60_000);
+            main.post(() -> status("Gemini: " + cloudError + ". Another voice reads for now.", false));
+            throw ex;
+        }
+        long ms = System.currentTimeMillis() - t0;
+        java.util.List<float[]> parts = CloudVoice.split(Voice.trim(a.samples, a.rate), a.rate, chars);
+        java.util.List<Voice.Clip> out = new java.util.ArrayList<>();
+        for (float[] p : parts) out.add(new Voice.Clip(p, a.rate, 1f, ms / parts.size()));
+        for (int k = s; k < e - 1; k++) joined.add(k);
+        audioSecs += a.samples.length / (double) a.rate; workSecs += ms / 1000.0;
+        return out;
     }
 
     private volatile Voice.Clip current;
@@ -417,7 +517,7 @@ public class ReaderService extends Service {
      * "pause between sentences" setting and shortened at higher speeds.
      */
     private double gapAfter(Chapter ch, int i) {
-        if (i + 1 >= ch.size()) return 0;
+        if (i + 1 >= ch.size() || joined.contains(i)) return 0;
         Chapter.Chunk now = ch.chunks.get(i), nx = ch.chunks.get(i + 1);
         String t = now.text.trim().replaceAll("[\"'\u201d\u2019)\\]*]+$", "");
         double g;

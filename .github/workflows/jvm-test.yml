@@ -11,7 +11,13 @@ permissions:
   contents: write
 jobs:
   jvm:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, arch: x64 }
+          - { os: ubuntu-24.04-arm, arch: aarch64 }
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -21,12 +27,12 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: dl
-          key: jvm-test-1
+          key: jvm-test-1-${{ matrix.arch }}
       - name: Get the native library, models and Kokoro
         run: |
           mkdir -p dl jni files/commands
           R=https://github.com/k2-fsa/sherpa-onnx/releases/download
-          for n in sherpa-onnx-v1.13.8-linux-x64-jni.tar.bz2 sherpa-onnx-v1.13.8-linux-x64-jni-shared.tar.bz2; do
+          for n in sherpa-onnx-v1.13.8-linux-${{ matrix.arch }}-jni.tar.bz2 sherpa-onnx-v1.13.8-linux-${{ matrix.arch }}-jni-shared.tar.bz2; do
             [ -s dl/jni.tar.bz2 ] || curl -fsSL -o dl/jni.tar.bz2 $R/v1.13.8/$n || rm -f dl/jni.tar.bz2
           done
           tar xjf dl/jni.tar.bz2 -C jni
@@ -49,7 +55,7 @@ jobs:
           set +e
           LD_LIBRARY_PATH=$LIB timeout 600 java -Djava.library.path=$LIB -cp out com.loudbook.app.CommandsTest files kokoro-multi-lang-v1_0 > run.log 2>&1
           echo "exit code: $?" >> run.log
-          { echo '## Voice commands on the JVM'; echo; echo '```'; tail -c 6000 run.log; echo '```'; for f in hs_err*.log; do [ -f "$f" ] && { echo '```'; head -60 "$f"; echo '```'; }; done; } > results.md
+          { echo '## Voice commands on the JVM (${{ matrix.arch }})'; echo; echo '```'; tail -c 6000 run.log; echo '```'; for f in hs_err*.log; do [ -f "$f" ] && { echo '```'; head -60 "$f"; echo '```'; }; done; } > results.md
           cat results.md
       - name: Publish
         if: always()
@@ -57,5 +63,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           [ -f results.md ] || echo "no results" > results.md
+          mv results.md results-${{ matrix.arch }}.md
           gh release view jvm-test >/dev/null 2>&1 || gh release create jvm-test --latest=false --title "Voice commands JVM test" --notes "Output of .github/workflows/jvm-test.yml"
-          gh release upload jvm-test results.md --clobber
+          gh release upload jvm-test results-${{ matrix.arch }}.md --clobber
