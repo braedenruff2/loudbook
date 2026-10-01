@@ -16,6 +16,7 @@ natural = [
   "chatterbox-tts==0.1.7",
   "torch==2.6.0",
   "torchaudio==2.6.0",
+  "setuptools<81",   # its watermarker still imports pkg_resources, which newer setuptools dropped
 ]
 
 [tool.uv.sources]

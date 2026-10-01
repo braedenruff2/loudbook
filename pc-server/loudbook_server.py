@@ -294,7 +294,9 @@ def load_natural(kokoro):
         print("Loudbook PC voice: loading the natural voice (Chatterbox-Turbo)...", flush=True)
         return NaturalEngine(kokoro)
     except Exception as e:
+        import traceback
         print("Loudbook PC voice: natural voice unavailable:", repr(e)[:300], flush=True)
+        print("".join(traceback.format_exc().splitlines(True)[-8:]), flush=True)
         return None
 
 
