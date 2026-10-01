@@ -264,6 +264,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         else if (Intent.ACTION_VIEW.equals(i.getAction()) && i.getData() != null) url = i.getData().toString();
         if (url == null) return false;
         go(url);
+        if (i.getBooleanExtra("play", false)) resumeOnLoad = url;     // "open and read" (used by the tests)
         return true;
     }
 

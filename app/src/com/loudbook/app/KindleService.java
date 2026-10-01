@@ -257,6 +257,9 @@ public class KindleService extends AccessibilityService {
     /** The text on the Kindle page, in reading order, without the bars around it. */
     Page readPage() {
         Page p = new Page();
+        // the page just changed: don't trust remembered copies of its text (an app that draws its
+        // own page may not say exactly which bits changed)
+        if (android.os.Build.VERSION.SDK_INT >= 34) { try { clearCache(); } catch (Throwable ignored) { } }
         AccessibilityNodeInfo root = kindleRoot();
         if (root == null) return p;
         Rect screen = new Rect();
@@ -312,7 +315,9 @@ public class KindleService extends AccessibilityService {
 
     /** Text-bearing nodes with no text below them (the finest pieces), skipping buttons. */
     private static void collect(AccessibilityNodeInfo n, List<Bit> out, int depth) {
-        if (n == null || depth > 40 || !n.isVisibleToUser()) return;
+        if (n == null || depth > 40) return;
+        if (android.os.Build.VERSION.SDK_INT < 34 && depth > 0) n.refresh();
+        if (!n.isVisibleToUser()) return;
         int before = out.size();
         for (int i = 0; i < n.getChildCount(); i++) collect(n.getChild(i), out, depth + 1);
         if (out.size() > before) return;                         // its children had the text
