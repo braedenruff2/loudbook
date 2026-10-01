@@ -21,7 +21,11 @@ jobs:
         shell: cmd
         env:
           LB_CI: '1'
-        run: call "Set up PC voice.bat"
+        run: |
+          call "Set up PC voice.bat" > setup.log 2>&1
+          set rc=%errorlevel%
+          type setup.log
+          exit /b %rc%
       - name: Pair and speak
         shell: pwsh
         run: |
@@ -54,6 +58,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          [ -f results.md ] || echo "no results (setup failed)" > results.md
+          [ -f results.md ] || { echo "no results (setup failed)"; echo '```'; cat setup.log 2>/dev/null; echo '```'; } > results.md
           gh release view pc-test >/dev/null 2>&1 || gh release create pc-test --latest=false --title "PC voice test" --notes "Results of the Windows test of the PC voice server."
           gh release upload pc-test results.md --clobber
