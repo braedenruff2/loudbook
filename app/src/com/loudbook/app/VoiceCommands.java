@@ -61,6 +61,14 @@ final class VoiceCommands {
     synchronized void load(Context c) {
         if (kws != null) return;
         File d = dir(c);
+        // the word list gets tuned now and then: pick up the latest (it's tiny); offline is fine
+        try {
+            String k = Net.text(BuildInfo.RELEASES + "download/commands-1/keywords.txt");
+            File f = new File(d, "keywords.txt");
+            if (k.contains("@play") && k.contains("@pause")) {
+                try (java.io.FileOutputStream o = new java.io.FileOutputStream(f)) { o.write(k.getBytes("UTF-8")); }
+            }
+        } catch (Exception e) { Log.i(TAG, "keywords refresh skipped: " + e.getMessage()); }
         OnlineTransducerModelConfig tr = OnlineTransducerModelConfig.builder()
             .setEncoder(new File(d, "kws-encoder.onnx").getPath())
             .setDecoder(new File(d, "kws-decoder.onnx").getPath())

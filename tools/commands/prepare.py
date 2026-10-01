@@ -76,7 +76,27 @@ for boost, thr in [(0.5, 0.25), (1.0, 0.25), (0.5, 0.15), (1.0, 0.15), (1.0, 0.1
     score = ok - 3 * wrong
     if best is None or score > best[0]: best = (score, boost, thr)
 _, boost, thr = best
-open("out/keywords.txt", "w").write("\n".join(kw_lines(boost, thr)) + "\n")
+lines = kw_lines(boost, thr)
+
+# short words are harder: tune each word on its own, keeping the others as chosen
+R += ["", "Per-word tuning (found / wrong word hits caused):", ""]
+for wi, w in enumerate(WORDS):
+    pieces = " ".join(sp.encode(w.upper(), out_type=str))
+    best_w = None
+    for b, t in [(boost, thr), (0.0, 0.05), (0.3, 0.03), (0.5, 0.02), (0.0, 0.02), (0.8, 0.01)]:
+        trial = list(lines); trial[wi] = f"{pieces} :{b:.1f} #{t:.2f} @{w}"
+        f = f"/tmp/kw-{w}-{b}-{t}.txt"; open(f, "w").write("\n".join(trial) + "\n")
+        k = spotter(f, thr)
+        found = wrong = 0
+        for (v, w2, _), a in takes.items():
+            got = spot(k, a)
+            if w2 == w and w in got: found += 1
+            if w2 != w and w in got: wrong += 1
+        R.append(f"- {w} boost {b} threshold {t}: {found} / {wrong}")
+        sc = found - 4 * wrong
+        if best_w is None or sc > best_w[0]: best_w = (sc, trial[wi])
+    lines[wi] = best_w[1]
+open("out/keywords.txt", "w").write("\n".join(lines) + "\n")
 R += ["", f"Chosen: boost {boost}, threshold {thr}. Found per word (of {len(VOICES) * 2}): " + ", ".join(f"{w} {n}" for w, n in per_word[(boost, thr)].items()), "", "```", open("out/keywords.txt").read().strip(), "```", ""]
 
 # speaker check: enrol one voice from its six words, then score other takes vs other voices
