@@ -36,21 +36,66 @@ final class CloudVoice {
 
     static final class Audio { final float[] samples; final int rate; Audio(float[] s, int r) { samples = s; rate = r; } }
 
+    /** Which way of asking worked last time (Google has two APIs and has renamed models before). */
+    static volatile int lastWay = 0;
+
     /** Speech for some text. model: e.g. gemini-3.8-flash-tts. Throws with Google's message on failure. */
     static Audio speak(String key, String model, String voice, String style, String text, int timeoutMs) throws IOException {
-        String body = "{\"model\":" + PcLink.quote(model) + ",\"input\":[{\"type\":\"user_input\",\"content\":[{\"type\":\"text\",\"text\":"
-            + PcLink.quote(text) + (style == null || style.trim().isEmpty() ? "" : ",\"annotations\":[{\"type\":\"speech_metadata\",\"style\":" + PcLink.quote(style.trim()) + "}]")
-            + "}]}],\"response_format\":{\"type\":\"audio\",\"mime_type\":\"audio/wav\",\"sample_rate\":24000},"
-            + "\"generation_config\":{\"speech_config\":[{\"voice\":" + PcLink.quote(voice) + "}]}}";
-        Reply r = post(HOST + "interactions", key, body, timeoutMs);
-        if (r.code == 404 || r.code == 400 && r.body.contains("interactions")) {
-            // the older endpoint, in case this key or model only has that
-            String old = "{\"contents\":[{\"parts\":[{\"text\":" + PcLink.quote((style == null || style.trim().isEmpty() ? "" : style.trim() + "\n\n") + text) + "}]}],"
-                + "\"generationConfig\":{\"responseModalities\":[\"AUDIO\"],\"speechConfig\":{\"voiceConfig\":{\"prebuiltVoiceConfig\":{\"voiceName\":" + PcLink.quote(voice) + "}}}}}";
-            r = post(HOST + "models/" + model + ":generateContent", key, old, timeoutMs);
+        String st = style == null ? "" : style.trim();
+        String withStyle = (st.isEmpty() ? "" : st + "\n\n") + text;
+        String[] urls = new String[4], bodies = new String[4];
+        String content = "{\"type\":\"text\",\"text\":" + PcLink.quote(text)
+            + (st.isEmpty() ? "" : ",\"annotations\":[{\"type\":\"speech_metadata\",\"style\":" + PcLink.quote(st) + "}]") + "}";
+        String speech = "\"generation_config\":{\"speech_config\":[{\"voice\":" + PcLink.quote(voice) + "}]}";
+        // 1. the Interactions API, exactly as Google's example
+        urls[0] = HOST + "interactions";
+        bodies[0] = "{\"model\":" + PcLink.quote(model) + ",\"input\":[{\"type\":\"user_input\",\"content\":[" + content + "]}],"
+            + "\"response_format\":{\"type\":\"audio\"}," + speech + "}";
+        // 2. the same, asking for raw 24 kHz PCM
+        urls[1] = urls[0];
+        bodies[1] = "{\"model\":" + PcLink.quote(model) + ",\"input\":[{\"type\":\"user_input\",\"content\":[" + content + "]}],"
+            + "\"response_format\":{\"type\":\"audio\",\"mime_type\":\"audio/l16\",\"sample_rate\":24000}," + speech + "}";
+        // 3. generateContent, the older API
+        String legacy = "{\"contents\":[{\"parts\":[{\"text\":" + PcLink.quote(withStyle) + "}]}],"
+            + "\"generationConfig\":{\"responseModalities\":[\"AUDIO\"],\"speechConfig\":{\"voiceConfig\":{\"prebuiltVoiceConfig\":{\"voiceName\":" + PcLink.quote(voice) + "}}}}}";
+        urls[2] = HOST + "models/" + model + ":generateContent"; bodies[2] = legacy;
+        // 4. generateContent with the long-standing TTS model
+        urls[3] = HOST + "models/gemini-2.5-flash-preview-tts:generateContent"; bodies[3] = legacy;
+
+        String firstProblem = null;
+        for (int t = 0; t < 4; t++) {
+            int w = (lastWay + t) % 4;
+            Reply r = post(urls[w], key, bodies[w], timeoutMs);
+            if (r.code == 401 || r.code == 403 || r.code == 429) throw new IOException(errorOf(r));   // the key, not the request
+            if (r.code == 200) {
+                String body = r.body;
+                String id = PcLink.str(body, "id");
+                for (int poll = 0; poll < 30 && body.matches("(?s).*\"status\"\\s*:\\s*\"(in_progress|queued|pending)\".*") && id != null; poll++) {
+                    try { Thread.sleep(1000); } catch (InterruptedException e) { throw new IOException("stopped"); }
+                    body = get(HOST + "interactions/" + id, key, timeoutMs).body;
+                }
+                try { Audio a = decode(body); lastWay = w; return a; }
+                catch (IOException e) { if (firstProblem == null) firstProblem = "no audio in Google's reply: " + outline(body); }
+            } else if (firstProblem == null) firstProblem = errorOf(r);
         }
-        if (r.code != 200) throw new IOException(errorOf(r));
-        return decode(r.body);
+        throw new IOException(firstProblem);
+    }
+
+    /** A reply's shape with long values cut short, for error messages (no audio, no key in it). */
+    static String outline(String json) {
+        String o = json.replaceAll("\"([^\"\\\\]|\\\\.){60,}\"", "\"…\"").replaceAll("\\s+", " ");
+        return o.length() > 400 ? o.substring(0, 400) + "…" : o;
+    }
+
+    private static Reply get(String url, String key, int timeoutMs) throws IOException {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        try {
+            c.setConnectTimeout(10000); c.setReadTimeout(timeoutMs);
+            c.setRequestProperty("x-goog-api-key", key.trim());
+            int code = c.getResponseCode();
+            InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+            return new Reply(code, in == null ? "" : new String(readAll(in), StandardCharsets.UTF_8));
+        } finally { c.disconnect(); }
     }
 
     static final class Reply { final int code; final String body; Reply(int c, String b) { code = c; body = b; } }
@@ -82,9 +127,11 @@ final class CloudVoice {
 
     /** The audio in Google's reply: the last base64 "data" field; a WAV file or raw 16-bit PCM at 24 kHz. */
     static Audio decode(String json) throws IOException {
-        Matcher m = Pattern.compile("\"data\"\\s*:\\s*\"([A-Za-z0-9+/=_-]{64,})\"").matcher(json);
+        String j = json.replace("\\/", "/").replace("\\u003d", "=").replace("\\u002b", "+");
+        // the audio is the longest base64 string in the reply, whatever its field is called
+        Matcher m = Pattern.compile("\"([A-Za-z0-9+/=_-]{200,})\"").matcher(j);
         String b64 = null;
-        while (m.find()) b64 = m.group(1);
+        while (m.find()) if (b64 == null || m.group(1).length() > b64.length()) b64 = m.group(1);
         if (b64 == null) throw new IOException("Google sent no audio");
         byte[] a = Base64.getDecoder().decode(b64.replace('-', '+').replace('_', '/'));
         int rate = 24000, off = 0, len = a.length;
