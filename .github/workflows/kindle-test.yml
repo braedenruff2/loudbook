@@ -36,7 +36,7 @@ jobs:
       - name: Run on the emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 34
+          api-level: 35
           arch: x86_64
           target: google_apis
           disable-animations: true
@@ -48,7 +48,7 @@ jobs:
         run: |
           {
             echo '## Kindle reader on the emulator'; echo; echo '```'
-            grep -E "LoudbookTest|FakeKindle|AndroidRuntime|FATAL| F DEBUG" logcat.txt 2>/dev/null | grep -v "SearchServiceCore" | tail -120
+            grep -E "LoudbookTest|FakeKindle|Loudbook|MediaFocusControl|AndroidRuntime|FATAL| F DEBUG" logcat.txt 2>/dev/null | grep -v "SearchServiceCore" | tail -120
             echo '```'
           } > results.md
           gh release view kindle-test >/dev/null 2>&1 || gh release create kindle-test --latest=false --title "Kindle reader test" --notes "Output of .github/workflows/kindle-test.yml"
