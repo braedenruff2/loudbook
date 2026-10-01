@@ -104,7 +104,10 @@ try {
       if ($new -match 'Traceback|Error') { Write-Host $new; break }
     }
   }
-  if (-not $ok) { throw "the PC voice didn't start (see $log)" }
+  if (-not $ok) {
+    if (Test-Path $log) { Write-Host '  ---- server.log (end) ----'; Get-Content $log -Tail 25 | ForEach-Object { Write-Host "  $_" } } else { Write-Host '  (no server.log was written)' }
+    throw "the PC voice didn't start (see $log)"
+  }
   Say 'The PC voice is running, and starts by itself when you sign in to Windows.'
   if (-not $env:LB_CI) {
     Write-Host ''

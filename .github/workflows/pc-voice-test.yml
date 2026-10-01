@@ -26,6 +26,17 @@ jobs:
           set rc=%errorlevel%
           type setup.log
           exit /b %rc%
+      - name: Diagnose a failed start
+        if: failure()
+        shell: pwsh
+        run: |
+          $env:UV_PROJECT_ENVIRONMENT = "$env:LOCALAPPDATA\Loudbook\venv"
+          $uv = "$env:LOCALAPPDATA\Loudbook\bin\uv.exe"
+          $p = Start-Process $uv -ArgumentList 'run','--python','3.12','--project','pc-server','python','-u','pc-server\loudbook_server.py','serve' -RedirectStandardOutput diag-out.log -RedirectStandardError diag-err.log -PassThru -NoNewWindow
+          Start-Sleep 90
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          "stdout:"; Get-Content diag-out.log; "stderr:"; Get-Content diag-err.log
+          Get-Content diag-out.log, diag-err.log | Add-Content setup.log
       - name: Pair and speak
         shell: pwsh
         run: |
