@@ -51,6 +51,16 @@ final class VoiceCommands {
         return true;
     }
     static void fetch(Context c, Net.Progress p) throws Exception {
+        // a download cut short used to be kept as if complete, and a half model file takes the
+        // native code (and the app) down: check each file against the size online, once
+        SharedPreferences pr = prefs(c);
+        for (String f : FILES) {
+            File x = new File(dir(c), f);
+            if (!x.isFile() || f.endsWith(".txt") || pr.getLong("cmdOk:" + f, -1) == x.length()) continue;
+            long want = Net.remoteSize(BuildInfo.RELEASES + "download/commands-1/" + f);
+            if (want > 0 && want != x.length()) { Log.w(TAG, f + " was incomplete: " + x.length() + " of " + want); x.delete(); }
+            else if (want > 0) pr.edit().putLong("cmdOk:" + f, want).apply();
+        }
         for (int i = 0; i < FILES.length; i++) {
             final int k = i;
             Net.download(BuildInfo.RELEASES + "download/commands-1/" + FILES[i], new File(dir(c), FILES[i]), 0,
@@ -98,6 +108,9 @@ final class VoiceCommands {
         SharedPreferences p = prefs(c);
         if (!p.getBoolean("cmdLoading", false)) return false;
         p.edit().putBoolean("cmdLoading", false).putBoolean("voiceCmds", false).commit();
+        // start clean next time: the files may be what broke it
+        File[] fs = dir(c).listFiles();
+        if (fs != null) for (File f : fs) f.delete();
         return true;
     }
 

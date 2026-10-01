@@ -566,8 +566,9 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 42);
             return;
         }
-        if (!VoiceCommands.downloaded(this)) {
-            onStatus("Getting voice commands ready (about 40 MB, once)…", false);
+        if (!VoiceCommands.downloaded(this) || !prefs.getBoolean("cmdChecked", false)) {
+            prefs.edit().putBoolean("cmdChecked", true).apply();
+            onStatus("Getting voice commands ready (about 55 MB, once)…", false);
             new Thread(() -> {
                 try {
                     VoiceCommands.fetch(getApplicationContext(), (d, t) -> main.post(() ->

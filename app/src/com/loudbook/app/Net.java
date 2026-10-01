@@ -57,6 +57,16 @@ final class Net {
         if (!part.renameTo(dest)) throw new java.io.IOException("couldn't save " + dest.getName());
     }
 
+    /** The size of a file online (after redirects), or -1 if unknown. */
+    static long remoteSize(String url) {
+        try {
+            HttpURLConnection c = open(url, 0);
+            long n = c.getResponseCode() == 200 ? c.getContentLengthLong() : -1;
+            c.disconnect();
+            return n;
+        } catch (Exception e) { return -1; }
+    }
+
     private static HttpURLConnection open(String url, long from) throws Exception {
         // Follow redirects by hand: GitHub release files redirect to another host.
         for (int hop = 0; hop < 6; hop++) {
