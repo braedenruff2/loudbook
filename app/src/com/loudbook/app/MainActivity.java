@@ -928,7 +928,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         box.addView(teach);
         Spinner strict = new Spinner(this);
         String[] stl = {"Voice match: relaxed", "Voice match: normal", "Voice match: strict"};
-        float[] stv = {-0.08f, 0f, 0.08f};
+        float[] stv = {-0.06f, 0f, 0.08f};
         strict.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, stl));
         float cur = prefs.getFloat("voiceStrict", 0f);
         strict.setSelection(cur < -0.01f ? 0 : cur > 0.01f ? 2 : 1);

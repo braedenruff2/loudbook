@@ -1045,6 +1045,7 @@ public class ReaderService extends Service {
 
     private void state() {
         boolean on = playing && !paused;
+        commands.readerPlaying = on;
         session.setPlaybackState(new PlaybackState.Builder()
             .setActions(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE
                 | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS | PlaybackState.ACTION_STOP)

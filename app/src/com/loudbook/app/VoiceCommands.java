@@ -43,6 +43,8 @@ final class VoiceCommands {
     private volatile float[] readerVoice;
     private int readerVoiceId = -1;
     private volatile boolean listening;
+    /** Loudbook is reading aloud right now (its own voice may be in what the microphone hears). */
+    volatile boolean readerPlaying;
 
     // ---------------------------------------------------------------- files + models
     static File dir(Context c) { return new File(c.getFilesDir(), "commands"); }
@@ -80,6 +82,7 @@ final class VoiceCommands {
             }
         } catch (Exception e) { Log.i(TAG, "keywords refresh skipped: " + e.getMessage()); }
         checkKeywords(d);
+        File tuned = tuneKeywords(d);
         // the native code can take the whole app down; remember we were in here so the next start
         // turns voice commands off instead of crashing again
         prefs(c).edit().putBoolean("cmdLoading", true).commit();
@@ -91,7 +94,7 @@ final class VoiceCommands {
             .setTokens(new File(d, "kws-tokens.txt").getPath()).setNumThreads(1).setProvider("cpu").setDebug(false).build();
         KeywordSpotterConfig kc = KeywordSpotterConfig.builder()
             .setFeatureConfig(FeatureConfig.builder().setSampleRate(RATE).setFeatureDim(80).build())
-            .setOnlineModelConfig(m).setKeywordsFile(new File(d, "keywords.txt").getPath())
+            .setOnlineModelConfig(m).setKeywordsFile(tuned.getPath())
             .setKeywordsThreshold(0.25f).setKeywordsScore(1.0f).setMaxActivePaths(4).build();
         kws = new KeywordSpotter(kc);
         spk = new SpeakerEmbeddingExtractor(SpeakerEmbeddingExtractorConfig.builder()
@@ -112,6 +115,36 @@ final class VoiceCommands {
         File[] fs = dir(c).listFiles();
         if (fs != null) for (File f : fs) f.delete();
         return true;
+    }
+
+    /**
+     * The word list was tuned on clean, synthetic speech; a real voice across the room needs a
+     * lower bar. Hearing a word too easily is fine: the voice check after it is what keeps the TV
+     * and other people out.
+     */
+    static File tuneKeywords(File d) {
+        File out = new File(d, "keywords-tuned.txt");
+        try {
+            StringBuilder sb = new StringBuilder();
+            for (String line : java.nio.file.Files.readAllLines(new File(d, "keywords.txt").toPath(), java.nio.charset.StandardCharsets.UTF_8)) {
+                if (line.trim().isEmpty()) continue;
+                StringBuilder l = new StringBuilder();
+                for (String part : line.trim().split("\\s+")) {
+                    if (l.length() > 0) l.append(' ');
+                    try {
+                        if (part.startsWith(":")) { l.append(String.format(Locale.US, ":%.2f", Float.parseFloat(part.substring(1)) + 0.8f)); continue; }
+                        if (part.startsWith("#")) { l.append(String.format(Locale.US, "#%.3f", Math.max(0.01f, Float.parseFloat(part.substring(1)) * 0.5f))); continue; }
+                    } catch (NumberFormatException ignored) { }
+                    l.append(part);
+                }
+                sb.append(l).append('\n');
+            }
+            java.nio.file.Files.write(out.toPath(), sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return out;
+        } catch (Exception e) {
+            Log.w(TAG, "keyword tuning", e);
+            return new File(d, "keywords.txt");
+        }
     }
 
     /** Every piece of every keyword must be in the spotter's token list, or the native code quits. */
@@ -183,7 +216,14 @@ final class VoiceCommands {
         for (int i = 0; i < p.length; i++) e[i] = Float.parseFloat(p[i]);
         return e;
     }
-    static float threshold(Context c) { return prefs(c).getFloat("voiceThreshold", 0.45f) + prefs(c).getFloat("voiceStrict", 0f); }
+    /**
+     * How close a voice must be to the profile. Setup is done close to the phone in a quiet room,
+     * so the bar is set a good way below how well the setup recordings matched each other.
+     */
+    static float threshold(Context c) {
+        float set = prefs(c).getFloat("voiceThreshold", 0.45f);
+        return Math.max(0.28f, Math.min(0.5f, set - 0.1f)) + prefs(c).getFloat("voiceStrict", 0f);
+    }
     static void saveProfile(Context c, float[] e, float threshold) {
         StringBuilder sb = new StringBuilder();
         for (float x : e) { if (sb.length() > 0) sb.append(','); sb.append(String.format(Locale.US, "%.5f", x)); }
@@ -282,7 +322,9 @@ final class VoiceCommands {
         if (t != null) { try { t.join(1500); } catch (InterruptedException ignored) { } }
     }
 
-    private void listen(Context c, float[] prof, Handler h) {
+    private void listen(Context c, float[] profAtStart, Handler h) {
+        float[] prof = profAtStart;
+        String lastMissWord = null; long lastMissAt = 0;
         AudioRecord r = null;
         OnlineStream s = null;
         try {
@@ -309,16 +351,35 @@ final class VoiceCommands {
                 }
                 if (heard == null || System.currentTimeMillis() < cooldownUntil) continue;
                 // the word is in the last second or so: check whose voice it is
-                int len = (int) (RATE * 1.3);
+                int len = (int) (RATE * 1.6);
                 float[] seg = new float[len];
                 for (int i = 0; i < len; i++) seg[i] = ring[(ringPos - len + i + ring.length * 2) % ring.length];
                 float[] part = speechPart(seg);
                 float[] e = part == null ? null : embed(part);
                 float score = e == null ? 0 : dot(prof, e);
                 float[] rv = readerVoice;
-                float reader = e == null || rv == null ? -1 : dot(rv, e);
-                if (score >= threshold(c) && score > reader) { cooldownUntil = System.currentTimeMillis() + 1200; h.onCommand(heard, score); }
-                else h.onRejected(heard, score, reader);
+                // (Loudbook's own voice can only be the one speaking while it's reading)
+                float reader = e == null || rv == null || !readerPlaying ? -1 : dot(rv, e);
+                float bar = threshold(c);
+                long now = System.currentTimeMillis();
+                boolean yours = score >= bar && score > reader;
+                // said twice in a row and nearly a match both times: that's you, a bit far away
+                boolean again = !yours && score > reader && score >= bar - 0.1f && heard.equals(lastMissWord) && now - lastMissAt < 6000;
+                if (yours || again) {
+                    cooldownUntil = now + 1200;
+                    lastMissWord = null;
+                    h.onCommand(heard, score);
+                    // a clear match: let the profile drift toward how you sound in real use
+                    if (yours && score >= bar + 0.05f && e != null) {
+                        float[] np = new float[prof.length];
+                        for (int i = 0; i < np.length; i++) np[i] = 0.9f * prof[i] + 0.1f * e[i];
+                        prof = unit(np);
+                        saveProfile(c, prof, prefs(c).getFloat("voiceThreshold", 0.45f));
+                    }
+                } else {
+                    if (score >= bar - 0.1f && score > reader) { lastMissWord = heard; lastMissAt = now; }
+                    h.onRejected(heard, score, reader);
+                }
             }
         } catch (Throwable t) {
             Log.w(TAG, "voice commands stopped", t);

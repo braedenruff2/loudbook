@@ -36,6 +36,26 @@ public class CommandsTest {
         GeneratedAudio other = tts.generate("Pause.", 3, 1.0f);
         float[] ox = resample(other.getSamples(), other.getSampleRate());
         System.out.println("other voice match: " + VoiceCommands.dot(prof, vc.embed(VoiceCommands.speechPart(pad(ox)))));
+        // quieter, farther away: the same words at a fifth of the level, with some room noise
+        int quiet = 0;
+        java.util.Random rnd = new java.util.Random(7);
+        for (String w : VoiceCommands.WORDS) {
+            GeneratedAudio g = tts.generate(Character.toUpperCase(w.charAt(0)) + w.substring(1) + ".", 2, 1.1f);
+            float[] x = resample(g.getSamples(), g.getSampleRate());
+            for (int i = 0; i < x.length; i++) x[i] = x[i] * 0.2f + (float) (rnd.nextGaussian() * 0.004);
+            if (w.equals(vc.spot(pad(x)))) quiet++;
+        }
+        System.out.println("quiet + noisy words spotted: " + quiet + "/" + VoiceCommands.WORDS.length);
+        // a story read aloud: how often a command word is heard in it (the voice check then decides)
+        String story = "He went back to the beginning of the road and waited. At the end of the day, they would play the old songs, and she would pause before the last verse. Forward, he thought. The children played by the river.";
+        GeneratedAudio st = tts.generate(story, 3, 1.0f);
+        float[] sx = resample(st.getSamples(), st.getSampleRate());
+        int hits = 0;
+        for (int at = 0; at < sx.length; at += 16000 * 2) {
+            float[] piece = java.util.Arrays.copyOfRange(sx, at, Math.min(sx.length, at + 16000 * 2));
+            if (vc.spot(piece) != null) hits++;
+        }
+        System.out.println("story pieces with a command word heard: " + hits + " of " + ((sx.length + 31999) / 32000));
         vc.learnReader(16, tts.generate("He walked back to the end of the road and waited for the others.", 16, 1f).getSamples(), 24000);
         System.out.println("ALL OK");
     }
