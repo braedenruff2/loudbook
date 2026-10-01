@@ -39,7 +39,8 @@ To pause publishing, turn off "Loudbook publish" in Windows Task Scheduler.
 | **⏮ ⏭** | previous / next chapter |
 | **1.0×** | speed; tap to step through, or use the slider in ⚙ |
 | **Long-press a paragraph** | read from there |
-| **⚙** | voice (25, best first, with "Hear this voice"), speed, roll into the next chapter, sleep timer, pronunciation fixes |
+| **⚙** | voice (25, best first, with "Hear this voice"), speed, pause between sentences, roll into the next chapter, sleep timer, pronunciation fixes, voice commands |
+| **Voice commands** | ⚙ › Voice commands. Say *play*, *pause*, *back*, *forward*, *beginning* or *end* while Loudbook is open or reading. Setup records each word twice so only your voice counts: the TV, other people and the story being read are ignored. Everything stays on the phone. |
 | **Back button** | goes back a page; on the start page it puts Loudbook in the background (still reading) instead of closing |
 
 The same sites as the extension: Royal Road, AO3, FanFiction.net / FictionPress, Wattpad, WebNovel,
