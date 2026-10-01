@@ -58,6 +58,8 @@ public class ReaderService extends Service {
         void onFinished(Chapter ch);
         /** Gemini: please load this chapter's text (quietly) so it can be recorded ahead of time. */
         default void onPrefetch(String url) { }
+        /** The service went on to the next chapter by itself (it loads it ahead). */
+        default void onTurned(Chapter from, Chapter to) { }
     }
 
     final class LocalBinder extends Binder { ReaderService service() { return ReaderService.this; } }
@@ -156,6 +158,7 @@ public class ReaderService extends Service {
         cloudPool.shutdownNow();
         kindleThread.shutdownNow();
         asrThread.shutdownNow();
+        if (fetcher != null) fetcher.destroy();
         waiters.shutdownNow();
         if (beeper != null) beeper.release();
         stopPlayback();
@@ -268,11 +271,15 @@ public class ReaderService extends Service {
     boolean isPlaying() { return playing; }
 
     /** A chapter arrived from the page. play: keep reading (after a page turn, or the user pressed play). */
-    void setChapter(Chapter ch, int startAt, boolean play) {
+    void setChapter(Chapter ch, int startAt, boolean play) { setChapter(ch, startAt, play, null); }
+
+    /** premade: sentences of this chapter already made (the start of the next chapter, made ahead). */
+    private void setChapter(Chapter ch, int startAt, boolean play, Map<Integer, Future<Voice.Clip>> premade) {
         stopPlayback();
         chapter = ch;
         pos = Math.max(0, Math.min(startAt, ch.size() - 1));
         dropClips();
+        if (premade != null && startAt == 0) synchronized (clips) { clips.putAll(premade); }
         updateMetadata();
         if (listener != null) listener.onSpeaking(chapter, pos);
         if (play) play(); else state();
@@ -293,9 +300,22 @@ public class ReaderService extends Service {
         if (chapter == null) { status("Open a chapter first.", false); return; }
         if (playing && paused) { paused = false; if (track != null) track.play(); state(); return; }
         if (playing) return;
-        if (!requestFocus()) { status("Another app is using the audio.", true); return; }
         playing = true; paused = false;
+        // the notification first: Android 15 only gives the audio to an app on screen or one with
+        // a reading notification up (Kindle's button starts reading while Kindle is on screen)
         goForeground();
+        if (!requestFocus()) {
+            int mode = audio.getMode();
+            if (mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION || mode == AudioManager.MODE_RINGTONE) {
+                playing = false;
+                status("A call is using the audio.", true);
+                state();
+                return;
+            }
+            Log.w(TAG, "audio focus refused; reading anyway");
+            Log.i("LoudbookTest", "audio focus refused; reading anyway");
+        }
+        preloadNext(chapter);
         if (!wake.isHeld()) wake.acquire(6 * 60 * 60 * 1000L);
         final int myGen = ++gen;
         player = new Thread(() -> loop(myGen), "loudbook-player");
@@ -406,6 +426,8 @@ public class ReaderService extends Service {
     private final ExecutorService kindleThread = Executors.newSingleThreadExecutor();
 
     boolean readingKindle() { Chapter c = chapter; return c != null && "kindle".equals(c.site); }
+    /** Kindle was read to the end of the book (or of what could be turned to). */
+    boolean kindleDone() { return readingKindle() && kindleEnded && !playing; }
 
     /** Starts reading the page open in Kindle (from KindleService's button). */
     void startKindle(KindleService.Page p) {
@@ -698,12 +720,15 @@ public class ReaderService extends Service {
         if (reached < 0 || gen != myGen) return;
         final int here = reached;
         pos = here;
-        if ("kindle".equals(ch.site)) Log.i("LoudbookTest", "kindle speaking " + here + ": " + ch.chunks.get(here).text);
+        { String said = ch.chunks.get(here).text; Log.i("LoudbookTest", ("kindle".equals(ch.site) ? "kindle " : "") + "speaking " + here + ": " + (said.length() > 60 ? said.substring(0, 60) : said)); }
         if (here > ch.size() / 2 && ch.nextUrl != null && autoNext && !ch.nextUrl.equals(prefetchAsked) && cloudOn()
             && prefs.getBoolean("gemPrefetch", false)) {
             prefetchAsked = ch.nextUrl;
-            main.post(() -> { if (listener != null) listener.onPrefetch(ch.nextUrl); });
+            Chapter n = nextCh;
+            if (n != null && ch.nextUrl.equals(nextFor)) main.post(() -> cloudPrefetch(n));
+            else main.post(() -> { if (listener != null) listener.onPrefetch(ch.nextUrl); });
         }
+        if (here >= ch.size() - 4 && ch.nextUrl != null && autoNext && nextCh != null) premakeNext();
         main.post(() -> { if (listener != null && gen == myGen) listener.onSpeaking(ch, here); });
         if (here % 3 == 0) saveProgress();
     }
@@ -733,8 +758,7 @@ public class ReaderService extends Service {
             if (go) {
                 if (stopAtChapterEnd) { stopAtChapterEnd = false; pendingPauseAfterTurn = true; }
                 status("Turning the page…", false);
-                if (listener != null) listener.onNeedChapter(ch.nextUrl);
-                else { status("Open Loudbook to carry on to the next chapter.", false); stopPlayback(); }
+                turnTo(ch, myGen);
             } else {
                 stopPlayback();
                 dropForeground(false);
@@ -744,6 +768,80 @@ public class ReaderService extends Service {
         });
     }
     boolean pendingPauseAfterTurn = false;
+
+    // ---------------------------------------------------------------- the next chapter, ahead of time
+    private ChapterFetcher fetcher;
+    private volatile Chapter nextCh;                 // the chapter after the playing one, once loaded
+    private volatile String nextFor;                 // the address it was loaded from
+    private final Map<Integer, Future<Voice.Clip>> nextClips = new HashMap<>();   // its first sentences, made ahead
+    private String nextClipsUrl;
+    private int nextClipsSid = -1;
+    private float nextClipsSpeed;
+
+    private ChapterFetcher fetcher() { if (fetcher == null) fetcher = new ChapterFetcher(this); return fetcher; }
+
+    /** Loads the next chapter's text in the background while this one plays (it costs nothing). */
+    private void preloadNext(Chapter ch) {
+        if (ch == null || ch.nextUrl == null || !autoNext || "kindle".equals(ch.site)) return;
+        final String url = ch.nextUrl;
+        if (url.equals(nextFor) && nextCh != null) return;
+        main.post(() -> {
+            if (fetcher().busyWith(url)) return;
+            fetcher().get(url, (c, err) -> {
+                if (c == null) { Log.w(TAG, "next chapter ahead: " + err); return; }
+                Chapter now = chapter;
+                if (now != null && url.equals(now.nextUrl)) { nextFor = url; nextCh = c; }
+            });
+        });
+    }
+
+    /** Near the end of a chapter: makes the next one's first sentences, so it starts straight away. */
+    private void premakeNext() {
+        Chapter n = nextCh;
+        if (n == null || cloudOn()) return;              // (Gemini records whole chapters; see gemPrefetch)
+        synchronized (clips) {
+            if (n.url.equals(nextClipsUrl) && nextClipsSid == sid && nextClipsSpeed == speed) return;
+            for (Future<Voice.Clip> f : nextClips.values()) f.cancel(false);
+            nextClips.clear();
+            nextClipsUrl = n.url; nextClipsSid = sid; nextClipsSpeed = speed;
+            final int want = sid; final float sp = speed;
+            for (int k = 0; k < Math.min(3, n.size()); k++) {
+                final String text = n.chunks.get(k).say;
+                nextClips.put(k, synth.submit(() -> learned(makeHere(text, want, sp), want)));
+            }
+        }
+        Log.i("LoudbookTest", "making the start of " + n.url + " ahead");
+    }
+
+    /** The chapter ended: go on to the next, loaded ahead if it's ready. Main thread. */
+    private void turnTo(Chapter ch, int myGen) {
+        Chapter n = nextCh;
+        if (n != null && ch.nextUrl.equals(nextFor)) { turned(ch, n); return; }
+        fetcher().get(ch.nextUrl, (c, err) -> {
+            if (gen != myGen || chapter != ch) return;
+            if (c != null) { turned(ch, c); return; }
+            Log.w(TAG, "next chapter: " + err);
+            Log.i("LoudbookTest", "next chapter failed: " + err);
+            // the screen's own browser has a go (it can show a site's check to the user)
+            if (listener != null) listener.onNeedChapter(ch.nextUrl);
+            else { status("Couldn't open the next chapter (" + err + "). Open Loudbook to carry on.", true); stopPlayback(); }
+        });
+    }
+
+    private void turned(Chapter from, Chapter n) {
+        boolean go = !pendingPauseAfterTurn && !paused;
+        pendingPauseAfterTurn = false;
+        Map<Integer, Future<Voice.Clip>> pre = null;
+        synchronized (clips) {
+            if (n.url.equals(nextClipsUrl) && nextClipsSid == sid && nextClipsSpeed == speed) pre = new HashMap<>(nextClips);
+            nextClips.clear(); nextClipsUrl = null;
+        }
+        nextCh = null; nextFor = null;
+        Log.i("LoudbookTest", "turned to " + n.url + " (" + (pre != null ? pre.size() : 0) + " sentences made ahead), play " + go);
+        setChapter(n, 0, go, pre);
+        if (!go) status("Stopped at the end of the chapter. The next one is ready.", false);
+        if (listener != null) listener.onTurned(from, n);
+    }
 
     private AudioTrack ensureTrack(int rate) {
         if (track != null && track.getSampleRate() == rate) return track;

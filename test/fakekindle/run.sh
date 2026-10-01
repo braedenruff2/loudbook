@@ -21,4 +21,13 @@ adb shell input tap $X $Y
 sleep 75
 adb shell screencap -p /sdcard/after.png
 adb pull /sdcard/before.png . ; adb pull /sdcard/after.png .
+# second book: a Kindle that shares its text only with an explore-by-touch screen reader
+adb shell log -t LoudbookTest "=== explore-only Kindle ==="
+adb shell am start -S -n com.amazon.kindle/.Reader --ez explore true
+sleep 6
+adb shell input tap $X $Y
+sleep 80
+adb shell screencap -p /sdcard/explore.png
+adb pull /sdcard/explore.png .
+adb shell settings get secure touch_exploration_enabled | sed 's/^/touch exploration at the end: /' > explore-state.txt
 adb logcat -d > logcat.txt

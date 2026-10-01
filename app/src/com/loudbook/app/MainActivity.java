@@ -461,6 +461,15 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         web.loadUrl(url);
     }
 
+    /** The service went on to the next chapter by itself: follow it, if the last one was on screen. */
+    @Override public void onTurned(Chapter from, Chapter to) {
+        String cur = web.getUrl();
+        if (cur != null && (cur.equals(from.url) || (pageChapter != null && pageChapter.url.equals(from.url)))) {
+            awaitingTurn = null;
+            web.loadUrl(to.url);
+        }
+    }
+
     @Override public void onFinished(Chapter ch) { web.evaluateJavascript("window.LB && LB.clear()", null); }
 
     private void renderNow() {

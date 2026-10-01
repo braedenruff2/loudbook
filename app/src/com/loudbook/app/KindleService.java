@@ -1,6 +1,7 @@
 package com.loudbook.app;
 
 import android.accessibilityservice.AccessibilityService;
+import android.accessibilityservice.AccessibilityServiceInfo;
 import android.accessibilityservice.GestureDescription;
 import android.content.ComponentName;
 import android.content.Context;
@@ -63,6 +64,7 @@ public class KindleService extends AccessibilityService {
 
     @Override public void onDestroy() {
         me = null;
+        if (exploreOn) setExplore(false);
         hideBubble();
         if (bound) { try { unbindService(conn); } catch (Exception ignored) { } bound = false; }
         super.onDestroy();
@@ -80,6 +82,10 @@ public class KindleService extends AccessibilityService {
         boolean kindle = kindleRoot() != null;
         boolean reading = svc != null && svc.readingKindle();
         if (kindle || reading) showBubble(); else hideBubble();
+        // explore-by-touch only while actually reading (so the phone works normally the rest of the time)
+        if (!reading && !busy) needExplore = false;
+        boolean explore = needExplore && reading && svc.isPlaying() && !svc.isPaused();
+        if (explore != exploreOn && !busy) setExplore(explore);
         if (bubble != null) {
             boolean on = reading && svc.isPlaying() && !svc.isPaused();
             bubble.setText(on ? "❚❚" : "▶");
@@ -117,6 +123,14 @@ public class KindleService extends AccessibilityService {
         bubbleLp.y = Voice.prefs(this).getInt("bubbleY", dm.heightPixels * 2 / 3);
         final float[] down = new float[4];
         final boolean[] moved = {false};
+        // while the screen works like a screen reader's, a tap arrives as a short hover
+        final long[] hoverAt = {0};
+        bubble.setOnHoverListener((v, ev) -> {
+            if (!exploreOn) return false;
+            if (ev.getActionMasked() == MotionEvent.ACTION_HOVER_ENTER) hoverAt[0] = ev.getEventTime();
+            else if (ev.getActionMasked() == MotionEvent.ACTION_HOVER_EXIT && ev.getEventTime() - hoverAt[0] < 700) tapped();
+            return true;
+        });
         bubble.setOnTouchListener((v, ev) -> {
             switch (ev.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN: down[0] = ev.getRawX(); down[1] = ev.getRawY(); down[2] = bubbleLp.x; down[3] = bubbleLp.y; moved[0] = false; return true;
@@ -142,24 +156,72 @@ public class KindleService extends AccessibilityService {
     }
 
     private void tapped() {
-        if (svc == null) return;
-        if (svc.readingKindle()) {
-            if (svc.isPlaying() && !svc.isPaused()) svc.pause(); else svc.play();
+        if (svc == null) {
+            // the reading service isn't connected yet (Loudbook was just started): connect, then go
+            if (!bound) bound = bindService(new Intent(this, ReaderService.class), conn, Context.BIND_AUTO_CREATE);
+            toast("Loudbook is starting…");
+            main.postDelayed(() -> { if (svc != null) tapped(); else toast("Loudbook couldn't start. Open the Loudbook app once, then try again."); }, 1500);
+            return;
+        }
+        if (svc.readingKindle() && !svc.kindleDone()) {
+            if (svc.isPlaying() && !svc.isPaused()) svc.pause();
+            else { if (needExplore) setExplore(true); svc.play(); }
             watch();
             return;
         }
+        if (busy) return;
+        busy = true;
         new Thread(() -> {
             Page p = readPage();
+            boolean explored = false;
+            if (p.paragraphs.isEmpty() && kindleRoot() != null) {
+                // Kindle may share a book's text only with a screen reader that explores by touch
+                // (as TalkBack does): turn that on and look again
+                Log.i("LoudbookTest", "no text; trying explore-by-touch");
+                main.post(() -> setExplore(true));
+                for (int i = 0; i < 16 && p.paragraphs.isEmpty(); i++) { pause(300); p = readPage(); }
+                explored = !p.paragraphs.isEmpty();
+                if (!explored) main.post(() -> setExplore(false));
+            }
+            final Page got = p;
+            final boolean ex = explored;
+            final String why = got.paragraphs.isEmpty() ? dump() : null;
             main.post(() -> {
-                if (p.paragraphs.isEmpty()) {
-                    toast("No book text found. Open a book in Kindle. (If one is open, its publisher may not let screen readers read it.)");
+                busy = false;
+                if (got.paragraphs.isEmpty()) {
+                    // what Loudbook sees, ready to paste, so the reader can be fixed for this Kindle
+                    try {
+                        android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                        cm.setPrimaryClip(android.content.ClipData.newPlainText("Loudbook Kindle", "Loudbook " + BuildInfo.VERSION + " Kindle view, Android " + android.os.Build.VERSION.SDK_INT + "\n" + why));
+                    } catch (Exception ignored) { }
+                    Log.i("LoudbookTest", "no book text found");
+                    toast("No book text found in Kindle. What Loudbook sees there is copied: paste it to Claude to get it fixed. (Or the book's publisher doesn't allow screen readers.)");
                     return;
                 }
-                accept(p);
-                svc.startKindle(p);
+                needExplore = ex;
+                if (ex) toast("Kindle shares this book's text only with screen readers, so while Loudbook reads, the screen works like one. Tap the gold button to pause and get your screen back.");
+                accept(got);
+                svc.startKindle(got);
                 watch();
             });
         }, "lb-kindle").start();
+    }
+    private volatile boolean busy;
+    private static void pause(long ms) { try { Thread.sleep(ms); } catch (InterruptedException ignored) { } }
+
+    // ---------------------------------------------------------------- explore by touch
+    private volatile boolean exploreOn, needExplore;
+    /** Asks Android for screen-reader touch (taps explore; Kindle then shares the page text). */
+    private void setExplore(boolean on) {
+        try {
+            AccessibilityServiceInfo i = getServiceInfo();
+            if (i == null) return;
+            if (on) i.flags |= AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE;
+            else i.flags &= ~AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE;
+            setServiceInfo(i);
+            exploreOn = on;
+            Log.i("LoudbookTest", "explore by touch " + (on ? "on" : "off"));
+        } catch (Exception e) { Log.w(TAG, "explore by touch", e); }
     }
 
     private void toast(String s) { android.widget.Toast.makeText(this, s, android.widget.Toast.LENGTH_LONG).show(); }
