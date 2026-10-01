@@ -55,8 +55,9 @@ jobs:
             echo '## Loudbook on the Android emulator'; echo
             echo "app process after the test: $(cat alive.txt 2>/dev/null)"; echo
             echo '```'
-            grep -E "LoudbookTest|Loudbook|AndroidRuntime|FATAL|DEBUG +:|libc +:|sherpa|onnx|tombstone|Abort|signal" logcat.txt 2>/dev/null | grep -v "ResourcesManager\|Choreographer" | tail -250
+            grep -E "LoudbookTest|Loudbook|AndroidRuntime|FATAL| F DEBUG| F libc|sherpa-onnx|tombstone" logcat.txt 2>/dev/null | grep -v "SearchServiceCore\|ResourcesManager\|Choreographer" | tail -250
             echo '```'
           } > results.md
           gh release view android-test >/dev/null 2>&1 || gh release create android-test --latest=false --title "Android emulator test" --notes "Output of .github/workflows/android-test.yml"
           gh release upload android-test results.md --clobber
+          [ -f logcat.txt ] && gzip -kf logcat.txt && gh release upload android-test logcat.txt.gz --clobber || true
