@@ -82,6 +82,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         @Override public void onServiceConnected(ComponentName n, IBinder b) {
             svc = ((ReaderService.LocalBinder) b).service();
             svc.setListener(MainActivity.this);
+            svc.setAppVisible(visible);
             speedBtn.setText(fmtSpeed(svc.speed()));
             if (pageChapter != null && svc.chapter() == null) offer(pageChapter);
         }
@@ -150,6 +151,9 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     @Override protected void onSaveInstanceState(Bundle out) { super.onSaveInstanceState(out); web.saveState(out); }
 
     // ---------------------------------------------------------------- updates
+    private boolean visible = false;
+    @Override protected void onStart() { super.onStart(); visible = true; if (svc != null) svc.setAppVisible(true); }
+
     @Override protected void onResume() {
         super.onResume();
         refreshUpdate();
@@ -159,6 +163,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     /** Leaving the app with nothing playing is the moment to swap in a waiting update. */
     @Override protected void onStop() {
         super.onStop();
+        visible = false;
+        if (svc != null) svc.setAppVisible(false);
         boolean reading = svc != null && svc.isPlaying() && !svc.isPaused();
         if (!reading && !isChangingConfigurations() && Updater.readyCode(this) > 0 && Updater.mayInstall(this)) Updater.install(getApplicationContext());
     }
@@ -411,6 +417,108 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         return super.onKeyDown(code, e);
     }
 
+    // ---------------------------------------------------------------- voice commands setup
+    private Runnable afterMicPermission;
+    @Override public void onRequestPermissionsResult(int code, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(code, perms, res);
+        if (code == 42) {
+            Runnable r = afterMicPermission; afterMicPermission = null;
+            if (res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED) { if (r != null) r.run(); }
+            else { prefs.edit().putBoolean("voiceCmds", false).apply(); onStatus("Voice commands need the microphone.", true); }
+        }
+    }
+
+    /** Microphone permission, then the models (about 40 MB, once), then your voice. */
+    private void setUpCommands(boolean reteach, Runnable refresh) {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            afterMicPermission = () -> setUpCommands(reteach, refresh);
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 42);
+            return;
+        }
+        if (!VoiceCommands.downloaded(this)) {
+            onStatus("Getting voice commands ready (about 40 MB, once)…", false);
+            new Thread(() -> {
+                try {
+                    VoiceCommands.fetch(getApplicationContext(), (d, t) -> main.post(() ->
+                        onStatus("Getting voice commands ready: " + (100 * d / Math.max(1, t)) + "%", false)));
+                    main.post(() -> { onStatus("", false); setUpCommands(reteach, refresh); });
+                } catch (Exception e) {
+                    main.post(() -> onStatus("Couldn't download voice commands: " + e.getMessage(), true));
+                }
+            }, "lb-cmd-download").start();
+            return;
+        }
+        if (reteach || VoiceCommands.profile(this) == null) teachVoice(refresh);
+        else { if (svc != null) svc.updateListening(); if (refresh != null) refresh.run(); }
+    }
+
+    /** Records each command word twice to learn what your voice sounds like. */
+    private void teachVoice(Runnable refresh) {
+        if (svc == null) return;
+        if (svc.isPlaying() && !svc.isPaused()) svc.pause();
+        svc.holdListening(true);
+        LinearLayout box = vbox(dp(20), dp(12));
+        TextView big = text(30, C_AMBER, true);
+        big.setGravity(Gravity.CENTER);
+        TextView small = text(14, C_DIM, false);
+        small.setGravity(Gravity.CENTER);
+        small.setText("Say each word when it appears, in your normal voice.");
+        box.addView(big); box.addView(small);
+        final boolean[] cancelled = {false};
+        AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Set up my voice").setView(box)
+            .setNegativeButton("Cancel", (d, w) -> cancelled[0] = true).setCancelable(false).show();
+        new Thread(() -> {
+            String done;
+            try {
+                svc.commands.load(getApplicationContext());
+                Thread.sleep(600);
+                java.util.List<float[]> embs = new java.util.ArrayList<>();
+                int spotted = 0, asked = 0;
+                for (int round = 0; round < 2 && !cancelled[0]; round++) {
+                    for (String w : VoiceCommands.WORDS) {
+                        if (cancelled[0]) break;
+                        float[] part = null;
+                        for (int tries = 0; tries < 3 && part == null && !cancelled[0]; tries++) {
+                            final String say = Character.toUpperCase(w.charAt(0)) + w.substring(1);
+                            final int t = tries;
+                            main.post(() -> { big.setText("\u201c" + say + "\u201d"); small.setText(t == 0 ? "Say it now" : "Didn't catch that. Once more."); });
+                            Thread.sleep(250);
+                            float[] rec = VoiceCommands.record(1.8);
+                            part = VoiceCommands.speechPart(rec);
+                            if (part != null) {
+                                asked++;
+                                if (w.equals(svc.commands.spot(rec))) spotted++;
+                                embs.add(svc.commands.embed(part));
+                            }
+                        }
+                        main.post(() -> big.setText(""));
+                        Thread.sleep(350);
+                    }
+                }
+                if (cancelled[0]) done = null;
+                else if (embs.size() < 6) done = "Couldn't hear you clearly enough. Try again somewhere quieter, closer to the phone.";
+                else {
+                    float[] thr = new float[1];
+                    float[] prof = VoiceCommands.buildProfile(embs, thr);
+                    VoiceCommands.saveProfile(getApplicationContext(), prof, thr[0]);
+                    done = "Done. Loudbook knows your voice. It recognised " + spotted + " of " + asked + " words"
+                        + (spotted < asked * 2 / 3 ? ", so speak clearly and not too fast when giving commands." : ".");
+                }
+            } catch (Throwable t) {
+                Log.e(TAG, "voice setup", t);
+                done = "Voice setup failed: " + t.getMessage();
+            }
+            final String msg = done;
+            main.post(() -> {
+                try { dlg.dismiss(); } catch (Exception ignored) { }
+                if (svc != null) svc.holdListening(false);
+                if (msg != null) onStatus(msg, msg.startsWith("Voice setup failed") || msg.startsWith("Couldn't"));
+                if (refresh != null) refresh.run();
+            });
+        }, "lb-voice-setup").start();
+    }
+
     // ---------------------------------------------------------------- settings
     private void showSettings() {
         LinearLayout box = vbox(dp(20), dp(8));
@@ -482,6 +590,41 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             info.setText("Kokoro on this phone: " + svc.threads() + " processor threads" + (rt > 0 ? String.format(java.util.Locale.US, ", making speech %.1f× faster than it's spoken", rt) : "") + ".");
         }
         box.addView(info);
+
+        box.addView(label("Voice commands"));
+        Switch cmds = toggle("Listen for play, pause, back, forward, beginning, end", prefs.getBoolean("voiceCmds", false), null);
+        box.addView(cmds);
+        TextView cmdInfo = label("");
+        box.addView(cmdInfo);
+        Button teach = smallButton(VoiceCommands.profile(this) == null ? "Set up my voice" : "Set up my voice again");
+        box.addView(teach);
+        Spinner strict = new Spinner(this);
+        String[] stl = {"Voice match: relaxed", "Voice match: normal", "Voice match: strict"};
+        float[] stv = {-0.08f, 0f, 0.08f};
+        strict.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, stl));
+        float cur = prefs.getFloat("voiceStrict", 0f);
+        strict.setSelection(cur < -0.01f ? 0 : cur > 0.01f ? 2 : 1);
+        strict.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> p, View v, int i, long id) { prefs.edit().putFloat("voiceStrict", stv[i]).apply(); }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> p) { }
+        });
+        box.addView(strict);
+        Runnable showCmdInfo = () -> {
+            boolean on = prefs.getBoolean("voiceCmds", false);
+            teach.setVisibility(on ? View.VISIBLE : View.GONE);
+            strict.setVisibility(on && VoiceCommands.profile(this) != null ? View.VISIBLE : View.GONE);
+            String last = svc != null && svc.lastHeard.length() > 0 ? "\nLast heard: " + svc.lastHeard : "";
+            cmdInfo.setText(!on ? "Say a word to control reading while Loudbook is open or reading. Only your voice counts, so the TV, other people and the story itself are ignored. Nothing you say leaves the phone."
+                : VoiceCommands.profile(this) == null ? "One more step: set up your voice (say each word twice)."
+                : (svc != null && svc.commands.listening() ? "Listening." : "Ready. Listens while Loudbook is open or reading.") + last);
+        };
+        showCmdInfo.run();
+        cmds.setOnCheckedChangeListener((b, on) -> {
+            prefs.edit().putBoolean("voiceCmds", on).apply();
+            showCmdInfo.run();
+            if (on) setUpCommands(false, showCmdInfo); else if (svc != null) svc.updateListening();
+        });
+        teach.setOnClickListener(v -> setUpCommands(true, showCmdInfo));
 
         TextView ver = label("Version " + BuildInfo.VERSION + (Updater.enabled() ? "" : " (updates off in this build)"));
         box.addView(ver);

@@ -25,7 +25,7 @@ def kw_lines(boost, thr):
     out = []
     for w in WORDS:
         pieces = sp.encode(w.upper(), out_type=str)
-        b = boost + (0.5 if len(w) <= 4 else 0)
+        b = boost
         out.append(f"{' '.join(pieces)} :{b:.1f} #{thr:.2f} @{w}")
     return out
 
@@ -61,21 +61,23 @@ story = ("He went back to the beginning of the road and waited. At the end of th
          "She came back with two cups and set them at the end of the table.")
 story_audio = say(story, 3)
 best = None
-for boost, thr in [(1.0, 0.25), (1.5, 0.25), (2.0, 0.20), (1.5, 0.15)]:
+per_word = {}
+for boost, thr in [(0.5, 0.25), (1.0, 0.25), (0.5, 0.15), (1.0, 0.15), (1.0, 0.10), (0.5, 0.08), (1.0, 0.05), (2.0, 0.10)]:
     f = f"/tmp/kw-{boost}-{thr}.txt"; open(f, "w").write("\n".join(kw_lines(boost, thr)) + "\n")
     k = spotter(f, thr)
-    ok = wrong = 0
+    ok = wrong = 0; pw = {w: 0 for w in WORDS}
     for (v, w, _), a in takes.items():
         got = spot(k, a)
-        if w in got: ok += 1
+        if w in got: ok += 1; pw[w] += 1
         wrong += sum(1 for g in got if g != w)
+    per_word[(boost, thr)] = pw
     fa = spot(k, story_audio)
     R.append(f"| boost {boost}, threshold {thr} | {ok} | {wrong} | {len(fa)} ({', '.join(fa)}) |")
     score = ok - 3 * wrong
     if best is None or score > best[0]: best = (score, boost, thr)
 _, boost, thr = best
 open("out/keywords.txt", "w").write("\n".join(kw_lines(boost, thr)) + "\n")
-R += ["", f"Chosen: boost {boost}, threshold {thr}.", "", "```", open("out/keywords.txt").read().strip(), "```", ""]
+R += ["", f"Chosen: boost {boost}, threshold {thr}. Found per word (of {len(VOICES) * 2}): " + ", ".join(f"{w} {n}" for w, n in per_word[(boost, thr)].items()), "", "```", open("out/keywords.txt").read().strip(), "```", ""]
 
 # speaker check: enrol one voice from its six words, then score other takes vs other voices
 R += ["### Speaker check", "", "| model | dim | same speaker (min / mean) | other speakers (max / mean) | gap | ms per check |", "|---|---|---|---|---|---|"]

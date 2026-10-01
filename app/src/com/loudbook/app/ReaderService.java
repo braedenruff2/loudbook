@@ -133,6 +133,9 @@ public class ReaderService extends Service {
     }
 
     @Override public void onDestroy() {
+        commands.stop();
+        cmdThread.shutdownNow();
+        if (beeper != null) beeper.release();
         stopPlayback();
         synth.shutdownNow();
         session.release();
@@ -296,6 +299,7 @@ public class ReaderService extends Service {
                 while (!voice.ready()) Thread.sleep(100);            // first run: model still loading
                 Voice.Clip c = voice.speak(text, want, sp);
                 audioSecs += c.seconds(); workSecs += c.ms / 1000.0;
+                if (commands.loaded()) cmdThread.submit(() -> commands.learnReader(want, c.samples, c.rate));
                 return c;
             });
             clips.put(i, f);
@@ -563,17 +567,100 @@ public class ReaderService extends Service {
 
     private void goForeground() {
         Notification n = buildNotification();
-        if (!foreground) {
+        // with voice commands on, the microphone joins the foreground service so "play" and
+        // "pause" still work with the screen off. Android only allows that while the app is open.
+        boolean wantMic = Build.VERSION.SDK_INT >= 30 && commandsOn() && micAllowed() && appVisible;
+        if (!foreground || (wantMic && !micInForeground)) {
             try { startService(new Intent(this, ReaderService.class)); } catch (Exception ignored) { }
-            if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
-            else startForeground(NOTIF_ID, n);
-            foreground = true;
+            try {
+                if (wantMic) {
+                    try {
+                        startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK | ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+                        micInForeground = true;
+                    } catch (Exception e) {
+                        Log.w(TAG, "microphone in foreground refused", e);
+                        startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+                    }
+                } else if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
+                else startForeground(NOTIF_ID, n);
+                foreground = true;
+            } catch (Exception e) {
+                Log.w(TAG, "foreground refused", e);           // started from the background: keep going without it
+            }
         } else getSystemService(NotificationManager.class).notify(NOTIF_ID, n);
+        updateListening();
     }
     private void dropForeground(boolean remove) {
         if (!foreground) return;
         stopForeground(remove ? STOP_FOREGROUND_REMOVE : STOP_FOREGROUND_DETACH);
         foreground = false;
+        micInForeground = false;
+        updateListening();
+    }
+
+    // ---------------------------------------------------------------- voice commands
+    final VoiceCommands commands = new VoiceCommands();
+    private final java.util.concurrent.ExecutorService cmdThread = Executors.newSingleThreadExecutor();
+    private boolean appVisible = false, micInForeground = false;
+    String lastHeard = "";
+    private android.media.ToneGenerator beeper;
+
+    boolean commandsOn() { return prefs.getBoolean("voiceCmds", false); }
+    boolean micAllowed() { return checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED; }
+
+    /** The Loudbook screen opened or closed. */
+    void setAppVisible(boolean v) {
+        appVisible = v;
+        if (v && foreground && !micInForeground && commandsOn() && micAllowed()) goForeground();
+        else updateListening();
+    }
+
+    /** Listens while Loudbook is on screen, or while it's reading (or paused) in the background. */
+    void updateListening() {
+        boolean want = commandsOn() && micAllowed() && VoiceCommands.downloaded(this) && VoiceCommands.profile(this) != null
+            && (appVisible || (foreground && (micInForeground || Build.VERSION.SDK_INT < 30)));
+        cmdThread.submit(() -> {
+            try {
+                if (!want) { commands.stop(); return; }
+                if (commands.listening()) return;
+                commands.load(this);
+                commands.start(this, cmdHandler);
+            } catch (Throwable t) {
+                Log.w(TAG, "voice commands", t);
+                main.post(() -> status("Voice commands couldn't start: " + t.getMessage(), true));
+            }
+        });
+    }
+    /** Stops listening for a while (voice setup uses the microphone). */
+    void holdListening(boolean hold) { if (hold) cmdThread.submit(commands::stop); else updateListening(); }
+
+    private final VoiceCommands.Handler cmdHandler = new VoiceCommands.Handler() {
+        @Override public void onCommand(String word, float score) {
+            lastHeard = String.format(java.util.Locale.US, "\u201c%s\u201d (match %.2f)", word, score);
+            main.post(() -> runCommand(word));
+        }
+        @Override public void onRejected(String word, float score, float reader) {
+            lastHeard = String.format(java.util.Locale.US, "\u201c%s\u201d, ignored: %s (match %.2f)", word,
+                reader >= score ? "the reading voice" : "not your voice", score);
+        }
+    };
+
+    void runCommand(String word) {
+        try {
+            if (beeper == null) beeper = new android.media.ToneGenerator(AudioManager.STREAM_MUSIC, 30);
+            beeper.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 80);
+        } catch (Exception ignored) { }
+        if (chapter == null) { status("Heard \u201c" + word + "\u201d, but no chapter is open.", false); return; }
+        switch (word) {
+            case "play": play(); break;
+            case "pause": pause(); break;
+            case "back": seek(pos - 1); break;
+            case "forward": seek(pos + 1); break;
+            case "beginning": seek(0); break;
+            case "end": seek(chapter.size() - 1); break;
+            default: return;
+        }
+        status("Heard \u201c" + word + "\u201d", false);
     }
 
     private void updateMetadata() {
