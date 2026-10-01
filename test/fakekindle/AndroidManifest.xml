@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A stand-in "Kindle" for the emulator test only (never published): pages of text laid out in
+     lines with a header and footer, turned by the accessibility scroll action or a swipe. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.amazon.kindle" android:versionCode="1" android:versionName="test">
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
+    <application android:label="Fake Kindle" android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar">
+        <activity android:name=".Reader" android:exported="true">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -154,6 +154,7 @@ public class ReaderService extends Service {
         cmdThread.shutdownNow();
         loader.shutdownNow();
         cloudPool.shutdownNow();
+        kindleThread.shutdownNow();
         asrThread.shutdownNow();
         waiters.shutdownNow();
         if (beeper != null) beeper.release();
@@ -341,7 +342,7 @@ public class ReaderService extends Service {
             final int want = sid; final float sp = speed;
             if (ch == null || i < 0 || i >= ch.size()) return null;
             final String text = ch.chunks.get(i).say;
-            if (cloudOn()) {
+            if (cloudOn() && !"kindle".equals(ch.site)) {
                 // Gemini: the chapter is recorded in one request; each sentence is cut from it
                 final int idx = i;
                 f = waiters.submit(() -> {
@@ -396,6 +397,51 @@ public class ReaderService extends Service {
                 return c;
             }
         }
+    }
+
+    // ---------------------------------------------------------------- Kindle
+    private volatile KindleText kt;
+    private volatile String kindleSig = "";
+    private volatile boolean kindleBusy, kindleEnded;
+    private final ExecutorService kindleThread = Executors.newSingleThreadExecutor();
+
+    boolean readingKindle() { Chapter c = chapter; return c != null && "kindle".equals(c.site); }
+
+    /** Starts reading the page open in Kindle (from KindleService's button). */
+    void startKindle(KindleService.Page p) {
+        kt = new KindleText(prefs.getString("fixes", ""));
+        java.util.List<Chapter.Chunk> first = kt.chunks(p.paragraphs, false);
+        if (first.isEmpty()) first = new KindleText(prefs.getString("fixes", "")).chunks(p.paragraphs, true);
+        kindleSig = p.signature;
+        kindleEnded = false; kindleBusy = false;
+        Chapter ch = new Chapter("kindle:" + System.currentTimeMillis(), "kindle", p.title.isEmpty() ? "Kindle" : p.title, "Kindle", first);
+        Log.i("LoudbookTest", "kindle start: " + p.paragraphs.size() + " paragraphs, " + first.size() + " sentences, title " + p.title);
+        setChapter(ch, 0, true);
+    }
+
+    /** Turns Kindle's page and adds its sentences to what's being read. */
+    private void kindleMore(Chapter ch) {
+        if (kindleBusy || kindleEnded || kt == null) return;
+        kindleBusy = true;
+        kindleThread.submit(() -> {
+            try {
+                KindleService k = KindleService.me;
+                KindleService.Page p = k == null ? new KindleService.Page() : k.nextPage(kindleSig);
+                if (p.paragraphs.isEmpty()) {
+                    kindleEnded = true;
+                    java.util.List<Chapter.Chunk> rest = kt.chunks(new java.util.ArrayList<>(), true);   // whatever was held back
+                    if (!rest.isEmpty()) ch.chunks.addAll(rest);
+                    if (k == null || !k.kindleVisible()) main.post(() -> status("Kindle isn't on screen, so the page can't be turned. Open it to carry on.", false));
+                } else {
+                    kindleSig = p.signature;
+                    java.util.List<Chapter.Chunk> more = kt.chunks(p.paragraphs, false);
+                    ch.chunks.addAll(more);
+                    Log.i("LoudbookTest", "kindle page turned: +" + more.size() + " sentences");
+                }
+            } catch (Throwable t) { Log.w(TAG, "kindle page", t); kindleEnded = true; }
+            finally { kindleBusy = false; }
+            return null;
+        });
     }
 
     // ---------------------------------------------------------------- Gemini (online voice)
@@ -540,6 +586,13 @@ public class ReaderService extends Service {
                     return;
                 }
                 if (chapter != ch) return;
+                if (kt != null && "kindle".equals(ch.site)) {
+                    // Kindle: turn the page a few sentences before the end, so the next is ready
+                    if (next >= ch.size() - 3) kindleMore(ch);
+                    long until = System.currentTimeMillis() + 10_000;
+                    while (gen == myGen && next >= ch.size() && kindleBusy && System.currentTimeMillis() < until) { heard(ch, marks, myGen); sleep(60); }
+                    if (gen != myGen) return;
+                }
                 if (next >= ch.size()) {
                     if (!drain(myGen, ch, marks)) return;          // let the last words finish
                     pos = ch.size();
@@ -645,6 +698,7 @@ public class ReaderService extends Service {
         if (reached < 0 || gen != myGen) return;
         final int here = reached;
         pos = here;
+        if ("kindle".equals(ch.site)) Log.i("LoudbookTest", "kindle speaking " + here + ": " + ch.chunks.get(here).text);
         if (here > ch.size() / 2 && ch.nextUrl != null && autoNext && !ch.nextUrl.equals(prefetchAsked) && cloudOn()
             && prefs.getBoolean("gemPrefetch", false)) {
             prefetchAsked = ch.nextUrl;
@@ -912,7 +966,7 @@ public class ReaderService extends Service {
     // ---------------------------------------------------------------- progress
     void saveProgress() {
         Chapter ch = chapter;
-        if (ch == null) return;
+        if (ch == null || "kindle".equals(ch.site)) return;          // Kindle keeps its own place
         prefs.edit().putInt("pos:" + ch.url, pos)
             .putString("lastUrl", ch.url).putString("lastTitle", ch.title).putString("lastFiction", ch.fiction)
             .putInt("lastPct", ch.size() > 0 ? Math.round(100f * pos / ch.size()) : 0).apply();

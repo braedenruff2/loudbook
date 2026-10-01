@@ -69,6 +69,17 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback|microphone" />
 
+        <service
+            android:name=".KindleService"
+            android:label="@string/kindle_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data android:name="android.accessibilityservice" android:resource="@xml/kindle_service" />
+        </service>
+
         <receiver android:name=".Updater$Result" android:exported="false" />
         <receiver android:name=".Updater$Replaced" android:exported="true">
             <intent-filter>

@@ -1,0 +1,56 @@
+# Tests the Kindle reader on an emulator against a stand-in "Kindle" app (test/fakekindle): the
+# floating button, reading the page text, turning pages, and joining a sentence split by a page
+# break. Results go to the kindle-test release.
+name: Kindle test
+on:
+  push:
+    branches: [main]
+    paths: ['app/src/com/loudbook/app/Kindle*.java', 'test/fakekindle/**', '.github/workflows/kindle-test.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  kindle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/cache@v4
+        with:
+          path: downloads
+          key: parts-sherpa-v1.13.8-kokoro-v1_0-x86
+      - name: Get parts
+        run: bash tools/ci-parts.sh
+      - name: Build Loudbook and the stand-in Kindle
+        run: |
+          ABI=x86_64 LB_CODE=1 LB_NAME=emulator LB_REPO="$GITHUB_REPOSITORY" bash build.sh
+          bash test/fakekindle/build.sh
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash test/fakekindle/run.sh
+      - name: Results
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo '## Kindle reader on the emulator'; echo; echo '```'
+            grep -E "LoudbookTest|FakeKindle|AndroidRuntime|FATAL| F DEBUG" logcat.txt 2>/dev/null | grep -v "SearchServiceCore" | tail -120
+            echo '```'
+          } > results.md
+          gh release view kindle-test >/dev/null 2>&1 || gh release create kindle-test --latest=false --title "Kindle reader test" --notes "Output of .github/workflows/kindle-test.yml"
+          gh release upload kindle-test results.md --clobber
+          for f in before.png after.png; do [ -f $f ] && gh release upload kindle-test $f --clobber; done; true

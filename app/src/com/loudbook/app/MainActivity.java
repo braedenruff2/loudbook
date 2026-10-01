@@ -757,6 +757,48 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         }
         box.addView(info);
 
+        box.addView(label("Kindle"));
+        TextView kInfo = label("");
+        box.addView(kInfo);
+        Button kOn = smallButton("Turn on Kindle reading");
+        box.addView(kOn);
+        box.addView(toggle("Dim the screen while reading Kindle (it has to stay on to turn pages)",
+            prefs.getBoolean("kindleDim", true), (b, on) -> prefs.edit().putBoolean("kindleDim", on).apply()));
+        Button kDump = smallButton("Show what Loudbook sees in Kindle (to send if something's off)");
+        box.addView(kDump);
+        Runnable showK = () -> {
+            boolean on = KindleService.enabled(this);
+            kInfo.setText(on ? "On. Open a book in the Kindle app and tap the round Loudbook button that appears. Loudbook reads with your voice settings and turns the pages; the button pauses and resumes. "
+                + "It works with books whose publishers let screen readers read them (most do). Gemini isn't used for Kindle, to save its requests."
+                : "Loudbook can read the Kindle app aloud the way a screen reader does: it reads the page text Kindle shares with screen readers and turns the pages. "
+                + "To turn it on: tap the button below, find Loudbook in the list, and switch it on. If Android says it's a restricted setting: go to Settings \u203a Apps \u203a Loudbook, tap \u22ee (top right), \u201cAllow restricted settings\u201d, then try again.");
+            kOn.setVisibility(on ? View.GONE : View.VISIBLE);
+            kDump.setVisibility(on ? View.VISIBLE : View.GONE);
+        };
+        showK.run();
+        kOn.setOnClickListener(v -> {
+            try { startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)); }
+            catch (Exception e) { onStatus("Open Settings \u203a Accessibility \u203a Loudbook.", true); }
+        });
+        kDump.setOnClickListener(v -> {
+            KindleService k = KindleService.me;
+            if (k == null) { kInfo.setText("Kindle reading isn't running. Turn it on first."); return; }
+            onStatus("Open a book in Kindle; Loudbook will look in 5 seconds\u2026", false);
+            new Thread(() -> {
+                try { Thread.sleep(5000); } catch (InterruptedException ignored) { }
+                String d = k.dump();
+                main.post(() -> {
+                    TextView t = text(11, C_INK, false);
+                    t.setText(d); t.setTextIsSelectable(true); t.setTypeface(Typeface.MONOSPACE); t.setPadding(dp(12), dp(8), dp(12), dp(8));
+                    ScrollView sv = new ScrollView(this); sv.addView(t);
+                    new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("What Loudbook sees in Kindle").setView(sv)
+                        .setPositiveButton("Copy", (dd, w) -> ((android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE))
+                            .setPrimaryClip(android.content.ClipData.newPlainText("Loudbook Kindle", d)))
+                        .setNegativeButton("Close", null).show();
+                });
+            }, "lb-kindle-dump").start();
+        });
+
         box.addView(label("Best voice: Google Gemini (online)"));
         TextView gInfo = label("");
         box.addView(gInfo);

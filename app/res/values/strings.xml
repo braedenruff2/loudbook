@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Loudbook</string>
+    <string name="kindle_label">Loudbook: read Kindle aloud</string>
+    <string name="kindle_desc">Reads the book open in the Kindle app aloud with Loudbook\'s voices and turns the pages, the way a screen reader does. It only looks at the Kindle app, and only at books that share their text with screen readers. Nothing is stored or sent anywhere, except to Google if you choose the Gemini voice.</string>
 </resources>

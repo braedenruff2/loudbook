@@ -14,7 +14,15 @@ final class Chapter {
     }
 
     final String url, site, title, fiction, nextUrl, prevUrl;
-    final List<Chunk> chunks = new ArrayList<>();
+    // (Kindle "chapters" grow as pages are turned while reading, so this must be safe to add to)
+    final List<Chunk> chunks = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /** A chapter made in the app (the Kindle reader). */
+    Chapter(String url, String site, String title, String fiction, List<Chunk> chunks) {
+        this.url = url; this.site = site; this.title = title; this.fiction = fiction;
+        this.nextUrl = null; this.prevUrl = null;
+        this.chunks.addAll(chunks);
+    }
 
     Chapter(JSONObject o) throws Exception {
         url = o.optString("url");
