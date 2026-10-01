@@ -417,6 +417,65 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         return super.onKeyDown(code, e);
     }
 
+    // ---------------------------------------------------------------- PC voice pairing
+    /** Finds the PC on the home network, then pairs with the one-time code it shows. */
+    private void pairPc(Runnable refresh) {
+        LinearLayout box = vbox(dp(20), dp(8));
+        TextView how = label("On the PC, run \u201cPair a phone.bat\u201d (or \u201cSet up PC voice.bat\u201d the first time). Enter the code it shows.");
+        box.addView(how);
+        box.addView(label("PC address"));
+        EditText host = new EditText(this);
+        host.setSingleLine(true); host.setTextColor(C_INK); host.setHint("looking\u2026");
+        host.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        host.setText(prefs.getString("pcHost", ""));
+        box.addView(host);
+        box.addView(label("Code"));
+        EditText code = new EditText(this);
+        code.setSingleLine(true); code.setTextColor(C_INK); code.setHint("XXXX-XXXX-XXXX"); code.setTypeface(Typeface.MONOSPACE);
+        code.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        box.addView(code);
+        TextView msg = label("");
+        box.addView(msg);
+        final String[] foundName = {""};
+        new Thread(() -> {
+            java.util.List<PcLink.Found> f = PcLink.discover(1500);
+            main.post(() -> {
+                if (!f.isEmpty()) { if (host.getText().length() == 0 || !f.get(0).host.equals(host.getText().toString())) host.setText(f.get(0).host); foundName[0] = f.get(0).name; msg.setText("Found " + f.get(0).name + "."); }
+                else if (host.getText().length() == 0) msg.setText("Couldn't find the PC by itself. Type the address \u201cPair a phone\u201d shows.");
+            });
+        }, "lb-find-pc").start();
+        AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Pair with my PC").setView(box)
+            .setPositiveButton("Pair", null).setNegativeButton("Cancel", null).show();
+        dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String h = host.getText().toString().trim(), c = code.getText().toString().trim();
+            if (h.isEmpty() || c.replaceAll("[^A-Za-z0-9]", "").length() < 12) { msg.setText("Enter the PC address and the 12-character code."); return; }
+            int port = PcLink.PORT;
+            if (h.matches(".*:\\d+$") && h.indexOf(':') == h.lastIndexOf(':')) { port = Integer.parseInt(h.substring(h.indexOf(':') + 1)); h = h.substring(0, h.indexOf(':')); }
+            final String fh = h; final int fport = port;
+            msg.setText("Pairing\u2026");
+            v.setEnabled(false);
+            new Thread(() -> {
+                try {
+                    PcLink l = PcLink.pair(fh, fport, c, Build.MANUFACTURER + " " + Build.MODEL);
+                    String name;
+                    try { name = foundName[0].isEmpty() ? fh : foundName[0]; } catch (Exception e) { name = fh; }
+                    prefs.edit().putString("pcHost", l.host).putInt("pcPort", l.port).putString("pcFp", l.fp).putString("pcToken", l.token)
+                        .putString("pcName", name).putBoolean("pcOn", true).apply();
+                    main.post(() -> {
+                        dlg.dismiss();
+                        if (svc != null) svc.pcChanged();
+                        onStatus("Paired with your PC. It does the reading when it's on and you're home.", false);
+                        main.postDelayed(refresh, 3500);
+                        refresh.run();
+                    });
+                } catch (Exception e) {
+                    main.post(() -> { msg.setText("Couldn't pair: " + e.getMessage()); v.setEnabled(true); });
+                }
+            }, "lb-pair").start();
+        });
+    }
+
     // ---------------------------------------------------------------- voice commands setup
     private Runnable afterMicPermission;
     @Override public void onRequestPermissionsResult(int code, String[] perms, int[] res) {
@@ -590,6 +649,33 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             info.setText("Kokoro on this phone: " + svc.threads() + " processor threads" + (rt > 0 ? String.format(java.util.Locale.US, ", making speech %.1f× faster than it's spoken", rt) : "") + ".");
         }
         box.addView(info);
+
+        box.addView(label("Voice on your PC (saves battery)"));
+        TextView pcInfo = label("");
+        box.addView(pcInfo);
+        Switch pcOn = toggle("Read with my PC when it's on", prefs.getBoolean("pcOn", false), null);
+        box.addView(pcOn);
+        Button pcPair = smallButton(prefs.getString("pcToken", "").isEmpty() ? "Pair with my PC" : "Pair again");
+        Button pcForget = smallButton("Forget my PC");
+        box.addView(pcPair); box.addView(pcForget);
+        Runnable showPc = () -> {
+            boolean paired = !prefs.getString("pcToken", "").isEmpty();
+            pcOn.setVisibility(paired ? View.VISIBLE : View.GONE);
+            pcForget.setVisibility(paired ? View.VISIBLE : View.GONE);
+            Voice v = svc != null ? svc.voice() : null;
+            String where = v == null ? "" : v.pcOk ? "Reading on your PC now." : v.pcError.length() > 0 ? "Can't reach it right now (" + v.pcError + "), so the phone reads." : "";
+            pcInfo.setText(!paired ? "Run \u201cSet up PC voice.bat\u201d on your PC (in the Loudbook-android folder), then pair here with the code it shows. Works on your home Wi-Fi; elsewhere the phone reads as usual."
+                : "Paired with " + prefs.getString("pcName", "your PC") + " (" + prefs.getString("pcHost", "") + "). " + (prefs.getBoolean("pcOn", false) ? where : "Off: the phone reads."));
+        };
+        showPc.run();
+        pcOn.setOnCheckedChangeListener((b, on) -> { prefs.edit().putBoolean("pcOn", on).apply(); if (svc != null) svc.pcChanged(); main.postDelayed(showPc, 3500); showPc.run(); });
+        pcPair.setOnClickListener(v -> pairPc(showPc));
+        pcForget.setOnClickListener(v -> {
+            prefs.edit().remove("pcToken").remove("pcFp").remove("pcHost").remove("pcName").putBoolean("pcOn", false).apply();
+            if (svc != null) svc.pcChanged();
+            pcPair.setText("Pair with my PC");
+            showPc.run();
+        });
 
         box.addView(label("Voice commands"));
         Switch cmds = toggle("Listen for play, pause, back, forward, beginning, end", prefs.getBoolean("voiceCmds", false), null);

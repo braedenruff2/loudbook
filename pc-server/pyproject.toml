@@ -1,0 +1,10 @@
+[project]
+name = "loudbook-pc-voice"
+version = "1"
+description = "Runs Loudbook's reading voice on this PC for a paired phone"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+  "sherpa-onnx==1.13.8",
+  "cryptography>=43",
+  "numpy>=1.26",
+]

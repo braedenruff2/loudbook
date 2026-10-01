@@ -61,6 +61,8 @@ public class ReaderService extends Service {
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Voice voice = new Voice();
+    /** Loads the voice (its own thread: speech-making waits for it on the synth thread). */
+    private final ExecutorService loader = Executors.newSingleThreadExecutor();
     private final ExecutorService synth = Executors.newSingleThreadExecutor();
     private final Map<Integer, Future<Voice.Clip>> clips = new HashMap<>();
     private Listener listener;
@@ -116,7 +118,17 @@ public class ReaderService extends Service {
         NotificationChannel ch = new NotificationChannel("reading", "Reading aloud", NotificationManager.IMPORTANCE_LOW);
         ch.setShowBadge(false);
         nm.createNotificationChannel(ch);
+        voice.attach(this);
         warmUp();
+    }
+
+    // ---------------------------------------------------------------- PC voice
+    Voice voice() { return voice; }
+    /** Settings changed (paired, turned on or off): try the PC again straight away. */
+    void pcChanged() {
+        voice.pcOk = false; voice.pcRetryAt = 0;
+        loader.submit(() -> { voice.checkPc(); main.post(this::state); return null; });
+        if (voice.pcLink() == null && !voice.localReady()) warmUp();
     }
 
     @Override public IBinder onBind(Intent intent) { return binder; }
@@ -135,6 +147,7 @@ public class ReaderService extends Service {
     @Override public void onDestroy() {
         commands.stop();
         cmdThread.shutdownNow();
+        loader.shutdownNow();
         if (beeper != null) beeper.release();
         stopPlayback();
         synth.shutdownNow();
@@ -149,11 +162,16 @@ public class ReaderService extends Service {
     // ---------------------------------------------------------------- the voice
     /** Load Kokoro in the background as soon as the app starts, so play is instant. */
     void warmUp() {
-        if (voice.ready() || voiceLoading) return;
+        if (voice.localReady() || voiceLoading) return;
         voiceLoading = true;
         status("Getting the voice ready…", false);
-        synth.submit(() -> {
+        loader.submit(() -> {
             try {
+                // a paired PC on the network: no need to load the voice on the phone at all
+                if (voice.pcLink() != null && voice.checkPc()) {
+                    main.post(() -> { voiceLoading = false; status("", false); state(); });
+                    return null;
+                }
                 if (!Voice.packReady(this)) {
                     main.post(() -> status("Downloading the voice (one time, 354 MB — Wi-Fi is best)…", false));
                     int[] shown = {-1};
@@ -296,11 +314,20 @@ public class ReaderService extends Service {
             if (ch == null || i < 0 || i >= ch.size()) return null;
             final String text = ch.chunks.get(i).say;
             f = synth.submit(() -> {
-                while (!voice.ready()) Thread.sleep(100);            // first run: model still loading
-                Voice.Clip c = voice.speak(text, want, sp);
-                audioSecs += c.seconds(); workSecs += c.ms / 1000.0;
-                if (commands.loaded()) cmdThread.submit(() -> commands.learnReader(want, c.samples, c.rate));
-                return c;
+                Voice.Clip c = null;
+                for (int attempt = 0; c == null; attempt++) {
+                    while (!voice.ready()) Thread.sleep(100);        // first run: model still loading
+                    try { c = voice.speak(text, want, sp); }
+                    catch (Voice.NeedLocal e) {                       // the PC dropped out: switch to the phone
+                        if (attempt >= 2) throw e;
+                        main.post(() -> { status("Can't reach your PC. Using the phone's voice…", false); warmUp(); });
+                        Thread.sleep(300);
+                    }
+                }
+                final Voice.Clip made = c;
+                audioSecs += made.seconds(); workSecs += made.ms / 1000.0;
+                if (commands.loaded()) cmdThread.submit(() -> commands.learnReader(want, made.samples, made.rate));
+                return made;
             });
             clips.put(i, f);
             return f;

@@ -111,7 +111,51 @@ final class Voice {
         return OfflineTtsConfig.builder().setModel(m).setMaxNumSentences(1).build();
     }
 
-    boolean ready() { return tts != null; }
+    boolean ready() { return tts != null || pcOk; }
+    boolean localReady() { return tts != null; }
+
+    // ---------------------------------------------------------------- the PC voice
+    // When a PC is paired (pc-server on the PC), the speech is made there and the phone just plays
+    // it, which saves its battery. If the PC can't be reached, the phone's own voice takes over,
+    // and the PC is tried again every half minute.
+    private Context app;
+    volatile boolean pcOk = false;
+    volatile long pcRetryAt = 0;
+    volatile String pcError = "", lastSource = "";
+
+    void attach(Context c) { app = c.getApplicationContext(); }
+    static android.content.SharedPreferences prefs(Context c) { return c.getSharedPreferences("lb", Context.MODE_PRIVATE); }
+
+    /** The paired PC, if "read with my PC" is on. */
+    PcLink pcLink() {
+        if (app == null) return null;
+        android.content.SharedPreferences p = prefs(app);
+        if (!p.getBoolean("pcOn", false) || p.getString("pcToken", "").isEmpty()) return null;
+        return new PcLink(p.getString("pcHost", ""), p.getInt("pcPort", PcLink.PORT), p.getString("pcFp", ""), p.getString("pcToken", ""));
+    }
+
+    /** Checks the PC now (a couple of seconds at most). */
+    boolean checkPc() {
+        PcLink l = pcLink();
+        if (l == null) { pcOk = false; return false; }
+        try { l.health(3000); pcOk = true; pcError = ""; pcRetryAt = 0; return true; }
+        catch (Exception e) { pcOk = false; pcError = String.valueOf(e.getMessage()); pcRetryAt = System.currentTimeMillis() + 30_000; rediscover(l); return false; }
+    }
+
+    /** The PC may have a new address on the home network: look for the one with our fingerprint. */
+    void rediscover(PcLink l) {
+        for (PcLink.Found f : PcLink.discover(1200)) {
+            if (f.fp != null && f.fp.equals(l.fp) && (!f.host.equals(l.host) || f.port != l.port)) {
+                prefs(app).edit().putString("pcHost", f.host).putInt("pcPort", f.port).apply();
+                pcRetryAt = 0;
+                Log.i(TAG, "PC voice moved to " + f.host);
+                return;
+            }
+        }
+    }
+
+    /** Thrown when the PC failed and the phone's own voice isn't loaded yet. */
+    static final class NeedLocal extends RuntimeException { NeedLocal(String m) { super(m); } }
 
     /**
      * How many threads to give Kokoro: one per fast core. Phones mix fast and slow cores, and a
@@ -138,6 +182,24 @@ final class Voice {
     /** One chunk of speech. sid: speaker number; speed: 1.0 = normal. */
     Clip speak(String text, int sid, float speed) {
         long t0 = System.currentTimeMillis();
+        PcLink l = pcLink();
+        if (l != null && (pcOk || System.currentTimeMillis() >= pcRetryAt)) {
+            try {
+                PcLink.Audio a = l.speak(text, sid, speed, 20000);
+                pcOk = true; pcError = ""; lastSource = "pc";
+                float[] f = new float[a.pcm.length];
+                for (int i = 0; i < f.length; i++) f[i] = a.pcm[i] / 32768f;
+                return new Clip(trim(f, a.rate), a.rate, speed, System.currentTimeMillis() - t0);
+            } catch (Exception e) {
+                Log.w(TAG, "PC voice failed", e);
+                pcOk = false; pcError = String.valueOf(e.getMessage());
+                pcRetryAt = System.currentTimeMillis() + 30_000;
+                new Thread(() -> rediscover(l), "lb-find-pc").start();
+                if (tts == null) throw new NeedLocal(pcError);
+            }
+        }
+        if (tts == null) throw new NeedLocal("the voice isn't loaded");
+        lastSource = "phone";
         GeneratedAudio a;
         synchronized (this) { a = tts.generate(text, sid, speed); }
         return new Clip(trim(a.getSamples(), a.getSampleRate()), a.getSampleRate(), speed, System.currentTimeMillis() - t0);

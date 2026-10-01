@@ -4,3 +4,5 @@ build/
 _to_delete/
 *.apk
 tools/last-publish.txt
+__pycache__/
+*.pyc

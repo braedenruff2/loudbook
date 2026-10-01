@@ -1,0 +1,59 @@
+# Tests the PC voice server on Windows end to end: setup, pairing, and speech through the same
+# Java client the app uses. Results go to the pc-test release. Runs when pc-server changes.
+name: PC voice test
+on:
+  push:
+    branches: [main]
+    paths: ['pc-server/**', 'Set up PC voice.bat', '.github/workflows/pc-voice-test.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up PC voice (CI mode)
+        shell: cmd
+        env:
+          LB_CI: '1'
+        run: call "Set up PC voice.bat"
+      - name: Pair and speak
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $env:UV_PROJECT_ENVIRONMENT = "$env:LOCALAPPDATA\Loudbook\venv"
+          $uv = "$env:LOCALAPPDATA\Loudbook\bin\uv.exe"
+          New-Item -ItemType Directory -Force t | Out-Null
+          javac -d t\out app\src\com\loudbook\app\PcLink.java pc-server\test\PcTest.java
+          $p = Start-Process $uv -ArgumentList 'run','--quiet','--python','3.12','--project','pc-server','python','-u','pc-server\loudbook_server.py','pair' -RedirectStandardOutput t\pair.log -PassThru -NoNewWindow
+          Start-Sleep 8
+          $code = (Select-String -Path t\pair.log -Pattern 'Code:\s+(\S+)').Matches[0].Groups[1].Value
+          Push-Location t
+          $r = @("## PC voice on Windows", "", '```')
+          $r += "pairing code shown: $(if ($code) {'yes'} else {'NO'})"
+          $r += (java -cp out com.loudbook.app.PcTest pair 2345-6789-ABCD 2>&1 | Out-String).Trim()
+          $r += (java -cp out com.loudbook.app.PcTest pair $code 2>&1 | Out-String).Trim()
+          $r += (java -cp out com.loudbook.app.PcTest use 2>&1 | Out-String).Trim()
+          $r += (java -cp out com.loudbook.app.PcTest use 2>&1 | Out-String).Trim()
+          $r += (java -cp out com.loudbook.app.PcTest use badtoken 2>&1 | Out-String).Trim()
+          $r += (java -cp out com.loudbook.app.PcTest use badpin 2>&1 | Out-String).Trim()
+          Pop-Location
+          $r += '```'; $r += ''; $r += 'server.log:'; $r += '```'
+          $r += (Get-Content "$env:LOCALAPPDATA\Loudbook\server.log" -ErrorAction SilentlyContinue | Out-String).Trim()
+          $r += '```'
+          $r -join "`n" | Set-Content -Encoding UTF8 results.md
+          Get-Content results.md
+      - name: Publish results
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -f results.md ] || echo "no results (setup failed)" > results.md
+          gh release view pc-test >/dev/null 2>&1 || gh release create pc-test --latest=false --title "PC voice test" --notes "Results of the Windows test of the PC voice server."
+          gh release upload pc-test results.md --clobber

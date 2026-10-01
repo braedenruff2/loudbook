@@ -46,6 +46,32 @@ To pause publishing, turn off "Loudbook publish" in Windows Task Scheduler.
 The same sites as the extension: Royal Road, AO3, FanFiction.net / FictionPress, Wattpad, WebNovel,
 Wuxiaworld, Scribble Hub, SpaceBattles / Sufficient Velocity / QQ, plus other article-style pages.
 
+## Voice on your PC (saves battery)
+
+The PC can make the speech instead of the phone. The phone only plays it, which uses much less
+battery. When the PC is off or you're away from home, the phone reads by itself as usual, and it
+switches back to the PC on its own.
+
+1. On the PC, double-click **Set up PC voice.bat**. It installs everything into
+   `%LOCALAPPDATA%\Loudbook` (nothing system-wide), starts the server, sets it to start when you sign
+   in, and asks Windows once to let the phone in on **home (private) networks only**. Then it shows a
+   pairing code.
+2. On the phone: ⚙ › **Pair with my PC**. It finds the PC by itself; type the code.
+
+How it stays private:
+
+- **Encrypted:** everything between the phone and the PC goes over HTTPS. The phone remembers the
+  PC's exact certificate fingerprint, so no other machine can pose as it.
+- **Pairing:** pairing needs the one-time code the PC shows. It is 12 characters, works for 10
+  minutes, and allows 5 wrong tries. The PC proves it knows the code before the phone sends
+  anything.
+- **Per-phone keys:** each paired phone gets its own 256-bit key. The PC stores only a hash of it.
+  **Unpair all phones.bat** removes every phone's access.
+- **Home network only:** the server answers only private-network addresses (and Tailscale's, if
+  you ever use that to reach home). It limits request sizes and rates, and never logs or keeps the
+  text it reads.
+- **Code:** `pc-server/loudbook_server.py`, about 400 lines of Python.
+
 ## How it's built
 
 There's no Android Studio or Gradle. `build.sh` calls Google's build tools directly: aapt2 for
