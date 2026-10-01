@@ -1,0 +1,61 @@
+# Publishes the small speech recogniser the app uses to find exactly where each sentence starts in a
+# Gemini recording (release asr-1), and tests it on the JVM with the app's own code.
+name: Sentence timing model
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/asr.yml', 'app/src/com/loudbook/app/AsrAligner.java', 'test/jvm/com/loudbook/app/AsrTest.java']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  asr:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/cache@v4
+        with:
+          path: dl
+          key: asr-1
+      - name: Get the models
+        run: |
+          mkdir -p dl jni files/asr out
+          R=https://github.com/k2-fsa/sherpa-onnx/releases/download
+          [ -s dl/asr.tar.bz2 ] || curl -fsSL -o dl/asr.tar.bz2 $R/asr-models/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17.tar.bz2
+          tar xjf dl/asr.tar.bz2
+          M=sherpa-onnx-streaming-zipformer-en-20M-2023-02-17
+          ls -la $M
+          cp $(ls $M/encoder-*.int8.onnx | head -1) out/asr-encoder.onnx
+          cp $(ls $M/decoder-*.onnx | grep -v int8 | head -1) out/asr-decoder.onnx
+          cp $(ls $M/joiner-*.int8.onnx | head -1) out/asr-joiner.onnx
+          cp $M/tokens.txt out/asr-tokens.txt
+          cp out/* files/asr/
+          [ -s dl/jni.tar.bz2 ] || curl -fsSL -o dl/jni.tar.bz2 $R/v1.13.8/sherpa-onnx-v1.13.8-linux-x64-jni.tar.bz2
+          tar xjf dl/jni.tar.bz2 -C jni
+          [ -s dl/kokoro.tar.bz2 ] || curl -fsSL -o dl/kokoro.tar.bz2 $R/tts-models/kokoro-multi-lang-v1_0.tar.bz2
+          tar xjf dl/kokoro.tar.bz2
+      - name: Test
+        run: |
+          cat > BuildInfo.java <<'J'
+          package com.loudbook.app;
+          final class BuildInfo { static final String VERSION = "test"; static final int CODE = 1; static final String REPO = "${{ github.repository }}";
+            static final String RELEASES = "https://github.com/" + REPO + "/releases/"; static final String VOICE_URL = RELEASES + "download/voice-1/"; }
+          J
+          javac -nowarn -d cls -sourcepath test/jvm test/jvm/com/loudbook/app/AsrTest.java app/src/com/loudbook/app/{AsrAligner,Align,CloudVoice,PcLink,Net,Voice}.java BuildInfo.java app/src/com/k2fsa/sherpa/onnx/*.java
+          LIB=$(dirname $(find jni -name 'libsherpa-onnx-jni.so' | head -1))
+          set +e
+          LD_LIBRARY_PATH=$LIB timeout 900 java -Djava.library.path=$LIB -cp cls com.loudbook.app.AsrTest files kokoro-multi-lang-v1_0 > run.log 2>&1
+          echo "exit code: $?" >> run.log
+          { echo '## Sentence timing test'; echo; echo '```'; grep -v "^/home/runner\|^$\|^[0-9 ]*$\|In bytes\|^GenerationConfig" run.log | tail -80; echo '```'; } > results.md
+          cat results.md
+      - name: Publish
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view asr-1 >/dev/null 2>&1 || gh release create asr-1 --latest=false --title "Sentence timing model" --notes "Streaming Zipformer (English, 20M) from sherpa-onnx, used to time sentences in Gemini recordings."
+          gh release upload asr-1 out/* results.md --clobber

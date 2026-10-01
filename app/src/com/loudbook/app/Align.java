@@ -23,6 +23,34 @@ final class Align {
     static final int FRAME_MS = 20;
 
     static Result align(CloudVoice.Pcm pcm, int[] chars, double secPerChar) throws IOException {
+        return alignFrames(frames(pcm), chars, secPerChar, pcm.rate, pcm.samples());
+    }
+
+    /** The pauses in a recording: {middle, length} in seconds. */
+    static double[][] pauses(CloudVoice.Pcm pcm) throws IOException {
+        float[] rms = frames(pcm);
+        float quiet = quietLevel(rms);
+        java.util.ArrayList<double[]> out = new java.util.ArrayList<>();
+        double fs = FRAME_MS / 1000.0;
+        int i = 0, nf = rms.length;
+        while (i < nf) {
+            if (rms[i] >= quiet) { i++; continue; }
+            int j = i;
+            while (j < nf && rms[j] < quiet) j++;
+            if ((j - i) * fs >= 0.06) out.add(new double[]{(i + j) / 2.0 * fs, (j - i) * fs});
+            i = j;
+        }
+        return out.toArray(new double[0][]);
+    }
+
+    static float quietLevel(float[] rms) {
+        float[] sorted = rms.clone();
+        java.util.Arrays.sort(sorted);
+        return Math.max(0.0015f, sorted[(int) (sorted.length * 0.9)] * 0.05f);
+    }
+
+    /** Loudness of every 20 ms. */
+    static float[] frames(CloudVoice.Pcm pcm) throws IOException {
         int rate = pcm.rate, frame = rate * FRAME_MS / 1000;
         long total = pcm.samples();
         int nf = (int) (total / frame);
@@ -37,16 +65,13 @@ final class Align {
                 rms[(int) f] = (float) Math.sqrt(s / frame);
             }
         }
-        return alignFrames(rms, chars, secPerChar, rate, total);
+        return rms;
     }
 
     static Result alignFrames(float[] rms, int[] chars, double secPerChar, int rate, long totalSamples) {
         int nf = rms.length;
         double fs = FRAME_MS / 1000.0;
-        float[] sorted = rms.clone();
-        java.util.Arrays.sort(sorted);
-        float loud = sorted[(int) (sorted.length * 0.9)];
-        float quiet = Math.max(0.0015f, loud * 0.05f);
+        float quiet = quietLevel(rms);
 
         // the pauses: runs of quiet of 100 ms or more; a cut goes in the middle of one
         java.util.ArrayList<double[]> c = new java.util.ArrayList<>();   // {time s, strength}
