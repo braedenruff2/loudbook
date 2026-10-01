@@ -655,15 +655,32 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         box.addView(pcInfo);
         Switch pcOn = toggle("Read with my PC when it's on", prefs.getBoolean("pcOn", false), null);
         box.addView(pcOn);
+        Spinner pcStyle = new Spinner(this);
+        String[] psl = {"PC voice: natural (graphics card)", "PC voice: Kokoro (same as the phone)"};
+        pcStyle.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, psl));
+        pcStyle.setSelection("kokoro".equals(prefs.getString("pcEngine", "natural")) ? 1 : 0);
+        pcStyle.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> p, View v, int i, long id) {
+                String e = i == 1 ? "kokoro" : "natural";
+                if (!e.equals(prefs.getString("pcEngine", "natural"))) { prefs.edit().putString("pcEngine", e).apply(); if (svc != null && svc.isPlaying()) svc.seek(svc.pos()); }
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> p) { }
+        });
+        box.addView(pcStyle);
         Button pcPair = smallButton(prefs.getString("pcToken", "").isEmpty() ? "Pair with my PC" : "Pair again");
         Button pcForget = smallButton("Forget my PC");
         box.addView(pcPair); box.addView(pcForget);
         Runnable showPc = () -> {
             boolean paired = !prefs.getString("pcToken", "").isEmpty();
             pcOn.setVisibility(paired ? View.VISIBLE : View.GONE);
+            pcStyle.setVisibility(paired && prefs.getBoolean("pcOn", false) ? View.VISIBLE : View.GONE);
             pcForget.setVisibility(paired ? View.VISIBLE : View.GONE);
             Voice v = svc != null ? svc.voice() : null;
-            String where = v == null ? "" : v.pcOk ? "Reading on your PC now." : v.pcError.length() > 0 ? "Can't reach it right now (" + v.pcError + "), so the phone reads." : "";
+            PcLink.Health hh = v == null ? null : v.pcHealth;
+            String nat = hh == null ? "" : hh.natural.isEmpty() ? " It has no natural voice (needs an NVIDIA graphics card), so it reads with Kokoro."
+                : hh.naturalOk ? " Natural voice: " + hh.natural + (hh.naturalSpeed > 0 ? String.format(java.util.Locale.US, ", %.1f\u00d7 faster than reading.", hh.naturalSpeed) : ".")
+                : " Its natural voice is too slow on that graphics card, so it reads with Kokoro.";
+            String where = v == null ? "" : v.pcOk ? "Reading on your PC now." + nat : v.pcError.length() > 0 ? "Can't reach it right now (" + v.pcError + "), so the phone reads." : "";
             pcInfo.setText(!paired ? "Run \u201cSet up PC voice.bat\u201d on your PC (in the Loudbook-android folder), then pair here with the code it shows. Works on your home Wi-Fi; elsewhere the phone reads as usual."
                 : "Paired with " + prefs.getString("pcName", "your PC") + " (" + prefs.getString("pcHost", "") + "). " + (prefs.getBoolean("pcOn", false) ? where : "Off: the phone reads."));
         };

@@ -122,6 +122,7 @@ final class Voice {
     volatile boolean pcOk = false;
     volatile long pcRetryAt = 0;
     volatile String pcError = "", lastSource = "";
+    volatile PcLink.Health pcHealth;
 
     void attach(Context c) { app = c.getApplicationContext(); }
     static android.content.SharedPreferences prefs(Context c) { return c.getSharedPreferences("lb", Context.MODE_PRIVATE); }
@@ -138,7 +139,7 @@ final class Voice {
     boolean checkPc() {
         PcLink l = pcLink();
         if (l == null) { pcOk = false; return false; }
-        try { l.health(3000); pcOk = true; pcError = ""; pcRetryAt = 0; return true; }
+        try { pcHealth = l.health(3000); pcOk = true; pcError = ""; pcRetryAt = 0; return true; }
         catch (Exception e) { pcOk = false; pcError = String.valueOf(e.getMessage()); pcRetryAt = System.currentTimeMillis() + 30_000; rediscover(l); return false; }
     }
 
@@ -185,11 +186,13 @@ final class Voice {
         PcLink l = pcLink();
         if (l != null && (pcOk || System.currentTimeMillis() >= pcRetryAt)) {
             try {
-                PcLink.Audio a = l.speak(text, sid, speed, 20000);
-                pcOk = true; pcError = ""; lastSource = "pc";
+                String engine = prefs(app).getString("pcEngine", "natural");
+                PcLink.Audio a = l.speak(text, sid, speed, engine, 30000);
+                pcOk = true; pcError = ""; lastSource = "pc:" + a.engine;
                 float[] f = new float[a.pcm.length];
                 for (int i = 0; i < f.length; i++) f[i] = a.pcm[i] / 32768f;
-                return new Clip(trim(f, a.rate), a.rate, speed, System.currentTimeMillis() - t0);
+                // the natural voice comes at normal speed; the phone speeds it up as it plays
+                return new Clip(trim(f, a.rate), a.rate, a.madeAt, System.currentTimeMillis() - t0);
             } catch (Exception e) {
                 Log.w(TAG, "PC voice failed", e);
                 pcOk = false; pcError = String.valueOf(e.getMessage());

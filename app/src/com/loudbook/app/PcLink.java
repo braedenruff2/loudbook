@@ -46,31 +46,44 @@ final class PcLink {
 
     PcLink(String host, int port, String fp, String token) { this.host = host; this.port = port; this.fp = fp; this.token = token; }
 
-    static final class Audio { final short[] pcm; final int rate; final int workMs; Audio(short[] p, int r, int w) { pcm = p; rate = r; workMs = w; } }
+    static final class Audio {
+        final short[] pcm; final int rate; final int workMs; final float madeAt; final String engine;
+        Audio(short[] p, int r, int w, float m, String e) { pcm = p; rate = r; workMs = w; madeAt = m; engine = e; }
+    }
+    /** What the PC has: its Kokoro, and the natural voice if it has a graphics card for it. */
+    static final class Health {
+        final String engine, natural; final boolean naturalOk; final float naturalSpeed;
+        Health(String e, String n, boolean ok, float sp) { engine = e; natural = n; naturalOk = ok; naturalSpeed = sp; }
+    }
 
     // ---------------------------------------------------------------- requests
     /** Is the PC there and does it still know this phone? Returns the engine name. */
-    String health(int timeoutMs) throws IOException {
+    Health health(int timeoutMs) throws IOException {
         HttpsURLConnection c = open("/v1/health", fp, timeoutMs);
         c.setRequestProperty("Authorization", "Bearer " + token);
         String body = readText(c);
-        return str(body, "engine");
+        String n = str(body, "natural");
+        return new Health(str(body, "engine"), n == null ? "" : n, body.matches("(?s).*\"naturalOk\"\\s*:\\s*true.*"),
+            Float.parseFloat(num(body, "naturalSpeed")));
     }
 
-    Audio speak(String text, int sid, float speed, int timeoutMs) throws IOException {
+    /** engine: "natural" for the graphics-card voice when the PC has it, otherwise Kokoro. */
+    Audio speak(String text, int sid, float speed, String engine, int timeoutMs) throws IOException {
         HttpsURLConnection c = open("/v1/speak", fp, timeoutMs);
         c.setRequestProperty("Authorization", "Bearer " + token);
-        byte[] req = ("{\"text\":" + quote(text) + ",\"sid\":" + sid + ",\"speed\":" + speed + "}").getBytes(StandardCharsets.UTF_8);
+        byte[] req = ("{\"text\":" + quote(text) + ",\"sid\":" + sid + ",\"speed\":" + speed + ",\"engine\":" + quote(engine) + "}").getBytes(StandardCharsets.UTF_8);
         post(c, req);
         int code = c.getResponseCode();
         if (code != 200) { String e = errorText(c); c.disconnect(); throw new IOException("PC said " + code + (e.isEmpty() ? "" : ": " + e)); }
         int rate = Integer.parseInt(c.getHeaderField("X-Sample-Rate"));
         String w = c.getHeaderField("X-Work-Ms");
+        String made = c.getHeaderField("X-Made-At");
+        String used = c.getHeaderField("X-Engine");
         byte[] b;
         try (InputStream in = c.getInputStream()) { b = readAll(in); } finally { c.disconnect(); }
         short[] pcm = new short[b.length / 2];
         for (int i = 0; i < pcm.length; i++) pcm[i] = (short) ((b[2 * i] & 0xff) | (b[2 * i + 1] << 8));
-        return new Audio(pcm, rate, w == null ? 0 : Integer.parseInt(w));
+        return new Audio(pcm, rate, w == null ? 0 : Integer.parseInt(w), made == null ? speed : Float.parseFloat(made), used == null ? "kokoro" : used);
     }
 
     // ---------------------------------------------------------------- pairing

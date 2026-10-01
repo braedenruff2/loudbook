@@ -8,5 +8,5 @@ if not exist "%LOCALAPPDATA%\Loudbook\bin\uv.exe" (
   pause
   exit /b 1
 )
-"%LOCALAPPDATA%\Loudbook\bin\uv.exe" run --quiet --python 3.12 --project "%~dp0pc-server" python "%~dp0pc-server\loudbook_server.py" pair
+"%LOCALAPPDATA%\Loudbook\bin\uv.exe" run --no-sync --project "%~dp0pc-server" python "%~dp0pc-server\loudbook_server.py" pair
 pause

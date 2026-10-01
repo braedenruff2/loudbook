@@ -21,6 +21,9 @@ jobs:
         shell: cmd
         env:
           LB_CI: '1'
+          LB_NATURAL: '1'                      # no graphics card here: test the natural voice on the CPU
+          LOUDBOOK_NATURAL_DEVICE: cpu
+          LOUDBOOK_NATURAL_MIN_SPEED: '0'
         run: |
           call "Set up PC voice.bat" > setup.log 2>&1
           set rc=%errorlevel%
@@ -53,8 +56,7 @@ jobs:
           $r += "pairing code shown: $(if ($code) {'yes'} else {'NO'})"
           $r += (java -cp out com.loudbook.app.PcTest pair 2345-6789-ABCD 2>&1 | Out-String).Trim()
           $r += (java -cp out com.loudbook.app.PcTest pair $code 2>&1 | Out-String).Trim()
-          $r += (java -cp out com.loudbook.app.PcTest use 2>&1 | Out-String).Trim()
-          $r += (java -cp out com.loudbook.app.PcTest use 2>&1 | Out-String).Trim()
+          $r += (java -cp out com.loudbook.app.PcTest use x save 2>&1 | Out-String).Trim()
           $r += (java -cp out com.loudbook.app.PcTest use badtoken 2>&1 | Out-String).Trim()
           $r += (java -cp out com.loudbook.app.PcTest use badpin 2>&1 | Out-String).Trim()
           Pop-Location

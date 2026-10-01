@@ -16,7 +16,7 @@ you pair can use it:
   python loudbook_server.py pair       show a pairing code and wait for the phone
   python loudbook_server.py forget     unpair every phone
 """
-import base64, datetime, hashlib, hmac, http.server, ipaddress, json, os, secrets, socket, ssl, sys
+import base64, collections, datetime, hashlib, hmac, http.server, ipaddress, json, os, secrets, socket, ssl, sys
 import threading, time
 
 VERSION = 1
@@ -194,10 +194,115 @@ class Engine:
         x = np.clip(np.asarray(a.samples, dtype=np.float32), -1, 1)
         return (x * 32767).astype("<i2").tobytes(), a.sample_rate
 
+    def samples(self, text, sid):
+        """Float samples at normal speed (the natural voice's reference clips are made from these)."""
+        import numpy as np
+        with self.lock:
+            a = self.tts.generate(text, sid=sid, speed=1.0)
+        return np.asarray(a.samples, dtype=np.float32), a.sample_rate
+
+
+# A few sentences of plain narration (written for this) for the natural voice to copy each
+# Kokoro voice from, so a voice sounds like itself whichever engine reads.
+REFERENCE_TEXT = ("The rain had stopped by the time she reached the bridge. Lamps were coming on along the river, "
+                  "one after another, and somewhere a dog was barking at nothing in particular. She pulled her coat "
+                  "tighter and kept walking, counting the steps the way her father used to.")
+
+
+class NaturalEngine:
+    """Chatterbox-Turbo (Resemble AI, MIT licence) on the graphics card: more natural, expressive
+    reading. It copies each Kokoro voice from a short reference clip, so voice choices carry over.
+    It doesn't do speed itself; the phone speeds playback up instead."""
+    def __init__(self, kokoro):
+        import torch
+        from chatterbox.tts_turbo import ChatterboxTurboTTS
+        dev = os.environ.get("LOUDBOOK_NATURAL_DEVICE") or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = dev
+        self.gpu = torch.cuda.get_device_name(0) if dev == "cuda" else "no graphics card (CPU)"
+        self.model = ChatterboxTurboTTS.from_pretrained(device=dev)
+        self.rate = self.model.sr
+        self.kokoro = kokoro
+        self.voices = {}                      # sid -> conditionals
+        self.lock = threading.Lock()
+        self.recent = collections.deque(maxlen=12)     # (seconds of speech, seconds of work)
+        self.gain = None
+        self.name = f"Chatterbox-Turbo ({self.gpu})"
+        self.too_slow = False
+        # warm up, then see whether this card keeps ahead of reading
+        self.speak("Ready to read.", 3)
+        self.recent.clear()
+        for t in ("He set the lantern down and listened to the wind moving through the empty house.",
+                  "Nobody answered, so she knocked again, louder this time."):
+            self.speak(t, 3)
+        if self.speed() < float(os.environ.get("LOUDBOOK_NATURAL_MIN_SPEED", "1.1")):
+            self.too_slow = True
+            print(f"Loudbook PC voice: the natural voice makes speech at {self.speed():.2f}x real time here, "
+                  "too slow to keep up, so Kokoro reads instead.", flush=True)
+
+    def _voice(self, sid):
+        if sid not in self.voices:
+            import numpy as np, wave
+            ref = path(os.path.join("refs", f"{sid}.wav"))
+            if not os.path.exists(ref):
+                os.makedirs(os.path.dirname(ref), exist_ok=True)
+                x, sr = self.kokoro.samples(REFERENCE_TEXT, sid)
+                with wave.open(ref, "wb") as w:
+                    w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)
+                    w.writeframes((np.clip(x, -1, 1) * 32767).astype("<i2").tobytes())
+            self.model.prepare_conditionals(ref)
+            self.voices[sid] = self.model.conds
+        self.model.conds = self.voices[sid]
+
+    def speed(self):
+        """Seconds of speech made per second of work, lately (0 = not known yet)."""
+        a = sum(r[0] for r in self.recent); w = sum(r[1] for r in self.recent)
+        return a / w if w > 1 else 0
+
+    def usable(self):
+        if self.too_slow: return False
+        if len(self.recent) == self.recent.maxlen and self.speed() < 0.9 * float(os.environ.get("LOUDBOOK_NATURAL_MIN_SPEED", "1.1")) / 1.1:
+            self.too_slow = True                       # fell behind for a dozen sentences running
+            print(f"Loudbook PC voice: natural voice fell behind ({self.speed():.2f}x), Kokoro takes over.", flush=True)
+        return not self.too_slow
+
+    def speak(self, text, sid):
+        import numpy as np, torch
+        t0 = time.time()
+        with self.lock, torch.inference_mode():
+            self._voice(sid)
+            wav = self.model.generate(text)
+        x = wav.squeeze(0).detach().cpu().numpy().astype(np.float32)
+        # steady loudness, close to Kokoro's, without pumping between sentences
+        rms = float(np.sqrt(np.mean(x * x))) if len(x) else 0
+        if rms > 1e-4:
+            g = 0.08 / rms
+            self.gain = g if self.gain is None else 0.8 * self.gain + 0.2 * g
+            x = x * self.gain
+        x = np.clip(x, -0.98, 0.98)
+        self.recent.append((len(x) / self.rate, time.time() - t0))
+        return (x * 32767).astype("<i2").tobytes(), self.rate
+
+
+def load_natural(kokoro):
+    """The natural voice, if its packages are installed (setup does that when there's an NVIDIA card)."""
+    if os.environ.get("LOUDBOOK_NATURAL", "1") == "0": return None
+    try:
+        import chatterbox  # noqa: F401
+    except ImportError:
+        return None
+    try:
+        print("Loudbook PC voice: loading the natural voice (Chatterbox-Turbo)...", flush=True)
+        return NaturalEngine(kokoro)
+    except Exception as e:
+        print("Loudbook PC voice: natural voice unavailable:", repr(e)[:300], flush=True)
+        return None
+
 
 class FakeEngine:
     """For tests: a quiet tone, as long as the text."""
     name, rate = "test tone", 24000
+    def samples(self, text, sid): return [], self.rate
+
     def speak(self, text, sid, speed):
         import array, math
         n = int(self.rate * min(10, 0.05 * len(text)) / speed)
@@ -238,6 +343,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     timeout = 20
     engine = None
+    natural = None
     fp = b""
 
     def log_message(self, fmt, *args): pass          # never log what's being read
@@ -278,7 +384,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.path == "/v1/hello": return self.reply(200, {"app": "loudbook", "v": VERSION})
         if self.path == "/v1/health":
             if not self.authed(): return
-            return self.reply(200, {"engine": Handler.engine.name, "rate": Handler.engine.rate, "host": socket.gethostname()})
+            n = Handler.natural
+            return self.reply(200, {"engine": Handler.engine.name, "rate": Handler.engine.rate, "host": socket.gethostname()[:40],
+                                    "natural": n.name if n else "", "naturalSpeed": round(n.speed(), 2) if n else 0,
+                                    "naturalOk": bool(n and not n.too_slow)})
         self.reply(404, {"error": "no such thing"})
 
     def do_POST(self):
@@ -307,8 +416,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except (TypeError, ValueError): return self.reply(400, {"error": "bad request"})
                 if not text.strip(): return self.reply(400, {"error": "no text"})
                 t0 = time.time()
-                pcm, rate = Handler.engine.speak(text, sid, speed)
-                return self.reply(200, pcm, "audio/L16", {"X-Sample-Rate": str(rate), "X-Work-Ms": str(int((time.time() - t0) * 1000))})
+                n = Handler.natural
+                # the natural voice when asked for, unless it's proving too slow to keep up, or the
+                # text is too short for it (a lone word can come out odd)
+                use_natural = (n is not None and req.get("engine") == "natural" and sum(ch.isalpha() for ch in text) >= 4
+                               and n.usable())
+                if use_natural:
+                    try:
+                        pcm, rate = n.speak(text, sid); made_at = 1.0; used = "natural"
+                    except Exception as e:
+                        print("Loudbook PC voice: natural voice failed:", repr(e)[:200], flush=True)
+                        use_natural = False
+                if not use_natural:
+                    pcm, rate = Handler.engine.speak(text, sid, speed); made_at = speed; used = "kokoro"
+                return self.reply(200, pcm, "audio/L16", {"X-Sample-Rate": str(rate), "X-Work-Ms": str(int((time.time() - t0) * 1000)),
+                                                          "X-Made-At": f"{made_at:.3f}", "X-Engine": used})
             self.reply(404, {"error": "no such thing"})
         finally:
             Limits.busy.release()
@@ -369,6 +491,7 @@ def serve(fake=False):
     Handler.fp = fingerprint()
     print("Loudbook PC voice: loading the voice...", flush=True)
     Handler.engine = FakeEngine() if fake else Engine()
+    if not fake: Handler.natural = load_natural(Handler.engine)
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.minimum_version = ssl.TLSVersion.TLSv1_2
     ctx.load_cert_chain(cert, key)
@@ -376,9 +499,25 @@ def serve(fake=False):
     httpd = Server(("0.0.0.0", PORT), Handler)
     stop = threading.Event()
     threading.Thread(target=discovery, args=(stop,), daemon=True).start()
-    print(f"Loudbook PC voice: ready on port {PORT} ({Handler.engine.name}), fingerprint {Handler.fp.hex()[:16]}...", flush=True)
+    print(f"Loudbook PC voice: ready on port {PORT} ({Handler.engine.name}"
+          + (f" + {Handler.natural.name}" if Handler.natural else "") + f"), fingerprint {Handler.fp.hex()[:16]}...", flush=True)
+    threading.Thread(target=restart_when_updated, daemon=True).start()
     try: httpd.serve_forever()
     finally: stop.set()
+
+
+def restart_when_updated():
+    """Exits (code 3) when the server's code changes, so start-server.cmd brings it back up with
+    the update. Updates arrive through the Loudbook-android folder."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    files = [os.path.abspath(__file__), os.path.join(here, "pyproject.toml")]
+    def stamp(): return [os.path.getmtime(f) if os.path.exists(f) else 0 for f in files]
+    first = stamp()
+    while True:
+        time.sleep(60)
+        if stamp() != first:
+            print("Loudbook PC voice: updated, restarting...", flush=True)
+            os._exit(3)
 
 
 def local_addresses():

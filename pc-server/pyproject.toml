@@ -9,3 +9,20 @@ dependencies = [
   "cryptography>=43",
   "numpy>=1.26",
 ]
+
+[project.optional-dependencies]
+# the natural voice on an NVIDIA graphics card (setup turns this on when it finds one)
+natural = [
+  "chatterbox-tts==0.1.7",
+  "torch==2.6.0",
+  "torchaudio==2.6.0",
+]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu124", marker = "sys_platform == 'win32'" }]
+torchaudio = [{ index = "pytorch-cu124", marker = "sys_platform == 'win32'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true

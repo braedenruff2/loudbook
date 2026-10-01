@@ -63,6 +63,28 @@ try {
   & $uv sync --quiet --python 3.12 --project $srv
   if ($LASTEXITCODE -ne 0) { throw 'installing the Python packages failed' }
 
+  # 3b. the natural voice (Chatterbox-Turbo) when there's an NVIDIA graphics card
+  $natFlag = Join-Path $lb 'natural.on'
+  $gpu = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'NVIDIA' } | Select-Object -First 1
+  if ($gpu -or $env:LB_NATURAL) {
+    $gname = if ($gpu) { $gpu.Name } else { 'test machine' }
+    Say "3/5 Found $gname. Installing the natural voice for it (about 4 GB, once; this takes a while)..."
+    & $uv sync --quiet --python 3.12 --project $srv --extra natural
+    if ($LASTEXITCODE -eq 0) {
+      Say '    Downloading the natural voice model...'
+      & $uv run --no-sync --project $srv python -c "from huggingface_hub import snapshot_download as d; d(repo_id='ResembleAI/chatterbox-turbo', allow_patterns=['*.safetensors','*.json','*.txt','*.pt','*.model'])"
+    }
+    if ($LASTEXITCODE -eq 0) { Set-Content $natFlag 'on' }
+    else {
+      Remove-Item $natFlag -ErrorAction SilentlyContinue
+      Say '    The natural voice could not be installed; Kokoro will read. (Run this again to retry.)'
+      & $uv sync --quiet --python 3.12 --project $srv
+    }
+  } else {
+    Remove-Item $natFlag -ErrorAction SilentlyContinue
+    Say '    No NVIDIA graphics card found, so the PC reads with Kokoro (the same voice as the phone).'
+  }
+
   # 4. let the phone reach it: home (private) networks only, these two ports only
   if (-not $env:LB_CI) {
     $have = Get-NetFirewallRule -DisplayName 'Loudbook PC voice' -ErrorAction SilentlyContinue
@@ -89,19 +111,24 @@ try {
 
   # 5. (re)start it now
   Say '5/5 Starting the PC voice...'
-  Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -like '*loudbook_server.py*serve*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  # stop a copy that's already running (its keep-alive loop first, then the server)
+  Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object { ($_.Name -eq 'cmd.exe' -and $_.CommandLine -like '*start-server.cmd*') -or ($_.Name -eq 'python.exe' -and $_.CommandLine -like '*loudbook_server.py*serve*') } |
+    Sort-Object { $_.Name -ne 'cmd.exe' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  Start-Sleep 1
+  Set-Content (Join-Path $lb 'run.on') 'on' 
   $log = Join-Path $lb 'server.log'
   $before = if (Test-Path $log) { (Get-Item $log).Length } else { 0 }
   Start-Process wscript.exe -ArgumentList '//B', ('"' + (Join-Path $srv 'run-server.vbs') + '"')
   $ok = $false
-  for ($i = 0; $i -lt 180; $i++) {
+  $limit = if (Test-Path $natFlag) { 900 } else { 180 }
+  for ($i = 0; $i -lt $limit; $i++) {
     Start-Sleep 1
     if (Test-Path $log) {
       $fs = [IO.File]::Open($log, 'Open', 'Read', 'ReadWrite'); $fs.Seek($before, 'Begin') | Out-Null
       $new = (New-Object IO.StreamReader($fs)).ReadToEnd(); $fs.Close()
       if ($new -match 'ready on port') { $ok = $true; break }
-      if ($new -match 'Traceback|Error') { Write-Host $new; break }
+      if ($new -match 'Traceback') { Write-Host $new; break }
     }
   }
   if (-not $ok) {
@@ -109,9 +136,12 @@ try {
     throw "the PC voice didn't start (see $log)"
   }
   Say 'The PC voice is running, and starts by itself when you sign in to Windows.'
+  $lines = (Get-Content $log -Tail 8) -join "`n"
+  if ($lines -match 'too slow to keep up') { Say 'The natural voice is too slow on this graphics card, so Kokoro reads.' }
+  elseif ($lines -match 'Chatterbox') { Say 'The natural voice is on. Choose it on the phone in settings.' }
   if (-not $env:LB_CI) {
     Write-Host ''
-    & $uv run --quiet --python 3.12 --project $srv python (Join-Path $srv 'loudbook_server.py') pair
+    & $uv run --no-sync --project $srv python (Join-Path $srv 'loudbook_server.py') pair
   }
 } catch {
   Write-Host ''
