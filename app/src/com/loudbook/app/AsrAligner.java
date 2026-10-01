@@ -122,8 +122,10 @@ final class AsrAligner {
             misses = 0;
             j = found + 1;
             int k = ts.get(i);
-            // a sentence's time comes from its first or second word (not from deep inside it)
-            if (Double.isNaN(start[k]) && i - firstWordOf[k] <= 1) start[k] = heard.get(found).t - (i - firstWordOf[k]) * 0.3;
+            // a sentence's time comes from its first or second word (not from deep inside it), and
+            // only when the word after it matches too, so a common word heard elsewhere can't fool it
+            boolean pair = i + 1 >= tw.size() || ts.get(i + 1) != k || (found + 1 < hw.length && hw[found + 1].equals(tw.get(i + 1)));
+            if (Double.isNaN(start[k]) && i - firstWordOf[k] <= 1 && pair) start[k] = heard.get(found).t - (i - firstWordOf[k]) * 0.3;
         }
         // keep them in order: drop any that would go backwards
         double last = -1;

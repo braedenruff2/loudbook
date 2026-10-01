@@ -102,6 +102,7 @@ public class ReaderService extends Service {
         prefs = getSharedPreferences("lb", MODE_PRIVATE);
         speed = prefs.getFloat("speed", 1f);
         pauseScale = prefs.getFloat("pauseScale", 1f);
+        cloudRetryAt = prefs.getLong("gemRetryAt", 0);
         sid = prefs.getInt("voice", 3);
         autoNext = prefs.getBoolean("autoNext", true);
         audio = (AudioManager) getSystemService(AUDIO_SERVICE);
@@ -153,6 +154,7 @@ public class ReaderService extends Service {
         cmdThread.shutdownNow();
         loader.shutdownNow();
         cloudPool.shutdownNow();
+        asrThread.shutdownNow();
         waiters.shutdownNow();
         if (beeper != null) beeper.release();
         stopPlayback();
@@ -347,6 +349,14 @@ public class ReaderService extends Service {
                         for (int tries = 0; tries < 4; tries++) {
                             GeminiBook b = bookFor(ch);
                             if (b.has(idx)) return learned(b.clip(idx), want);
+                            // before the part Gemini recorded (you started further in, then went
+                            // back): the other voice reads it, so it doesn't use up a request,
+                            // unless the setting says to record it too
+                            int first = b.firstHave(ch.size());
+                            if (first > idx && !prefs.getBoolean("gemBackfill", false)) {
+                                if (idx == pos) main.post(() -> status("Gemini didn't record this part (you started further on). The regular voice reads it.", false));
+                                return learned(makeHere(text, want, sp), want);
+                            }
                             recording(ch, b, idx).get();          // the request that covers it
                         }
                         throw new IOException("Gemini didn't record this sentence");
@@ -411,8 +421,9 @@ public class ReaderService extends Service {
     private File cloudRoot() { return new File(getCacheDir(), "gemini"); }
 
     private synchronized GeminiBook bookFor(Chapter ch) {
-        String k = GeminiBook.key(ch, cVoice(), cModel(), cStyle());
+        String k = GeminiBook.key(ch.url, cVoice(), cModel(), cStyle());
         if (book == null || !k.equals(bookKey)) { book = GeminiBook.open(cloudRoot(), k); bookKey = k; }
+        book.bind(ch);
         return book;
     }
 
@@ -447,19 +458,30 @@ public class ReaderService extends Service {
         main.post(() -> status(cloudStatus, false));
         long t0 = System.currentTimeMillis();
         int got;
+        GeminiBook.Made made;
         try {
             countRequest();
             double[] pace = new double[1];
-            got = b.fetch(ch, from, to, prefs.getString("cloudKey", ""), cModel(), cVoice(), cStyle(),
+            made = b.fetch(ch, from, to, prefs.getString("cloudKey", ""), cModel(), cVoice(), cStyle(),
                 prefs.getFloat("gemPace:" + cVoice(), 0f), pace);
+            got = made.count;
             if (pace[0] > 0) prefs.edit().putFloat("gemPace:" + cVoice(), (float) pace[0]).apply();
             cloudError = "";
+        } catch (CloudVoice.Limited ex) {
+            // Google says when requests are available again: wait exactly that long
+            cloudRetryAt = System.currentTimeMillis() + ex.retryMs;
+            prefs.edit().putLong("gemRetryAt", cloudRetryAt).apply();
+            cloudError = ex.getMessage();
+            String when = android.text.format.DateFormat.getTimeFormat(this).format(new java.util.Date(cloudRetryAt));
+            main.post(() -> status("Gemini's free requests are used up until " + when + ". The regular voice reads until then.", false));
+            throw ex;
         } catch (Exception ex) {
             cloudError = String.valueOf(ex.getMessage());
-            cloudRetryAt = System.currentTimeMillis() + (cloudError.contains("limit") ? 30 * 60_000 : 60_000);
+            cloudRetryAt = System.currentTimeMillis() + 60_000;
             main.post(() -> status("Gemini: " + cloudError + ". Another voice reads for now.", false));
             throw ex;
         }
+        refineLater(ch, b, made);
         workSecs += (System.currentTimeMillis() - t0) / 1000.0;
         GeminiBook.trim(cloudRoot(), 800L << 20);
         main.post(() -> status("", false));
@@ -470,10 +492,29 @@ public class ReaderService extends Service {
         }
     }
 
+    // exact sentence timing: a recogniser listens to each new recording once, on its own thread
+    private final ExecutorService asrThread = Executors.newSingleThreadExecutor();
+    private final AsrAligner asr = new AsrAligner();
+    private void refineLater(Chapter ch, GeminiBook b, GeminiBook.Made m) {
+        if (!prefs.getBoolean("gemExact", true)) return;
+        asrThread.submit(() -> {
+            try {
+                File d = new File(getFilesDir(), "asr");
+                if (!AsrAligner.downloaded(d)) AsrAligner.fetch(d, null);
+                asr.load(d);
+                long t0 = System.currentTimeMillis();
+                b.refine(ch, m, asr);
+                Log.i(TAG, "sentence timing: " + b.lastRefined + " cuts moved, " + (System.currentTimeMillis() - t0) + " ms");
+            } catch (Throwable t) { Log.w(TAG, "sentence timing", t); }
+            return null;
+        });
+    }
+
     /** Records a chapter before it's needed (the next one, near the end of this one). */
     void cloudPrefetch(Chapter ch) {
-        if (!cloudOn() || ch == null) return;
-        GeminiBook b = GeminiBook.open(cloudRoot(), GeminiBook.key(ch, cVoice(), cModel(), cStyle()));
+        if (!cloudOn() || ch == null || !prefs.getBoolean("gemPrefetch", false)) return;
+        GeminiBook b = GeminiBook.open(cloudRoot(), GeminiBook.key(ch.url, cVoice(), cModel(), cStyle()));
+        b.bind(ch);
         if (b.has(0)) return;
         cloudPool.submit(() -> { try { record(ch, b, 0, ch.size(), false); } catch (Exception ignored) { } return null; });
     }
@@ -564,7 +605,7 @@ public class ReaderService extends Service {
     private double gapAfter(Chapter ch, int i) {
         if (i + 1 >= ch.size()) return 0;
         GeminiBook b = book;
-        if (b != null && b.joined.contains(i) && cloudOn()) return 0;   // Gemini's own pause is in the recording
+        if (b != null && b.joined(i) && prefs.getBoolean("cloudOn", false)) return 0;   // Gemini's own pause is in the recording
         Chapter.Chunk now = ch.chunks.get(i), nx = ch.chunks.get(i + 1);
         String t = now.text.trim().replaceAll("[\"'\u201d\u2019)\\]*]+$", "");
         double g;
@@ -604,7 +645,8 @@ public class ReaderService extends Service {
         if (reached < 0 || gen != myGen) return;
         final int here = reached;
         pos = here;
-        if (here > ch.size() / 2 && ch.nextUrl != null && autoNext && !ch.nextUrl.equals(prefetchAsked) && cloudOn()) {
+        if (here > ch.size() / 2 && ch.nextUrl != null && autoNext && !ch.nextUrl.equals(prefetchAsked) && cloudOn()
+            && prefs.getBoolean("gemPrefetch", false)) {
             prefetchAsked = ch.nextUrl;
             main.post(() -> { if (listener != null) listener.onPrefetch(ch.nextUrl); });
         }

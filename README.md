@@ -57,8 +57,14 @@ it**.
   early; if it does, the rest goes in a second request.
 - **Recordings are kept:** each recording is cut into sentences, so highlighting works as usual,
   and it's kept on the phone, so hearing a chapter again uses no requests.
-- **Next chapter:** about halfway through a chapter, the next one is recorded in advance, so the
-  page turn doesn't wait.
+- **Exact timing:** the phone listens to each recording once with a small speech recogniser, so
+  every sentence starts exactly where it's spoken. Tapping a paragraph or skipping back lands in
+  the right place.
+- **Request limits:** when Google's limit is reached, the app waits exactly as long as Google says
+  (for the daily limit, until it resets), and the regular voice reads until then.
+- **Settings (all off by default):** record the next chapter ahead of time; and when you go back to
+  a part Gemini didn't record (because you started further in), record that too. Both use
+  requests.
 - **Free tier:** has daily limits, and Google may use what's sent to improve its products.
 - **Paid tier:** Google charges roughly $0.81 per hour of listening.
 - **Fallback:** when the limit is hit or there's no connection, the PC voice or the phone's voice

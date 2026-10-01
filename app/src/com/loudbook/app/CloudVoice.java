@@ -92,13 +92,39 @@ final class CloudVoice {
         for (int t = 0; t < 4; t++) {
             int w = (lastWay + t) % 4;
             Streamed r = postToFile(urls[w], key, bodies[w], out, timeoutMs);
-            if (r.code == 401 || r.code == 403 || r.code == 429) throw new IOException(errorOf(new Reply(r.code, r.json)));
+            if (r.code == 429) throw new Limited(errorOf(new Reply(r.code, r.json)), retryMs(r.json));
+            if (r.code == 401 || r.code == 403) throw new IOException(errorOf(new Reply(r.code, r.json)));
             if (r.code == 200 && r.audioBytes > 100) { lastWay = w; return wavOrPcm(out, r.audioBytes); }
             if (r.code == 200 && firstProblem == null) firstProblem = "no audio in Google's reply: " + outline(r.json);
             else if (firstProblem == null) firstProblem = errorOf(new Reply(r.code, r.json));
             if (r.code == 200) break;                     // it was understood (and counted): don't spend more
         }
         throw new IOException(firstProblem);
+    }
+
+    /** Google's "too many requests": how long until there are more. */
+    static final class Limited extends IOException {
+        final long retryMs;
+        Limited(String m, long retryMs) { super(m); this.retryMs = retryMs; }
+    }
+
+    /**
+     * When requests are available again, from Google's 429 reply: its retryDelay if it gives one;
+     * for a daily limit, midnight Pacific time (when Google's daily quotas reset).
+     */
+    static long retryMs(String json) {
+        long delay = -1;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"retryDelay\"\\s*:\\s*\"(\\d+(?:\\.\\d+)?)s\"").matcher(json);
+        if (m.find()) delay = (long) (Double.parseDouble(m.group(1)) * 1000) + 2000;
+        boolean daily = json.matches("(?s).*PerDay.*") || json.toLowerCase(java.util.Locale.US).contains("per day");
+        if (daily) {
+            java.util.Calendar c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("America/Los_Angeles"));
+            c.add(java.util.Calendar.DAY_OF_YEAR, 1);
+            c.set(java.util.Calendar.HOUR_OF_DAY, 0); c.set(java.util.Calendar.MINUTE, 1); c.set(java.util.Calendar.SECOND, 0);
+            long untilMidnight = c.getTimeInMillis() - System.currentTimeMillis();
+            delay = Math.max(delay, untilMidnight);
+        }
+        return delay > 0 ? delay : 60_000;
     }
 
     /** A reply's shape with long values cut short, for error messages (no audio, no key in it). */
