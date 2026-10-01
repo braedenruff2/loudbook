@@ -151,9 +151,11 @@ def preload_onnxruntime():
     if not spec or not spec.origin: return
     pkg = os.path.dirname(spec.origin)
     site = os.path.dirname(pkg)
-    found = sorted(set(glob.glob(os.path.join(pkg, "**", "onnxruntime*.dll"), recursive=True)
-                       + glob.glob(os.path.join(site, "sherpa_onnx*", "**", "onnxruntime*.dll"), recursive=True)
-                       + glob.glob(os.path.join(site, "onnxruntime", "capi", "onnxruntime.dll"))))
+    found = sorted(set(glob.glob(os.path.join(site, "**", "onnxruntime*.dll"), recursive=True)
+                       + glob.glob(os.path.join(sys.prefix, "**", "onnxruntime*.dll"), recursive=True)
+                       + glob.glob(os.path.join(sys.base_prefix, "**", "onnxruntime*.dll"), recursive=True)))
+    if not found:
+        print("Loudbook PC voice: sherpa_onnx files:", sorted(os.listdir(pkg))[:60], flush=True)
     print("Loudbook PC voice: onnxruntime candidates:", found or "none", flush=True)
     for dll in [f for f in found if os.path.basename(f).lower() == "onnxruntime.dll"]:
         try:
