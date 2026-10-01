@@ -142,9 +142,33 @@ def token_ok(token):
 
 
 # ------------------------------------------------------------------ the voice
+def preload_onnxruntime():
+    """Windows 11 keeps an older onnxruntime.dll in System32 (for Windows ML) that gets picked up
+    instead of the one sherpa-onnx ships with. Load sherpa-onnx's own copy first, by full path."""
+    if os.name != "nt": return
+    import ctypes, glob, importlib.util
+    spec = importlib.util.find_spec("sherpa_onnx")
+    if not spec or not spec.origin: return
+    pkg = os.path.dirname(spec.origin)
+    site = os.path.dirname(pkg)
+    found = sorted(set(glob.glob(os.path.join(pkg, "**", "onnxruntime*.dll"), recursive=True)
+                       + glob.glob(os.path.join(site, "sherpa_onnx*", "**", "onnxruntime*.dll"), recursive=True)
+                       + glob.glob(os.path.join(site, "onnxruntime", "capi", "onnxruntime.dll"))))
+    print("Loudbook PC voice: onnxruntime candidates:", found or "none", flush=True)
+    for dll in [f for f in found if os.path.basename(f).lower() == "onnxruntime.dll"]:
+        try:
+            os.add_dll_directory(os.path.dirname(dll))
+            ctypes.WinDLL(dll)
+            print("Loudbook PC voice: using", dll, flush=True)
+            return
+        except OSError as e:
+            print("Loudbook PC voice: couldn't load", dll, e, flush=True)
+
+
 class Engine:
     """Kokoro v1.0 through sherpa-onnx, on all the PC's cores (or the GPU if this sherpa-onnx has CUDA)."""
     def __init__(self):
+        preload_onnxruntime()
         import sherpa_onnx
         d = os.path.join(MODELS, "kokoro-multi-lang-v1_0")
         lex = ",".join(os.path.join(d, n) for n in ("lexicon-us-en.txt", "lexicon-zh.txt") if os.path.exists(os.path.join(d, n)))
