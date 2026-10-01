@@ -183,6 +183,7 @@ public class KindleService extends AccessibilityService {
         return null;
     }
 
+    private volatile List<Bit> lastEdges = new ArrayList<>();
     private static final class Bit { final String text; final Rect r; Bit(String t, Rect r) { text = t; this.r = r; } }
     private static final Pattern CHROME = Pattern.compile("(?i)^(location \\d+.*|page \\d+.*|\\d+\\s*%.*|\\d+ (min|mins|hr|hrs|hours?|minutes?) left.*|learning reading speed.*|.*\\bof \\d+\\s*$)");
 
@@ -197,8 +198,18 @@ public class KindleService extends AccessibilityService {
         collect(root, bits, 0);
         int h = Math.max(1, screen.height());
         List<Bit> body = new ArrayList<>();
+        List<Bit> edges = new ArrayList<>();
         for (Bit b : bits) {
             String t = b.text.trim();
+            // a short line that was in the same place on the last page too is a running header or
+            // footer (the book's title, say), not part of the text
+            boolean nearEdge = b.r.top < screen.top + h * 0.2 || b.r.bottom > screen.bottom - h * 0.15;
+            if (nearEdge && t.length() < 80) {
+                edges.add(b);
+                boolean repeated = false;
+                for (Bit o : lastEdges) repeated |= o.text.equals(b.text) && Math.abs(o.r.top - b.r.top) < 60;
+                if (repeated) continue;
+            }
             boolean edge = b.r.top < screen.top + h * 0.08 || b.r.bottom > screen.bottom - h * 0.07;
             if (edge && t.length() < 80) { if (b.r.top < screen.top + h * 0.08 && p.title.isEmpty() && t.length() > 2 && !CHROME.matcher(t).matches()) p.title = t; continue; }
             if (CHROME.matcher(t).matches() && t.length() < 60) continue;
@@ -224,6 +235,7 @@ public class KindleService extends AccessibilityService {
             if (longBit) { p.paragraphs.add(para.toString()); para.setLength(0); }
         }
         if (para.length() > 0) p.paragraphs.add(para.toString());
+        lastEdges = edges;
         StringBuilder sig = new StringBuilder();
         for (String s : p.paragraphs) sig.append(s.length() > 40 ? s.substring(0, 40) : s).append('|');
         p.signature = sig.toString();

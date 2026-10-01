@@ -588,7 +588,7 @@ public class ReaderService extends Service {
                 if (chapter != ch) return;
                 if (kt != null && "kindle".equals(ch.site)) {
                     // Kindle: turn the page a few sentences before the end, so the next is ready
-                    if (next >= ch.size() - 3) kindleMore(ch);
+                    if (next >= ch.size() - 2) kindleMore(ch);
                     long until = System.currentTimeMillis() + 10_000;
                     while (gen == myGen && next >= ch.size() && kindleBusy && System.currentTimeMillis() < until) { heard(ch, marks, myGen); sleep(60); }
                     if (gen != myGen) return;
