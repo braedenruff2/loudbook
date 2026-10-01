@@ -330,7 +330,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         });
     }
 
-    private void inject(String url) {
+    private void inject(String url) { inject(web, url); }
+    private void inject(WebView web, String url) {
         if (url == null || !url.startsWith("http")) return;
         String fixes = prefs.getString("fixes", "");
         boolean tidy = prefs.getBoolean("tidy", true);
@@ -421,6 +422,37 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     @Override public void onStatus(String text, boolean error) {
         statusText.setText(TextUtils.isEmpty(text) ? (statusText.getTag() != null ? statusText.getTag().toString() : "") : text);
         statusText.setTextColor(error ? C_RED : C_DIM);
+    }
+
+    // Gemini records a chapter in one request, which takes a while: the next chapter is opened
+    // quietly in a hidden browser near the end of this one, so its recording is ready in time.
+    private WebView pre;
+    @Override public void onPrefetch(String url) {
+        if (pre == null) {
+            pre = new WebView(this);
+            WebSettings ps = pre.getSettings();
+            ps.setJavaScriptEnabled(true);
+            ps.setDomStorageEnabled(true);
+            pre.addJavascriptInterface(new PreBridge(), "LoudbookNative");
+            pre.setWebViewClient(new WebViewClient() {
+                @Override public void onPageFinished(WebView v, String u) { if (u != null && u.startsWith("http")) inject(pre, u); }
+            });
+            pre.setAlpha(0f);
+            ((ViewGroup) web.getParent()).addView(pre, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1));
+        }
+        pre.loadUrl(url);
+    }
+    final class PreBridge {
+        @JavascriptInterface public void onChapter(String json) {
+            main.post(() -> {
+                try { Chapter c = new Chapter(new JSONObject(json)); if (svc != null) svc.cloudPrefetch(c); }
+                catch (Exception e) { Log.w(TAG, "prefetch", e); }
+                if (pre != null) pre.loadUrl("about:blank");
+            });
+        }
+        @JavascriptInterface public void onNoChapter(String json) { }
+        @JavascriptInterface public String home() { return "{}"; }
+        @JavascriptInterface public void resume(String url) { }
     }
 
     @Override public void onNeedChapter(String url) {
@@ -751,11 +783,13 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         gStyle.setTextColor(C_INK); gStyle.setTextSize(13); gStyle.setMinLines(2);
         gStyle.setText(prefs.getString("cloudStyle", CloudVoice.DEFAULT_STYLE));
         box.addView(gStyle);
-        Button gHear = smallButton("Save and hear it");
+        Button gHear = smallButton("Save and hear it (uses a request)");
         box.addView(gHear);
         Runnable showG = () -> {
             String err = svc != null ? svc.cloudError : "";
-            gInfo.setText("Google's Gemini voice is one of the best-rated anywhere. It needs a free API key from aistudio.google.com (Get API key). "
+            int used = svc != null ? svc.cloudRequestsToday() : 0;
+            gInfo.setText("Requests used today: " + used + ". Each chapter is read with one request (two if Google stops a long one early), and recordings are kept, so hearing a chapter again is free.\n"
+                + "Google's Gemini voice is one of the best-rated anywhere. It needs a free API key from aistudio.google.com (Get API key). "
                 + "The free tier has daily limits, and Google may use what's sent to improve its products; past that, Google charges about $0.81 per hour of listening. "
                 + "Whenever Gemini can't be reached or the limit is hit, your PC or the phone reads instead."
                 + (err.isEmpty() ? "" : "\nLast problem: " + err));

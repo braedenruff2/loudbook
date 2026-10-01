@@ -53,7 +53,12 @@ at [aistudio.google.com](https://aistudio.google.com) (**Get API key**), then pa
 voice**. Pick a voice ("Sulafat" is warm; "Charon" is a clear storyteller) and tap **Save and hear
 it**.
 
-- **What it sends:** the chapter text goes to Google a paragraph at a time.
+- **What it sends:** the whole chapter goes to Google in one request. Google may stop a long one
+  early; if it does, the rest goes in a second request.
+- **Recordings are kept:** each recording is cut into sentences, so highlighting works as usual,
+  and it's kept on the phone, so hearing a chapter again uses no requests.
+- **Next chapter:** about halfway through a chapter, the next one is recorded in advance, so the
+  page turn doesn't wait.
 - **Free tier:** has daily limits, and Google may use what's sent to improve its products.
 - **Paid tier:** Google charges roughly $0.81 per hour of listening.
 - **Fallback:** when the limit is hit or there's no connection, the PC voice or the phone's voice
