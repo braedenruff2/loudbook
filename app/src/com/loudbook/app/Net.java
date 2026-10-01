@@ -32,6 +32,7 @@ final class Net {
         long have = part.exists() ? part.length() : 0;
         if (expected > 0 && have > expected) { part.delete(); have = 0; }
         HttpURLConnection c = open(url, have);
+        long fullSize = 0;
         int code = c.getResponseCode();
         if (code == 416 && expected > 0 && have == expected) { c.disconnect(); }
         else {
@@ -40,6 +41,7 @@ final class Net {
             if (!append) have = 0;
             long len = c.getContentLengthLong();
             long total = len > 0 ? have + len : expected;
+            fullSize = len > 0 ? have + len : 0;
             try (InputStream in = c.getInputStream(); OutputStream out = new FileOutputStream(part, append)) {
                 byte[] buf = new byte[1 << 16]; int n; long last = 0;
                 while ((n = in.read(buf)) > 0) {
@@ -50,6 +52,7 @@ final class Net {
             } finally { c.disconnect(); }
         }
         if (expected > 0 && part.length() != expected) throw new java.io.IOException("download incomplete, will retry");
+        if (expected <= 0 && fullSize > 0 && part.length() != fullSize) throw new java.io.IOException("download incomplete, will retry");
         if (dest.exists()) dest.delete();
         if (!part.renameTo(dest)) throw new java.io.IOException("couldn't save " + dest.getName());
     }

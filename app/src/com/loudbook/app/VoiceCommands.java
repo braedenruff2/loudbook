@@ -69,21 +69,55 @@ final class VoiceCommands {
                 try (java.io.FileOutputStream o = new java.io.FileOutputStream(f)) { o.write(k.getBytes("UTF-8")); }
             }
         } catch (Exception e) { Log.i(TAG, "keywords refresh skipped: " + e.getMessage()); }
+        checkKeywords(d);
+        // the native code can take the whole app down; remember we were in here so the next start
+        // turns voice commands off instead of crashing again
+        prefs(c).edit().putBoolean("cmdLoading", true).commit();
         OnlineTransducerModelConfig tr = OnlineTransducerModelConfig.builder()
             .setEncoder(new File(d, "kws-encoder.onnx").getPath())
             .setDecoder(new File(d, "kws-decoder.onnx").getPath())
             .setJoiner(new File(d, "kws-joiner.onnx").getPath()).build();
         OnlineModelConfig m = OnlineModelConfig.builder().setTransducer(tr)
-            .setTokens(new File(d, "kws-tokens.txt").getPath()).setNumThreads(1).setProvider("cpu").build();
+            .setTokens(new File(d, "kws-tokens.txt").getPath()).setNumThreads(1).setProvider("cpu").setDebug(false).build();
         KeywordSpotterConfig kc = KeywordSpotterConfig.builder()
             .setFeatureConfig(FeatureConfig.builder().setSampleRate(RATE).setFeatureDim(80).build())
             .setOnlineModelConfig(m).setKeywordsFile(new File(d, "keywords.txt").getPath())
             .setKeywordsThreshold(0.25f).setKeywordsScore(1.0f).setMaxActivePaths(4).build();
         kws = new KeywordSpotter(kc);
         spk = new SpeakerEmbeddingExtractor(SpeakerEmbeddingExtractorConfig.builder()
-            .setModel(new File(d, "speaker.onnx").getPath()).setNumThreads(1).setProvider("cpu").build());
+            .setModel(new File(d, "speaker.onnx").getPath()).setNumThreads(1).setProvider("cpu").setDebug(false).build());
+        // try both once, so a problem shows up here and not in the middle of setup
+        embed(new float[RATE]);
+        spot(new float[RATE / 2]);
+        prefs(c).edit().putBoolean("cmdLoading", false).commit();
     }
     boolean loaded() { return kws != null; }
+
+    /** True once if the app died while loading the voice-command models last time (and turns them off). */
+    static boolean crashedLastTime(Context c) {
+        SharedPreferences p = prefs(c);
+        if (!p.getBoolean("cmdLoading", false)) return false;
+        p.edit().putBoolean("cmdLoading", false).putBoolean("voiceCmds", false).commit();
+        return true;
+    }
+
+    /** Every piece of every keyword must be in the spotter's token list, or the native code quits. */
+    static void checkKeywords(File d) {
+        java.util.Set<String> tokens = new java.util.HashSet<>();
+        try {
+            for (String line : java.nio.file.Files.readAllLines(new File(d, "kws-tokens.txt").toPath(), java.nio.charset.StandardCharsets.UTF_8)) {
+                String t = line.trim();
+                int sp = t.lastIndexOf(' ');
+                if (sp > 0) tokens.add(t.substring(0, sp));
+            }
+            for (String line : java.nio.file.Files.readAllLines(new File(d, "keywords.txt").toPath(), java.nio.charset.StandardCharsets.UTF_8)) {
+                for (String part : line.trim().split("\\s+")) {
+                    if (part.isEmpty() || part.startsWith(":") || part.startsWith("#") || part.startsWith("@")) continue;
+                    if (!tokens.contains(part)) throw new IllegalStateException("the word list doesn't match the model (" + part + ")");
+                }
+            }
+        } catch (java.io.IOException e) { throw new IllegalStateException("voice command files are incomplete: " + e.getMessage()); }
+    }
 
     /** A unit-length voice fingerprint of a bit of speech. */
     synchronized float[] embed(float[] audio) {

@@ -83,6 +83,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             svc = ((ReaderService.LocalBinder) b).service();
             svc.setListener(MainActivity.this);
             svc.setAppVisible(visible);
+            runSelfTest();
             speedBtn.setText(fmtSpeed(svc.speed()));
             if (pageChapter != null && svc.chapter() == null) offer(pageChapter);
         }
@@ -106,6 +107,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             if (state != null) web.restoreState(state); else web.loadUrl(HOME);
         }
         showLastCrash();
+        if (VoiceCommands.crashedLastTime(this))
+            main.postDelayed(() -> onStatus("Voice commands closed Loudbook while starting, so they're off for now. An update will fix it.", true), 1500);
     }
 
     // If the app ever crashes, the next launch shows what happened, with a Copy button, so it can
@@ -417,6 +420,17 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         return super.onKeyDown(code, e);
     }
 
+    // ---------------------------------------------------------------- emulator checks (CI only)
+    private void runSelfTest() {
+        String t = getIntent() != null ? getIntent().getStringExtra("selftest") : null;
+        if (t == null || svc == null) return;
+        getIntent().removeExtra("selftest");
+        if (t.contains("commands")) new Thread(() -> {
+            SelfTest.commands(getApplicationContext(), svc.commands);
+            if (t.contains("teach")) main.post(() -> { SelfTest.step("teach"); prefs.edit().putBoolean("voiceCmds", true).apply(); setUpCommands(true, () -> SelfTest.step("DONE teach")); });
+        }, "lb-selftest").start();
+    }
+
     // ---------------------------------------------------------------- PC voice pairing
     /** Finds the PC on the home network, then pairs with the one-time code it shows. */
     private void pairPc(Runnable refresh) {
@@ -569,6 +583,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 done = "Voice setup failed: " + t.getMessage();
             }
             final String msg = done;
+            Log.i("LoudbookTest", "voice setup finished: " + msg);
             main.post(() -> {
                 try { dlg.dismiss(); } catch (Exception ignored) { }
                 if (svc != null) svc.holdListening(false);

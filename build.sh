@@ -15,7 +15,8 @@ ANDROID_JAR=${ANDROID_JAR:-$(find "$PARTS/platform" -name android.jar | head -1)
 LB_CODE=${LB_CODE:-1}
 LB_NAME=${LB_NAME:-0.2.0-local}
 LB_REPO=${LB_REPO:-}
-JNI=$PARTS/jniLibs/arm64-v8a
+ABI=${ABI:-arm64-v8a}                     # x86_64 for the emulator test
+JNI=$PARTS/jniLibs/$ABI
 MODEL=$(find "$PARTS" -maxdepth 1 -type d -name "kokoro*" | head -1)
 OUT=$ROOT/build
 for need in "$BT/aapt2" "$BT/lib/d8.jar" "$BT/zipalign" "$BT/lib/apksigner.jar" "$ANDROID_JAR" "$JNI/libsherpa-onnx-jni.so" "$MODEL/tokens.txt"; do
@@ -61,9 +62,9 @@ java -cp "$BT/lib/d8.jar" com.android.tools.r8.D8 --release --min-api 26 --lib "
 
 echo "- package"
 cp "$OUT/base.apk" "$OUT/apk/unsigned.apk"
-STAGE=$OUT/stage; rm -rf "$STAGE"; mkdir -p "$STAGE/lib/arm64-v8a" "$STAGE/assets"
+STAGE=$OUT/stage; rm -rf "$STAGE"; mkdir -p "$STAGE/lib/$ABI" "$STAGE/assets"
 cp "$OUT/dex/classes.dex" "$STAGE/"
-cp "$JNI/libsherpa-onnx-jni.so" "$JNI/libonnxruntime.so" "$STAGE/lib/arm64-v8a/"
+cp "$JNI/libsherpa-onnx-jni.so" "$JNI/libonnxruntime.so" "$STAGE/lib/$ABI/"
 cp -r app/assets/web "$STAGE/assets/"
 mkdir -p "$STAGE/assets/kokoro"
 BIG=""; [ "${VOICE_IN_APK:-0}" = 1 ] && BIG="model.onnx voices.bin"
@@ -75,7 +76,7 @@ cp -r "$MODEL/espeak-ng-data" "$STAGE/assets/kokoro/"
   zip -q "$OUT/apk/unsigned.apk" classes.dex
   zip -q -r "$OUT/apk/unsigned.apk" assets/web assets/kokoro/espeak-ng-data $(ls assets/kokoro/*.txt 2>/dev/null)
   # the model, voices and native code are stored uncompressed so they can be read in place
-  zip -q -0 "$OUT/apk/unsigned.apk" $(ls assets/kokoro/*.onnx assets/kokoro/*.bin 2>/dev/null) lib/arm64-v8a/*.so )
+  zip -q -0 "$OUT/apk/unsigned.apk" $(ls assets/kokoro/*.onnx assets/kokoro/*.bin 2>/dev/null) lib/$ABI/*.so )
 if [ "${CORE:-0}" = 1 ]; then cp "$OUT/apk/unsigned.apk" "$OUT/core-unsigned.apk"; ls -la "$OUT/core-unsigned.apk"; exit 0; fi
 
 "$BT/zipalign" -P 16 -f 4 "$OUT/apk/unsigned.apk" "$OUT/apk/aligned.apk" 2>/dev/null || \

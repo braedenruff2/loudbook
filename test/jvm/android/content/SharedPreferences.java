@@ -13,5 +13,6 @@ public class SharedPreferences {
         public Editor putInt(String k, int v) { m.put(k, v); return this; }
         public Editor remove(String k) { m.remove(k); return this; }
         public void apply() { }
+        public boolean commit() { return true; }
     }
 }

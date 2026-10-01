@@ -8,7 +8,8 @@ mkdir -p downloads parts
 get() { [ -s "downloads/$2" ] || curl -fsSL --retry 5 -o "downloads/$2" "$1"; }
 get "https://github.com/k2-fsa/sherpa-onnx/releases/download/$SV/sherpa-onnx-$SV-android.tar.bz2" sherpa-onnx-android.tar.bz2
 get "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2" kokoro-multi-lang-v1_0.tar.bz2
-tar xjf downloads/sherpa-onnx-android.tar.bz2 -C parts ./jniLibs/arm64-v8a/libsherpa-onnx-jni.so ./jniLibs/arm64-v8a/libonnxruntime.so
+tar xjf downloads/sherpa-onnx-android.tar.bz2 -C parts ./jniLibs/arm64-v8a/libsherpa-onnx-jni.so ./jniLibs/arm64-v8a/libonnxruntime.so \
+  ./jniLibs/x86_64/libsherpa-onnx-jni.so ./jniLibs/x86_64/libonnxruntime.so
 [ -e parts/kokoro-multi-lang-v1_0/model.onnx ] || tar xjf downloads/kokoro-multi-lang-v1_0.tar.bz2 -C parts
 
 SDK=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}
