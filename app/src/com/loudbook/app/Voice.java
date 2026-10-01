@@ -152,7 +152,7 @@ final class Voice {
         while (first < s.length && Math.abs(s[first]) < quiet) first++;
         while (last > first && Math.abs(s[last]) < quiet) last--;
         if (first >= last) return s;
-        int from = Math.max(0, first - rate * 40 / 1000);
+        int from = Math.max(0, first - rate * 60 / 1000);
         int to = Math.min(s.length, last + 1 + rate * 140 / 1000);
         if (from == 0 && to == s.length) return s;
         float[] out = new float[to - from];

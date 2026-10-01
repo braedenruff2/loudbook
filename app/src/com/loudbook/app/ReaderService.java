@@ -87,6 +87,7 @@ public class ReaderService extends Service {
     private PowerManager.WakeLock wake;
     private AudioManager audio;
     private AudioFocusRequest focus;
+    private boolean pausedForFocus = false;
     private boolean foreground = false;
 
     // ---------------------------------------------------------------- lifecycle
@@ -94,6 +95,7 @@ public class ReaderService extends Service {
         super.onCreate();
         prefs = getSharedPreferences("lb", MODE_PRIVATE);
         speed = prefs.getFloat("speed", 1f);
+        pauseScale = prefs.getFloat("pauseScale", 1f);
         sid = prefs.getInt("voice", 3);
         autoNext = prefs.getBoolean("autoNext", true);
         audio = (AudioManager) getSystemService(AUDIO_SERVICE);
@@ -350,6 +352,7 @@ public class ReaderService extends Service {
                     current = c;
                     marks.add(new long[]{framesWritten, next});
                     if (!stream(t, c, myGen, ch, marks)) return;
+                    if (!rest(t, gapAfter(ch, next), myGen, ch, marks)) return;
                 }
                 next++;
             }
@@ -372,6 +375,42 @@ public class ReaderService extends Service {
             if (n < 0) return false;
             off += n;
             framesWritten += n;
+            heard(ch, marks, myGen);
+        }
+        return gen == myGen;
+    }
+
+    /**
+     * The pause after a piece of text, like a reader would leave: a full stop gets a proper
+     * beat, a new paragraph a little more, a comma-split piece only a breath. Scaled by the
+     * "pause between sentences" setting and shortened at higher speeds.
+     */
+    private double gapAfter(Chapter ch, int i) {
+        if (i + 1 >= ch.size()) return 0;
+        Chapter.Chunk now = ch.chunks.get(i), nx = ch.chunks.get(i + 1);
+        String t = now.text.trim().replaceAll("[\"'\u201d\u2019)\\]*]+$", "");
+        double g;
+        if (now.block == -1) g = 0.75;                                  // after the chapter title
+        else if (nx.block != now.block) g = 0.6;                        // new paragraph
+        else if (t.matches("(?s).*[.!?\u2026]$")) g = 0.38;            // end of a sentence
+        else if (t.matches("(?s).*[,;:\u2014\u2013-]$")) g = 0.16;    // a long sentence split at a comma
+        else g = 0.1;
+        return g * pauseScale / Math.max(0.6, speed);
+    }
+    float pauseScale = 1f;
+    void setPauseScale(float f) { pauseScale = f; prefs.edit().putFloat("pauseScale", f).apply(); }
+
+    /** Queues silence (a pause between sentences) behind what's playing. false = interrupted. */
+    private boolean rest(AudioTrack t, double secs, int myGen, Chapter ch, java.util.ArrayDeque<long[]> marks) {
+        int frames = (int) (secs * t.getSampleRate());
+        if (frames <= 0) return gen == myGen;
+        float[] z = new float[Math.min(frames, 2048)];
+        while (frames > 0) {
+            if (gen != myGen) return false;
+            if (paused) { sleep(40); continue; }
+            int n = t.write(z, 0, Math.min(z.length, frames), AudioTrack.WRITE_BLOCKING);
+            if (n < 0) return false;
+            frames -= n; framesWritten += n;
             heard(ch, marks, myGen);
         }
         return gen == myGen;
@@ -481,12 +520,21 @@ public class ReaderService extends Service {
     private static void sleep(long ms) { try { Thread.sleep(ms); } catch (InterruptedException ignored) {} }
 
     // ---------------------------------------------------------------- audio focus, notification
+    /**
+     * One focus request for the life of the service. (A new request each time playback restarted
+     * made Android tell the previous one it had lost focus, which paused the new chapter right
+     * after a page turn, or after skipping a sentence.)
+     */
     private boolean requestFocus() {
-        focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+        if (focus == null) focus = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
             .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-            .setOnAudioFocusChangeListener(change -> {
-                if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) main.post(this::pause);
-            }).build();
+            .setWillPauseWhenDucked(true)
+            .setOnAudioFocusChangeListener(change -> main.post(() -> {
+                if (change == AudioManager.AUDIOFOCUS_LOSS) { pausedForFocus = false; pause(); }
+                else if (change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
+                    if (playing && !paused) { pause(); pausedForFocus = true; }
+                } else if (change == AudioManager.AUDIOFOCUS_GAIN && pausedForFocus) { pausedForFocus = false; play(); }
+            })).build();
         return audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
     }
 

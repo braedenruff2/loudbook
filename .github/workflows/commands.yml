@@ -1,0 +1,41 @@
+# Prepares the voice-command models (keyword spotter + speaker check), tests them, and publishes
+# them as the commands-1 release the app downloads from. Runs when tools/commands changes.
+name: Voice commands models
+on:
+  push:
+    branches: [main]
+    paths: ['tools/commands/**', '.github/workflows/commands.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: downloads
+          key: commands-kws-kokoro-1
+      - name: Get models
+        run: |
+          mkdir -p downloads parts
+          get() { [ -s "downloads/$2" ] || curl -fsSL --retry 5 -o "downloads/$2" "$1" || rm -f "downloads/$2"; }
+          R=https://github.com/k2-fsa/sherpa-onnx/releases/download
+          get $R/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2 kws.tar.bz2
+          get $R/tts-models/kokoro-multi-lang-v1_0.tar.bz2 kokoro.tar.bz2
+          for m in 3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx wespeaker_en_voxceleb_resnet34_LM.onnx nemo_en_titanet_small.onnx 3dspeaker_speech_eres2net_base_sv_en_voxceleb_16k.onnx; do
+            get $R/speaker-recongition-models/$m $m
+          done
+          tar xjf downloads/kws.tar.bz2 -C parts
+          tar xjf downloads/kokoro.tar.bz2 -C parts
+          ls -la downloads parts/*kws*
+          pip install -q sherpa-onnx sentencepiece numpy
+      - name: Prepare and test
+        run: python3 tools/commands/prepare.py parts/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01 parts/kokoro-multi-lang-v1_0 $(ls downloads/*.onnx)
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view commands-1 >/dev/null 2>&1 || gh release create commands-1 --latest=false --title "Voice command models" --notes "Keyword spotter and speaker check, downloaded by the app when voice commands are turned on."
+          gh release upload commands-1 out/* results.md --clobber

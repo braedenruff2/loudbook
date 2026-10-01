@@ -441,6 +441,20 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         });
         box.addView(speed);
 
+        box.addView(label("Pause between sentences"));
+        Spinner gaps = new Spinner(this);
+        String[] gl = {"Short", "Normal", "Long", "Very long"};
+        float[] gv = {0.5f, 1f, 1.5f, 2f};
+        gaps.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, gl));
+        int gsel = 1;
+        for (int i = 0; i < gv.length; i++) if (svc != null && Math.abs(svc.pauseScale - gv[i]) < 0.01f) gsel = i;
+        gaps.setSelection(gsel);
+        gaps.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> p, View v, int i, long id) { if (svc != null) svc.setPauseScale(gv[i]); }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> p) { }
+        });
+        box.addView(gaps);
+
         Switch auto = toggle("Roll into the next chapter", svc == null || svc.autoNext, (b, on) -> { if (svc != null) svc.setAutoNext(on); });
         box.addView(auto);
 
