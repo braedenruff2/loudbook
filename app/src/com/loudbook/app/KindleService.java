@@ -155,6 +155,7 @@ public class KindleService extends AccessibilityService {
                     toast("No book text found. Open a book in Kindle. (If one is open, its publisher may not let screen readers read it.)");
                     return;
                 }
+                accept(p);
                 svc.startKindle(p);
                 watch();
             });
@@ -168,6 +169,7 @@ public class KindleService extends AccessibilityService {
         final List<String> paragraphs = new ArrayList<>();
         String title = "";
         String signature = "";
+        List<Bit> edges = new ArrayList<>();
     }
 
     private AccessibilityNodeInfo kindleRoot() {
@@ -184,7 +186,10 @@ public class KindleService extends AccessibilityService {
     }
 
     private volatile List<Bit> lastEdges = new ArrayList<>();
-    private static final class Bit { final String text; final Rect r; Bit(String t, Rect r) { text = t; this.r = r; } }
+    /** This page is the one being read now: its header and footer are known from here on. */
+    void accept(Page p) { lastEdges = p.edges; }
+
+    static final class Bit { final String text; final Rect r; Bit(String t, Rect r) { text = t; this.r = r; } }
     private static final Pattern CHROME = Pattern.compile("(?i)^(location \\d+.*|page \\d+.*|\\d+\\s*%.*|\\d+ (min|mins|hr|hrs|hours?|minutes?) left.*|learning reading speed.*|.*\\bof \\d+\\s*$)");
 
     /** The text on the Kindle page, in reading order, without the bars around it. */
@@ -235,9 +240,10 @@ public class KindleService extends AccessibilityService {
             if (longBit) { p.paragraphs.add(para.toString()); para.setLength(0); }
         }
         if (para.length() > 0) p.paragraphs.add(para.toString());
-        lastEdges = edges;
+        p.edges = edges;
+        // what's on screen, unfiltered: tells whether the page really changed
         StringBuilder sig = new StringBuilder();
-        for (String s : p.paragraphs) sig.append(s.length() > 40 ? s.substring(0, 40) : s).append('|');
+        for (Bit b : bits) sig.append(b.text.length() > 40 ? b.text.substring(0, 40) : b.text).append('|');
         p.signature = sig.toString();
         return p;
     }
@@ -280,7 +286,9 @@ public class KindleService extends AccessibilityService {
                 if (!p.paragraphs.isEmpty() && !p.signature.equals(beforeSig)) {
                     try { Thread.sleep(250); } catch (InterruptedException ignored) { }   // let it finish drawing
                     Page q = readPage();
-                    return q.paragraphs.isEmpty() ? p : q;
+                    Page got = q.paragraphs.isEmpty() ? p : q;
+                    accept(got);
+                    return got;
                 }
             }
             root = kindleRoot();
