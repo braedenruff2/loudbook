@@ -19,6 +19,8 @@ you pair can use it:
 import base64, collections, datetime, hashlib, hmac, http.server, ipaddress, json, os, secrets, socket, ssl, sys
 import threading, time
 
+os.environ.setdefault("TQDM_DISABLE", "1")       # no progress bars filling the log for every sentence
+
 VERSION = 1
 PORT = int(os.environ.get("LOUDBOOK_PORT", "8770"))
 DISCOVERY_PORT = PORT + 1
