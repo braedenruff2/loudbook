@@ -795,7 +795,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     private Runnable settingsSave;
     private void showSettings() {
         LinearLayout box = vbox(dp(20), dp(8));
-        box.addView(label("Voice"));
+        box.addView(header("Voice"));
         Spinner voices = new Spinner(this);
         String[] names = new String[Voice.VOICES.length];
         int sel = 0;
@@ -864,7 +864,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         }
         box.addView(info);
 
-        box.addView(label("Kindle"));
+        box.addView(header("Kindle"));
         TextView kInfo = label("");
         box.addView(kInfo);
         Button kOn = smallButton("Turn on Kindle reading");
@@ -918,7 +918,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             }, "lb-kindle-dump").start();
         });
 
-        box.addView(label("Best voice: Google Gemini (online)"));
+        box.addView(header("Best voice: Google Gemini (online)"));
         TextView gInfo = label("");
         box.addView(gInfo);
         Switch gOn = toggle("Read with Gemini", prefs.getBoolean("cloudOn", false), null);
@@ -984,7 +984,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         });
         settingsSave = saveG;
 
-        box.addView(label("Voice on your PC (saves battery)"));
+        box.addView(header("Voice on your PC (saves battery)"));
         TextView pcInfo = label("");
         box.addView(pcInfo);
         Switch pcOn = toggle("Read with my PC when it's on", prefs.getBoolean("pcOn", false), null);
@@ -1089,7 +1089,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             showPc.run();
         });
 
-        box.addView(label("Voice commands"));
+        box.addView(header("Voice commands"));
         box.addView(label("Easiest: \u201cHey Google, pause\u201d, \u201cHey Google, resume\u201d, \u201cHey Google, rewind 30 seconds\u201d, \u201cHey Google, next\u201d (next sentence). Works with the screen off, even in a noisy room. Loudbook's own listening below is optional."));
         Switch cmds = toggle("Listen for \u201cLoudbook\u201d + play, pause, back, forward, beginning, end", prefs.getBoolean("voiceCmds", false), null);
         box.addView(cmds);
@@ -1235,7 +1235,13 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             for (float st : steps) if (st > s + 0.01f) { nx = st; break; }
             svc.setSpeed(nx); speedBtn.setText(fmtSpeed(nx));
         });
-        ctl.addView(prevCh); ctl.addView(back); ctl.addView(playBtn, big); ctl.addView(fwd); ctl.addView(nextCh); ctl.addView(speedBtn);
+        // the small buttons share the width evenly, so the speed never gets squeezed into a column
+        speedBtn.setSingleLine(true);
+        speedBtn.setPadding(0, dp(4), 0, dp(4));
+        for (View v : new View[]{prevCh, back}) ctl.addView(v, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        big.setMargins(dp(6), 0, dp(6), 0);
+        ctl.addView(playBtn, big);
+        for (View v : new View[]{fwd, nextCh, speedBtn}) ctl.addView(v, new LinearLayout.LayoutParams(0, dp(48), 1f));
         player.addView(ctl);
         root.addView(player);
         renderNow();
@@ -1247,6 +1253,11 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     private LinearLayout vbox(int padH, int padV) { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.VERTICAL); l.setPadding(padH, padV, padH, padV); return l; }
     private LinearLayout hbox(int padH, int padV) { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.HORIZONTAL); l.setGravity(Gravity.CENTER_VERTICAL); l.setPadding(padH, padV, padH, padV); return l; }
     private TextView text(float sp, int color, boolean bold) { TextView t = new TextView(this); t.setTextSize(sp); t.setTextColor(color); if (bold) t.setTypeface(Typeface.DEFAULT_BOLD); return t; }
+    /** A section title in Settings: bigger and brighter, with room above. */
+    private TextView header(String s) {
+        TextView t = text(17, C_AMBER, true); t.setText(s); t.setPadding(0, dp(22), 0, dp(6));
+        return t;
+    }
     private TextView label(String s) { TextView t = text(13, C_DIM, false); t.setText(s); t.setPadding(0, dp(12), 0, dp(4)); return t; }
     private TextView iconButton(String s) {
         TextView t = text(20, C_INK, false); t.setText(s); t.setGravity(Gravity.CENTER);
