@@ -57,6 +57,7 @@ public class KindleService extends AccessibilityService {
 
     @Override protected void onServiceConnected() {
         me = this;
+        Log.i("LoudbookTest", "kindle service connected");
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
         bound = bindService(new Intent(this, ReaderService.class), conn, Context.BIND_AUTO_CREATE);
         main.post(tick);
@@ -155,7 +156,8 @@ public class KindleService extends AccessibilityService {
             }
             return false;
         });
-        try { wm.addView(bubble, bubbleLp); } catch (Exception e) { Log.w(TAG, "kindle button", e); bubble = null; }
+        try { wm.addView(bubble, bubbleLp); Log.i("LoudbookTest", "kindle button shown at " + bubbleLp.x + "," + bubbleLp.y); }
+        catch (Exception e) { Log.w(TAG, "kindle button", e); bubble = null; }
     }
 
     private final boolean[] longPressed = {false};
@@ -189,11 +191,13 @@ public class KindleService extends AccessibilityService {
 
     private void hideBubble() {
         if (bubble == null) return;
+        Log.i("LoudbookTest", "kindle button hidden");
         try { wm.removeView(bubble); } catch (Exception ignored) { }
         bubble = null;
     }
 
     private void tapped() {
+        Log.i("LoudbookTest", "kindle button tapped (service " + (svc != null) + ")");
         if (svc == null) {
             // the reading service isn't connected yet (Loudbook was just started): connect, then go
             if (!bound) bound = bindService(new Intent(this, ReaderService.class), conn, Context.BIND_AUTO_CREATE);
