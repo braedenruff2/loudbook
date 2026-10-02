@@ -23,7 +23,8 @@ import java.io.File;
 import java.util.Locale;
 
 /**
- * Hands-free control: a small keyword spotter listens for the six command words, and each time
+ * Hands-free control: a small keyword spotter listens for the six commands, each said after the
+ * app's name ("Loudbook, pause", so the word alone in a story or on TV never counts), and each time
  * it hears one, a speaker check compares the voice with the profile recorded in setup. Only your
  * voice counts, so the TV, other people and Loudbook's own reading are ignored. Everything runs
  * on the phone; no audio leaves it.
@@ -82,7 +83,6 @@ final class VoiceCommands {
             }
         } catch (Exception e) { Log.i(TAG, "keywords refresh skipped: " + e.getMessage()); }
         checkKeywords(d);
-        File tuned = tuneKeywords(d);
         // the native code can take the whole app down; remember we were in here so the next start
         // turns voice commands off instead of crashing again
         prefs(c).edit().putBoolean("cmdLoading", true).commit();
@@ -94,7 +94,7 @@ final class VoiceCommands {
             .setTokens(new File(d, "kws-tokens.txt").getPath()).setNumThreads(1).setProvider("cpu").setDebug(false).build();
         KeywordSpotterConfig kc = KeywordSpotterConfig.builder()
             .setFeatureConfig(FeatureConfig.builder().setSampleRate(RATE).setFeatureDim(80).build())
-            .setOnlineModelConfig(m).setKeywordsFile(tuned.getPath())
+            .setOnlineModelConfig(m).setKeywordsFile(new File(d, "keywords.txt").getPath())
             .setKeywordsThreshold(0.25f).setKeywordsScore(1.0f).setMaxActivePaths(4).build();
         kws = new KeywordSpotter(kc);
         spk = new SpeakerEmbeddingExtractor(SpeakerEmbeddingExtractorConfig.builder()
@@ -115,36 +115,6 @@ final class VoiceCommands {
         File[] fs = dir(c).listFiles();
         if (fs != null) for (File f : fs) f.delete();
         return true;
-    }
-
-    /**
-     * The word list was tuned on clean, synthetic speech; a real voice across the room needs a
-     * lower bar. Hearing a word too easily is fine: the voice check after it is what keeps the TV
-     * and other people out.
-     */
-    static File tuneKeywords(File d) {
-        File out = new File(d, "keywords-tuned.txt");
-        try {
-            StringBuilder sb = new StringBuilder();
-            for (String line : java.nio.file.Files.readAllLines(new File(d, "keywords.txt").toPath(), java.nio.charset.StandardCharsets.UTF_8)) {
-                if (line.trim().isEmpty()) continue;
-                StringBuilder l = new StringBuilder();
-                for (String part : line.trim().split("\\s+")) {
-                    if (l.length() > 0) l.append(' ');
-                    try {
-                        if (part.startsWith(":")) { l.append(String.format(Locale.US, ":%.2f", Float.parseFloat(part.substring(1)) + 0.8f)); continue; }
-                        if (part.startsWith("#")) { l.append(String.format(Locale.US, "#%.3f", Math.max(0.01f, Float.parseFloat(part.substring(1)) * 0.5f))); continue; }
-                    } catch (NumberFormatException ignored) { }
-                    l.append(part);
-                }
-                sb.append(l).append('\n');
-            }
-            java.nio.file.Files.write(out.toPath(), sb.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            return out;
-        } catch (Exception e) {
-            Log.w(TAG, "keyword tuning", e);
-            return new File(d, "keywords.txt");
-        }
     }
 
     /** Every piece of every keyword must be in the spotter's token list, or the native code quits. */
@@ -332,17 +302,26 @@ final class VoiceCommands {
             r.startRecording();
             synchronized (this) { s = kws.createStream(); }
             short[] buf = new short[1600];                            // 100 ms
-            float[] ring = new float[RATE * 2];                       // the last 2 s
+            float[] ring = new float[RATE * 3];                       // the last 3 s
             int ringPos = 0;
             long cooldownUntil = 0;
+            float peak = 0.01f;
             while (listening) {
                 int n = r.read(buf, 0, buf.length);
                 if (n <= 0) { Thread.sleep(20); continue; }
                 float[] f = new float[n];
                 for (int i = 0; i < n; i++) { f[i] = buf[i] / 32768f; ring[ringPos] = f[i]; ringPos = (ringPos + 1) % ring.length; }
+                // a voice across the room is turned up for the word spotter (it hears quiet speech
+                // much better at a normal level); the voice check uses the sound as it came in
+                float p = 0;
+                for (float x : f) p = Math.max(p, Math.abs(x));
+                peak = Math.max(p, peak * 0.95f);
+                float gain = Math.max(1f, Math.min(12f, 0.5f / Math.max(1e-4f, peak)));
+                float[] lv = f;
+                if (gain > 1.01f) { lv = new float[n]; for (int i = 0; i < n; i++) lv[i] = Math.max(-1f, Math.min(1f, f[i] * gain)); }
                 String heard = null;
                 synchronized (this) {
-                    s.acceptWaveform(f, RATE);
+                    s.acceptWaveform(lv, RATE);
                     while (kws.isReady(s)) {
                         kws.decode(s);
                         KeywordSpotterResult res = kws.getResult(s);
@@ -351,7 +330,7 @@ final class VoiceCommands {
                 }
                 if (heard == null || System.currentTimeMillis() < cooldownUntil) continue;
                 // the word is in the last second or so: check whose voice it is
-                int len = (int) (RATE * 1.6);
+                int len = (int) (RATE * 2.2);                          // "Loudbook, beginning"
                 float[] seg = new float[len];
                 for (int i = 0; i < len; i++) seg[i] = ring[(ringPos - len + i + ring.length * 2) % ring.length];
                 float[] part = speechPart(seg);

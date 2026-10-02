@@ -20,7 +20,7 @@ public class CommandsTest {
         java.util.List<float[]> embs = new java.util.ArrayList<>();
         int found = 0;
         for (String w : VoiceCommands.WORDS) {
-            GeneratedAudio g = tts.generate(Character.toUpperCase(w.charAt(0)) + w.substring(1) + ".", 16, 1.0f);
+            GeneratedAudio g = tts.generate("Loud book, " + w + ".", 16, 1.0f);
             float[] x = resample(g.getSamples(), g.getSampleRate());
             float[] rec = new float[x.length + 8000]; System.arraycopy(x, 0, rec, 4000, x.length);
             String got = vc.spot(rec);
@@ -40,7 +40,7 @@ public class CommandsTest {
         int quiet = 0;
         java.util.Random rnd = new java.util.Random(7);
         for (String w : VoiceCommands.WORDS) {
-            GeneratedAudio g = tts.generate(Character.toUpperCase(w.charAt(0)) + w.substring(1) + ".", 2, 1.1f);
+            GeneratedAudio g = tts.generate("Loud book, " + w + ".", 2, 1.1f);
             float[] x = resample(g.getSamples(), g.getSampleRate());
             for (int i = 0; i < x.length; i++) x[i] = x[i] * 0.2f + (float) (rnd.nextGaussian() * 0.004);
             if (w.equals(vc.spot(pad(x)))) quiet++;

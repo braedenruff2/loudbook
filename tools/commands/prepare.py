@@ -8,6 +8,9 @@ import numpy as np, sherpa_onnx, sentencepiece as spm
 
 KWS, KOKORO, SPEAKERS = sys.argv[1], sys.argv[2], sys.argv[3:]
 WORDS = ["play", "pause", "back", "forward", "beginning", "end"]
+# every command starts with the app's name ("Loudbook, pause"), so a story, the TV or a
+# conversation saying "pause" or "back" on its own never counts
+PREFIX = "LOUD BOOK"
 os.makedirs("out", exist_ok=True)
 R = ["## Voice commands test", ""]
 
@@ -24,7 +27,7 @@ sp = spm.SentencePieceProcessor(); sp.load(f"{KWS}/bpe.model")
 def kw_lines(boost, thr):
     out = []
     for w in WORDS:
-        pieces = sp.encode(w.upper(), out_type=str)
+        pieces = sp.encode(PREFIX + " " + w.upper(), out_type=str)
         b = boost
         out.append(f"{' '.join(pieces)} :{b:.1f} #{thr:.2f} @{w}")
     return out
@@ -54,8 +57,9 @@ def say(text, sid, speed=1.0):
     return y + np.random.RandomState(len(text)).randn(len(y)).astype(np.float32) * 0.003
 VOICES = {"Michael (am)": 16, "Heart (af)": 3, "George (bm)": 26, "Bella (af)": 2, "Fenrir (am)": 14, "Emma (bf)": 21}
 
-R += ["### Keyword spotting", "", "| setting | words found (of %d) | wrong word | hits in 1 min of story text |" % (len(VOICES) * len(WORDS) * 2), "|---|---|---|---|"]
-takes = {(v, w, sp_): say(w.capitalize() + ".", sid, sp_) for v, sid in VOICES.items() for w in WORDS for sp_ in (0.9, 1.15)}
+R += ["### Keyword spotting", "", "| setting | words found (of %d) | wrong word | false hits (story + bare words without Loudbook) |" % (len(VOICES) * len(WORDS) * 2), "|---|---|---|---|"]
+takes = {(v, w, sp_): say("Loud book, " + w + ".", sid, sp_) for v, sid in VOICES.items() for w in WORDS for sp_ in (0.9, 1.15)}
+bare = [say(w.capitalize() + ".", sid, 1.0) for sid in (3, 16) for w in WORDS]
 story = ("He went back to the beginning of the road and waited. At the end of the day, they would play the old songs, "
          "and she would pause before the last verse. Forward, he thought. Always forward. The children played by the river. "
          "She came back with two cups and set them at the end of the table.")
@@ -71,9 +75,9 @@ for boost, thr in [(0.5, 0.25), (1.0, 0.25), (0.5, 0.15), (1.0, 0.15), (1.0, 0.1
         if w in got: ok += 1; pw[w] += 1
         wrong += sum(1 for g in got if g != w)
     per_word[(boost, thr)] = pw
-    fa = spot(k, story_audio)
+    fa = spot(k, story_audio) + [g for a in bare for g in spot(k, a)]
     R.append(f"| boost {boost}, threshold {thr} | {ok} | {wrong} | {len(fa)} ({', '.join(fa)}) |")
-    score = ok - 3 * wrong
+    score = ok - 3 * wrong - 3 * len(fa)
     if best is None or score > best[0]: best = (score, boost, thr)
 _, boost, thr = best
 lines = kw_lines(boost, thr)
@@ -81,7 +85,7 @@ lines = kw_lines(boost, thr)
 # short words are harder: tune each word on its own, keeping the others as chosen
 R += ["", "Per-word tuning (found / wrong word hits caused):", ""]
 for wi, w in enumerate(WORDS):
-    pieces = " ".join(sp.encode(w.upper(), out_type=str))
+    pieces = " ".join(sp.encode(PREFIX + " " + w.upper(), out_type=str))
     best_w = None
     for b, t in [(boost, thr), (0.0, 0.05), (0.3, 0.03), (0.5, 0.02), (0.0, 0.02), (0.8, 0.01)]:
         trial = list(lines); trial[wi] = f"{pieces} :{b:.1f} #{t:.2f} @{w}"
@@ -92,6 +96,7 @@ for wi, w in enumerate(WORDS):
             got = spot(k, a)
             if w2 == w and w in got: found += 1
             if w2 != w and w in got: wrong += 1
+        for a in bare: wrong += spot(k, a).count(w)            # the bare word, without "Loudbook"
         R.append(f"- {w} boost {b} threshold {t}: {found} / {wrong}")
         sc = found - 4 * wrong
         if best_w is None or sc > best_w[0]: best_w = (sc, trial[wi])

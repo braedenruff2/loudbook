@@ -119,6 +119,11 @@ public class ReaderService extends Service {
             @Override public void onSkipToPrevious() { seek(pos - 1); }
             @Override public void onFastForward() { seek(pos + 1); }
             @Override public void onRewind() { seek(pos - 1); }
+            // "Hey Google, rewind 30 seconds" / "start over": a time in the chapter, to its sentence
+            @Override public void onSeekTo(long ms) { Chapter c = chapter; if (c != null) seek(sentenceAt(c, ms)); }
+            // "Hey Google, play Loudbook" / "resume"
+            @Override public void onPlayFromSearch(String query, android.os.Bundle extras) { play(); }
+            @Override public void onPlayFromMediaId(String id, android.os.Bundle extras) { play(); }
         });
         session.setActive(true);
         NotificationManager nm = getSystemService(NotificationManager.class);
@@ -729,7 +734,7 @@ public class ReaderService extends Service {
             else main.post(() -> { if (listener != null) listener.onPrefetch(ch.nextUrl); });
         }
         if (here >= ch.size() - 4 && ch.nextUrl != null && autoNext && nextCh != null) premakeNext();
-        main.post(() -> { if (listener != null && gen == myGen) listener.onSpeaking(ch, here); });
+        main.post(() -> { if (listener != null && gen == myGen) listener.onSpeaking(ch, here); if (gen == myGen) state(); });
         if (here % 3 == 0) saveProgress();
     }
 
@@ -1040,7 +1045,23 @@ public class ReaderService extends Service {
         session.setMetadata(new MediaMetadata.Builder()
             .putString(MediaMetadata.METADATA_KEY_TITLE, chapter.title)
             .putString(MediaMetadata.METADATA_KEY_ARTIST, chapter.fiction)
-            .putString(MediaMetadata.METADATA_KEY_ALBUM, "Loudbook").build());
+            .putString(MediaMetadata.METADATA_KEY_ALBUM, "Loudbook")
+            .putLong(MediaMetadata.METADATA_KEY_DURATION, msAt(chapter, chapter.size())).build());
+    }
+
+    /**
+     * The chapter as a timeline (so the Assistant, the lock screen and car screens can seek): each
+     * sentence takes time in proportion to its length, about 15 characters a second.
+     */
+    static long msAt(Chapter c, int i) {
+        long chars = 0;
+        for (int k = 0; k < Math.min(i, c.size()); k++) chars += c.chunks.get(k).text.length() + 4;
+        return chars * 1000 / 15;
+    }
+    static int sentenceAt(Chapter c, long ms) {
+        int i = 0;
+        while (i + 1 < c.size() && msAt(c, i + 1) <= ms) i++;
+        return i;
     }
 
     private void state() {
@@ -1048,9 +1069,11 @@ public class ReaderService extends Service {
         commands.readerPlaying = on;
         session.setPlaybackState(new PlaybackState.Builder()
             .setActions(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE
-                | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS | PlaybackState.ACTION_STOP)
+                | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS | PlaybackState.ACTION_STOP
+                | PlaybackState.ACTION_SEEK_TO | PlaybackState.ACTION_FAST_FORWARD | PlaybackState.ACTION_REWIND
+                | PlaybackState.ACTION_PLAY_FROM_SEARCH | PlaybackState.ACTION_PLAY_FROM_MEDIA_ID)
             .setState(on ? PlaybackState.STATE_PLAYING : playing ? PlaybackState.STATE_PAUSED : PlaybackState.STATE_STOPPED,
-                PlaybackState.PLAYBACK_POSITION_UNKNOWN, speed).build());
+                chapter != null ? msAt(chapter, pos) : PlaybackState.PLAYBACK_POSITION_UNKNOWN, on ? 1f : 0f).build());
         // stays in the foreground while paused and across page turns (a background app may not
         // re-enter it); it lets go only when the story is finished or the reader is closed
         if (foreground) getSystemService(NotificationManager.class).notify(NOTIF_ID, buildNotification());

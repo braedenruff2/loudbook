@@ -654,11 +654,11 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                         if (cancelled[0]) break;
                         float[] part = null;
                         for (int tries = 0; tries < 3 && part == null && !cancelled[0]; tries++) {
-                            final String say = Character.toUpperCase(w.charAt(0)) + w.substring(1);
+                            final String say = "Loudbook, " + w;
                             final int t = tries;
                             main.post(() -> { big.setText("\u201c" + say + "\u201d"); small.setText(t == 0 ? "Say it now" : "Didn't catch that. Once more."); });
                             Thread.sleep(250);
-                            float[] rec = VoiceCommands.record(1.8);
+                            float[] rec = VoiceCommands.record(2.6);
                             part = VoiceCommands.speechPart(rec);
                             if (part != null) {
                                 asked++;
@@ -920,7 +920,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         });
 
         box.addView(label("Voice commands"));
-        Switch cmds = toggle("Listen for play, pause, back, forward, beginning, end", prefs.getBoolean("voiceCmds", false), null);
+        box.addView(label("Easiest: \u201cHey Google, pause\u201d, \u201cHey Google, resume\u201d, \u201cHey Google, rewind 30 seconds\u201d, \u201cHey Google, next\u201d (next sentence). Works with the screen off, even in a noisy room. Loudbook's own listening below is optional."));
+        Switch cmds = toggle("Listen for \u201cLoudbook\u201d + play, pause, back, forward, beginning, end", prefs.getBoolean("voiceCmds", false), null);
         box.addView(cmds);
         TextView cmdInfo = label("");
         box.addView(cmdInfo);
@@ -942,8 +943,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             teach.setVisibility(on ? View.VISIBLE : View.GONE);
             strict.setVisibility(on && VoiceCommands.profile(this) != null ? View.VISIBLE : View.GONE);
             String last = svc != null && svc.lastHeard.length() > 0 ? "\nLast heard: " + svc.lastHeard : "";
-            cmdInfo.setText(!on ? "Say a word to control reading while Loudbook is open or reading. Only your voice counts, so the TV, other people and the story itself are ignored. Nothing you say leaves the phone."
-                : VoiceCommands.profile(this) == null ? "One more step: set up your voice (say each word twice)."
+            cmdInfo.setText(!on ? "Say \u201cLoudbook, pause\u201d (or play, back, forward, beginning, end) while Loudbook is open or reading. Only your voice counts, so the TV, other people and the story itself are ignored. Nothing you say leaves the phone."
+                : VoiceCommands.profile(this) == null ? "One more step: set up your voice (say each command twice)."
                 : (svc != null && svc.commands.listening() ? "Listening." : "Ready. Listens while Loudbook is open or reading.") + last);
         };
         showCmdInfo.run();
