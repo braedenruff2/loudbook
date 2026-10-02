@@ -881,7 +881,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         TextView speedLabel = label("Speed " + fmtSpeed(svc != null ? svc.speed() : 1f));
         box.addView(speedLabel);
         SeekBar speed = new SeekBar(this);
-        speed.setMax(22);                                         // 0.7 .. 1.8 in 0.05 steps
+        speed.setMax(36);                                         // 0.7 .. 2.5 in 0.05 steps
         speed.setProgress(Math.round(((svc != null ? svc.speed() : 1f) - 0.7f) / 0.05f));
         speed.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override public void onProgressChanged(SeekBar b, int p, boolean user) {
@@ -1302,7 +1302,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         speedBtn.setTextSize(13);
         speedBtn.setOnClickListener(v -> {
             if (svc == null) return;
-            float[] steps = {0.8f, 1f, 1.15f, 1.3f, 1.5f, 1.75f};
+            float[] steps = {0.8f, 1f, 1.15f, 1.3f, 1.5f, 1.75f, 2f, 2.5f};
             float s = svc.speed(), nx = steps[0];
             for (float st : steps) if (st > s + 0.01f) { nx = st; break; }
             svc.setSpeed(nx); speedBtn.setText(fmtSpeed(nx));
