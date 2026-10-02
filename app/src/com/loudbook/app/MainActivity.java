@@ -86,6 +86,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             runSelfTest();
             speedBtn.setText(fmtSpeed(svc.speed()));
             if (pageChapter != null && svc.chapter() == null) offer(pageChapter);
+            if (pendingText != null) { svc.readText(pendingTitle, pendingText); pendingText = null; }
         }
         @Override public void onServiceDisconnected(ComponentName n) { svc = null; }
     };
@@ -257,10 +258,25 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     }
 
     // A link shared from Chrome ("Share > Loudbook") or opened with Loudbook.
+    private String pendingText, pendingTitle;
+
     private boolean handleIntent(Intent i) {
         if (i == null) return false;
         String url = null;
-        if (Intent.ACTION_SEND.equals(i.getAction())) url = firstUrl(i.getStringExtra(Intent.EXTRA_TEXT));
+        if (Intent.ACTION_SEND.equals(i.getAction())) {
+            String shared = i.getStringExtra(Intent.EXTRA_TEXT);
+            url = firstUrl(shared);
+            // text shared from any app (an article, a passage, notes): read it out. A link with a
+            // line or two around it is still opened as a page.
+            String rest = shared == null ? "" : (url == null ? shared : shared.replace(url, "")).trim();
+            if (rest.length() > 200 || (url == null && rest.length() > 0)) {
+                String title = i.getStringExtra(Intent.EXTRA_SUBJECT);
+                if (title == null || title.trim().isEmpty()) title = "Shared text";
+                if (svc != null) svc.readText(title, rest);
+                else { pendingTitle = title; pendingText = rest; }
+                return true;
+            }
+        }
         else if (Intent.ACTION_VIEW.equals(i.getAction()) && i.getData() != null) url = i.getData().toString();
         if (i.getBooleanExtra("home", false)) { i.removeExtra("home"); web.loadUrl(HOME); return true; }      // (screenshots in CI)
         if (i.getBooleanExtra("settings", false)) { i.removeExtra("settings"); main.postDelayed(this::showSettings, 1500); }   // (screenshots in CI)

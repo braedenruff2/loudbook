@@ -31,4 +31,8 @@ sleep 25
 SIZE=$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1); W=${SIZE%x*}; H=${SIZE#*x}
 adb shell input tap $((W * 46 / 100)) $((H * 89 / 100))          # the big play button
 sleep 30
+# text shared from another app (no link): read out
+adb shell log -t LoudbookTest "=== shared text ==="
+adb shell am start -n com.loudbook.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "'Mr. Hale walked to the market on a cold morning. He bought 3 apples and a loaf of bread before heading home.'"
+sleep 20
 adb logcat -d > logcat.txt

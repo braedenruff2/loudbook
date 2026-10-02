@@ -436,7 +436,7 @@ public class ReaderService extends Service {
             final int want = sid; final float sp = speed;
             if (ch == null || i < 0 || i >= ch.size()) return null;
             final String text = ch.chunks.get(i).say;
-            if (cloudOn() && !"kindle".equals(ch.site)) {
+            if (cloudOn() && !"kindle".equals(ch.site) && !"text".equals(ch.site)) {
                 // Gemini: the chapter is recorded in one request; each sentence is cut from it
                 final int idx = i;
                 f = waiters.submit(() -> {
@@ -517,6 +517,23 @@ public class ReaderService extends Service {
                 Chapter ch = new Chapter("kindle:" + System.currentTimeMillis(), "kindle", p.title.isEmpty() ? "Kindle" : p.title, "Kindle", first);
                 Log.i("LoudbookTest", "kindle start: " + p.paragraphs.size() + " paragraphs, " + first.size() + " sentences, title " + p.title);
                 setChapter(ch, 0, true);
+            });
+            return null;
+        });
+    }
+
+    /** Reads text shared from another app (not a web page): split into paragraphs and sentences like a Kindle page. */
+    void readText(String title, String text) {
+        java.util.List<String> paras = new java.util.ArrayList<>();
+        for (String p : text.replace("\r", "").split("\n\\s*\n|\n")) if (!p.trim().isEmpty()) paras.add(p.trim());
+        if (paras.isEmpty()) return;
+        kindleThread.submit(() -> {
+            java.util.List<Chapter.Chunk> raw = new KindleText(prefs.getString("fixes", "")).chunks(paras, true);
+            java.util.List<Chapter.Chunk> said = spoken(raw);
+            main.post(() -> {
+                Chapter ch = new Chapter("text:" + System.currentTimeMillis(), "text", title, "Shared text", said);
+                setChapter(ch, 0, true);
+                if (listener != null) listener.onSpeaking(ch, 0);
             });
             return null;
         });
@@ -1228,7 +1245,7 @@ public class ReaderService extends Service {
     // ---------------------------------------------------------------- progress
     void saveProgress() {
         Chapter ch = chapter;
-        if (ch == null || "kindle".equals(ch.site)) return;          // Kindle keeps its own place
+        if (ch == null || "kindle".equals(ch.site) || "text".equals(ch.site)) return;   // Kindle keeps its own place; shared text has none
         prefs.edit().putInt("pos:" + ch.url, pos)
             .putString("lastUrl", ch.url).putString("lastTitle", ch.title).putString("lastFiction", ch.fiction)
             .putInt("lastPct", ch.size() > 0 ? Math.round(100f * pos / ch.size()) : 0).apply();

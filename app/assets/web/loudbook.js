@@ -452,7 +452,7 @@ function tidy(t) {
     // arrows in stat changes: "15 → 17"
     .replace(/\s*(?:→|->|⟶|=>)\s*/g, ' to ')
     .replace(/\b(?:Lv|Lvl|LVL|LV)\.?\s*(?=\d)/g, 'Level ')
-    .replace(/\b([A-Z]{3})(?=\s*(?::|\+|-|\d))/g, (m, k) => STATS[k] || m)
+    .replace(/\b([A-Z]{3})(?=\s*(?::|\+|-|—|–|\d))/g, (m, k) => STATS[k] || m)
     .replace(/(^|[\s(\[])\+(?=\d)/g, '$1plus ')                     // +5 Agility
     .replace(/(^|[\s(\[])[-−](?=\d)/g, '$1minus ')                  // -5 degrees
     .replace(/#(?=\d)/g, 'number ')                                // Rank #1
@@ -468,6 +468,12 @@ function tidy(t) {
     .replace(/(\d)\s*\/\s*(\d)/g, '$1 of $2')                      // 120/150 -> 120 of 150
     .replace(/\b(\d+)\s?[-–]\s?(\d+)\b(?![-–/]\d)/g, '$1 to $2')     // 2-3 hours
     .replace(/\b(\d+):(\d)\b(?!\d)/g, '$1 to $2')                  // a 3:1 ratio (times have two digits)
+    .replace(/\bCh\.\s*(?=\d)/g, 'Chapter ').replace(/\bVol\.\s*(?=\d)/g, 'Volume ').replace(/\bNo\.\s*(?=\d)/g, 'Number ')
+    .replace(/\bapprox\.(?=\s)/gi, 'approximately').replace(/(^|\s)w\/(?=\s)/g, '$1with').replace(/\bb\/c\b/g, 'because')
+    .replace(/([£€])(\d+)(?:\.(\d\d))?\b/g, (m, c, n, p) => {
+      const [one, many] = c === '£' ? ['pound', 'pounds'] : ['euro', 'euros'];
+      return n + ' ' + (n === '1' ? one : many) + (p && +p ? ' ' + (+p) : '');
+    })
     .replace(/\bvs\.?(?=\s)/gi, 'versus').replace(/\bi\.e\.(?=[\s,])/gi, 'that is')
     .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)/g, '$1 Street');
 }
