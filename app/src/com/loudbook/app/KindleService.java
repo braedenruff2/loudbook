@@ -81,7 +81,9 @@ public class KindleService extends AccessibilityService {
         if (me != this) return;
         boolean kindle = kindleRoot() != null;
         boolean reading = svc != null && svc.readingKindle();
-        if (kindle || reading) showBubble(); else hideBubble();
+        boolean speaking = reading && svc.isPlaying() && !svc.isPaused();
+        // (it used to stay up for good once a Kindle book had been read, even with Kindle closed)
+        if (kindle || speaking) showBubble(); else hideBubble();
         // explore-by-touch only while actually reading (so the phone works normally the rest of the time)
         if (!reading && !busy) needExplore = false;
         boolean explore = needExplore && reading && svc.isPlaying() && !svc.isPaused();
@@ -122,6 +124,7 @@ public class KindleService extends AccessibilityService {
         bubbleLp.x = Voice.prefs(this).getInt("bubbleX", dm.widthPixels - size - Math.round(12 * dm.density));
         bubbleLp.y = Voice.prefs(this).getInt("bubbleY", dm.heightPixels * 2 / 3);
         final float[] down = new float[4];
+        longPressed[0] = false;
         final boolean[] moved = {false};
         // while the screen works like a screen reader's, a tap arrives as a short hover
         final long[] hoverAt = {0};
@@ -133,13 +136,19 @@ public class KindleService extends AccessibilityService {
         });
         bubble.setOnTouchListener((v, ev) -> {
             switch (ev.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN: down[0] = ev.getRawX(); down[1] = ev.getRawY(); down[2] = bubbleLp.x; down[3] = bubbleLp.y; moved[0] = false; return true;
+                case MotionEvent.ACTION_DOWN:
+                    down[0] = ev.getRawX(); down[1] = ev.getRawY(); down[2] = bubbleLp.x; down[3] = bubbleLp.y; moved[0] = false;
+                    longPressed[0] = false;
+                    main.postDelayed(longPress, 700);
+                    return true;
                 case MotionEvent.ACTION_MOVE:
                     float dx = ev.getRawX() - down[0], dy = ev.getRawY() - down[1];
-                    if (Math.abs(dx) + Math.abs(dy) > 12 * dm.density) moved[0] = true;
+                    if (Math.abs(dx) + Math.abs(dy) > 12 * dm.density) { moved[0] = true; main.removeCallbacks(longPress); }
                     if (moved[0]) { bubbleLp.x = (int) (down[2] + dx); bubbleLp.y = (int) (down[3] + dy); wm.updateViewLayout(bubble, bubbleLp); }
                     return true;
                 case MotionEvent.ACTION_UP:
+                    main.removeCallbacks(longPress);
+                    if (longPressed[0]) return true;
                     if (moved[0]) Voice.prefs(this).edit().putInt("bubbleX", bubbleLp.x).putInt("bubbleY", bubbleLp.y).apply();
                     else tapped();
                     return true;
@@ -147,6 +156,35 @@ public class KindleService extends AccessibilityService {
             return false;
         });
         try { wm.addView(bubble, bubbleLp); } catch (Exception e) { Log.w(TAG, "kindle button", e); bubble = null; }
+    }
+
+    private final boolean[] longPressed = {false};
+    /** Holding the button: copies what Loudbook sees in Kindle, to paste to Claude if it reads the wrong things. */
+    private final Runnable longPress = () -> {
+        longPressed[0] = true;
+        new Thread(() -> {
+            String d = report(readPage());
+            main.post(() -> { copy(d); toast("Copied what Loudbook sees in Kindle. Paste it to Claude to get the reading fixed."); });
+        }, "lb-kindle-copy").start();
+    };
+
+    private void copy(String d) {
+        try {
+            android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("Loudbook Kindle", d));
+        } catch (Exception ignored) { }
+    }
+
+    /** What Loudbook sees and what it made of it, also kept for Settings › "Show what Loudbook sees in Kindle". */
+    String report(Page p) {
+        String d = "Loudbook " + BuildInfo.VERSION + " Kindle view, Android " + android.os.Build.VERSION.SDK_INT
+            + (exploreOn ? ", explore-by-touch on" : "") + "\n" + dump();
+        try { java.nio.file.Files.write(new java.io.File(getFilesDir(), "kindle-last.txt").toPath(), d.getBytes("UTF-8")); } catch (Exception ignored) { }
+        return d;
+    }
+    static String lastReport(Context c) {
+        try { return new String(java.nio.file.Files.readAllBytes(new java.io.File(c.getFilesDir(), "kindle-last.txt").toPath()), "UTF-8"); }
+        catch (Exception e) { return null; }
     }
 
     private void hideBubble() {
@@ -185,15 +223,12 @@ public class KindleService extends AccessibilityService {
             }
             final Page got = p;
             final boolean ex = explored;
-            final String why = got.paragraphs.isEmpty() ? dump() : null;
+            final String why = report(got);
             main.post(() -> {
                 busy = false;
                 if (got.paragraphs.isEmpty()) {
                     // what Loudbook sees, ready to paste, so the reader can be fixed for this Kindle
-                    try {
-                        android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                        cm.setPrimaryClip(android.content.ClipData.newPlainText("Loudbook Kindle", "Loudbook " + BuildInfo.VERSION + " Kindle view, Android " + android.os.Build.VERSION.SDK_INT + "\n" + why));
-                    } catch (Exception ignored) { }
+                    copy(why);
                     Log.i("LoudbookTest", "no book text found");
                     toast("No book text found in Kindle. What Loudbook sees there is copied: paste it to Claude to get it fixed. (Or the book's publisher doesn't allow screen readers.)");
                     return;
@@ -252,6 +287,8 @@ public class KindleService extends AccessibilityService {
     void accept(Page p) { lastEdges = p.edges; }
 
     static final class Bit { final String text; final Rect r; Bit(String t, Rect r) { text = t; this.r = r; } }
+    /** Instructions for screen-reader users ("double tap to…") and the like: never part of a book. */
+    static final Pattern HINT = Pattern.compile("(?i).*\\b(double[- ]?tap|tap to|swipe (up|down|left|right)|to activate|to dismiss|continuous reading)\\b.*");
     private static final Pattern CHROME = Pattern.compile("(?i)^(location \\d+.*|page \\d+.*|\\d+\\s*%.*|\\d+ (min|mins|hr|hrs|hours?|minutes?) left.*|learning reading speed.*|.*\\bof \\d+\\s*$)");
 
     /** The text on the Kindle page, in reading order, without the bars around it. */
@@ -322,11 +359,14 @@ public class KindleService extends AccessibilityService {
         for (int i = 0; i < n.getChildCount(); i++) collect(n.getChild(i), out, depth + 1);
         if (out.size() > before) return;                         // its children had the text
         CharSequence t = n.getText();
-        if (t == null || t.length() == 0) t = n.getContentDescription();
+        boolean control = n.isClickable() || n.isLongClickable() || n.isCheckable();
+        // a description is a label for something (a control, a picture), not book text, unless it's long
+        if ((t == null || t.length() == 0) && n.getContentDescription() != null && (!control || n.getContentDescription().length() > 160)) t = n.getContentDescription();
         if (t == null || t.toString().trim().isEmpty()) return;
         String cls = n.getClassName() == null ? "" : n.getClassName().toString();
-        if (cls.endsWith("Button") || cls.endsWith("ImageView") || cls.endsWith("EditText") || cls.endsWith("SeekBar")) return;
-        if (n.isClickable() && t.length() < 30 && !cls.contains("Text")) return;
+        if (cls.endsWith("Button") || cls.endsWith("ImageView") || cls.endsWith("EditText") || cls.endsWith("SeekBar") || cls.endsWith("Switch") || cls.endsWith("CheckBox")) return;
+        if (control && t.length() < 120 && !cls.contains("Text")) return;
+        if (t.length() < 200 && HINT.matcher(t).matches()) return;
         Rect r = new Rect();
         n.getBoundsInScreen(r);
         if (r.width() <= 0 || r.height() <= 0) return;

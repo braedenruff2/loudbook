@@ -778,7 +778,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         box.addView(kDump);
         Runnable showK = () -> {
             boolean on = KindleService.enabled(this);
-            kInfo.setText(on ? "On. Open a book in the Kindle app and tap the round Loudbook button that appears. Loudbook reads with your voice settings and turns the pages; the button pauses and resumes. "
+            kInfo.setText(on ? "On. Open a book in the Kindle app and tap the round Loudbook button that appears. Loudbook reads with your voice settings and turns the pages; the button pauses and resumes. Hold the button down to copy what Loudbook sees (to paste to Claude if it reads the wrong things). "
                 + "It works with books whose publishers let screen readers read them (most do). Gemini isn't used for Kindle, to save its requests."
                 : "Loudbook can read the Kindle app aloud the way a screen reader does: it reads the page text Kindle shares with screen readers and turns the pages. "
                 + "To turn it on: tap the button below, find Loudbook in the list, and switch it on. If Android says it's a restricted setting: go to Settings \u203a Apps \u203a Loudbook, tap \u22ee (top right), \u201cAllow restricted settings\u201d, then try again.");
@@ -792,6 +792,18 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         });
         kDump.setOnClickListener(v -> {
             KindleService k = KindleService.me;
+            String last = KindleService.lastReport(this);
+            if (last != null) {
+                // from the last time Kindle was read (or the round button was held down)
+                TextView t = text(11, C_INK, false);
+                t.setText(last); t.setTextIsSelectable(true); t.setTypeface(Typeface.MONOSPACE); t.setPadding(dp(12), dp(8), dp(12), dp(8));
+                ScrollView sv = new ScrollView(this); sv.addView(t);
+                new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("What Loudbook saw in Kindle last time").setView(sv)
+                    .setPositiveButton("Copy", (dd, w) -> ((android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE))
+                        .setPrimaryClip(android.content.ClipData.newPlainText("Loudbook Kindle", last)))
+                    .setNegativeButton("Close", null).show();
+                return;
+            }
             if (k == null) { kInfo.setText("Kindle reading isn't running. Turn it on first."); return; }
             onStatus("Open a book in Kindle; Loudbook will look in 5 seconds\u2026", false);
             new Thread(() -> {

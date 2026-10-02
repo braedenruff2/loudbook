@@ -56,6 +56,20 @@ public class Reader extends Activity {
                         AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain(Drawn.this);
                         onInitializeAccessibilityNodeInfo(info);
                         for (int i = 0; i < lines.size(); i++) if (!lines.get(i).isEmpty()) info.addChild(Drawn.this, i);
+                        info.addChild(Drawn.this, 999);
+                        return info;
+                    }
+                    if (id == 999) {
+                        AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain(Drawn.this, id);
+                        info.setParent(Drawn.this);
+                        info.setClassName("android.view.View");
+                        info.setContentDescription("Continuous reading, double tap to start reading");
+                        info.setClickable(true);
+                        int[] at = new int[2];
+                        getLocationOnScreen(at);
+                        info.setBoundsInScreen(new Rect(at[0] + 100, at[1] + getHeight() - 200, at[0] + 600, at[1] + getHeight() - 100));
+                        info.setVisibleToUser(true);
+                        info.setPackageName(getPackageName());
                         return info;
                     }
                     if (id < 0 || id >= lines.size()) return null;

@@ -29,5 +29,12 @@ adb shell input tap $X $Y
 sleep 80
 adb shell screencap -p /sdcard/explore.png
 adb pull /sdcard/explore.png .
+# Kindle closed after reading: the round button must go away
+adb shell am force-stop com.amazon.kindle
+adb shell input keyevent KEYCODE_HOME
+sleep 4
+adb shell screencap -p /sdcard/closed.png
+adb pull /sdcard/closed.png .
+adb shell dumpsys window windows | grep -c "Window{.*com.loudbook.app" | sed 's/^/Loudbook windows on screen after Kindle closed: /' > closed.txt
 adb shell settings get secure touch_exploration_enabled | sed 's/^/touch exploration at the end: /' > explore-state.txt
 adb logcat -d > logcat.txt

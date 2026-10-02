@@ -47,10 +47,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           {
-            echo '## Kindle reader on the emulator'; echo; cat explore-state.txt 2>/dev/null; echo; echo '```'
+            echo '## Kindle reader on the emulator'; echo; cat explore-state.txt closed.txt 2>/dev/null; echo; echo '```'
             grep -E "LoudbookTest|FakeKindle|Loudbook|MediaFocusControl|AndroidRuntime|FATAL| F DEBUG" logcat.txt 2>/dev/null | grep -v "SearchServiceCore" | tail -120
             echo '```'
           } > results.md
           gh release view kindle-test >/dev/null 2>&1 || gh release create kindle-test --latest=false --title "Kindle reader test" --notes "Output of .github/workflows/kindle-test.yml"
           gh release upload kindle-test results.md --clobber
-          for f in before.png after.png explore.png; do [ -f $f ] && gh release upload kindle-test $f --clobber; done; true
+          for f in before.png after.png explore.png closed.png; do [ -f $f ] && gh release upload kindle-test $f --clobber; done; true
