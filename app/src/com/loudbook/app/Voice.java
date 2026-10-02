@@ -187,7 +187,8 @@ final class Voice {
         if (l != null && (pcOk || System.currentTimeMillis() >= pcRetryAt)) {
             try {
                 String engine = prefs(app).getString("pcEngine", "natural");
-                PcLink.Audio a = l.speak(text, sid, speed, engine, 30000);
+                String rec = prefs(app).getString("pcVoice", "");          // a voice recorded on the PC
+                PcLink.Audio a = l.speak(text, sid, speed, engine, rec.isEmpty() ? null : rec, 30000);
                 pcOk = true; pcError = ""; lastSource = "pc:" + a.engine;
                 float[] f = new float[a.pcm.length];
                 for (int i = 0; i < f.length; i++) f[i] = a.pcm[i] / 32768f;

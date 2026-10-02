@@ -18,6 +18,26 @@ public class PcTest { public static void main(String[] a) throws Exception {
         if (a.length > 2) java.nio.file.Files.write(java.nio.file.Paths.get(eng + ".pcm"), toBytes(au.pcm));
       }
     } catch (Exception e) { System.out.println("USE FAILED: " + e.getMessage()); }
+  } else if (cmd.equals("voice")) {
+    // a "recorded voice": the Kokoro sentence from "use x save", three times over (about 12 s)
+    String[] k = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get("link.txt"))).split("\n");
+    PcLink l = new PcLink("127.0.0.1", 8770, k[0], k[1]);
+    try {
+      byte[] one = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get("kokoro.pcm"));
+      java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream();
+      for (int i = 0; i < 3; i++) b.write(one);
+      byte[] wav = VoiceRecording.toWav(b.toByteArray(), 24000);
+      System.out.println("recording: " + (wav == null ? "REJECTED" : wav.length + " bytes"));
+      String id = l.addVoice("Test reader", wav);
+      System.out.println("added voice " + id);
+      for (PcLink.Recorded r : l.voices(5000)) System.out.println("voice on PC: " + r.id + " " + r.name);
+      PcLink.Audio au = l.speak("This sentence should come out in the recorded voice.", 3, 1f, "natural", id, 300000);
+      System.out.println("speak recorded: " + au.pcm.length + " samples @" + au.rate + " work " + au.workMs + "ms, engine " + au.engine);
+      l.deleteVoice(id);
+      System.out.println("after delete: " + l.voices(5000).size() + " voices");
+      try { l.speak("Gone.", 3, 1f, "natural", id, 30000); System.out.println("DELETED VOICE STILL SPOKE"); }
+      catch (Exception e) { System.out.println("deleted voice refused: " + e.getMessage()); }
+    } catch (Exception e) { System.out.println("VOICE FAILED: " + e.getMessage()); }
   } else if (cmd.equals("discover")) {
     for (PcLink.Found f : PcLink.discover(1500)) System.out.println("found " + f.host + ":" + f.port + " " + f.fp.substring(0,16) + " " + f.name);
   }

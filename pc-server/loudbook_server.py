@@ -26,6 +26,7 @@ PORT = int(os.environ.get("LOUDBOOK_PORT", "8770"))
 DISCOVERY_PORT = PORT + 1
 MAX_BODY = 16 * 1024
 MAX_TEXT = 2000
+MAX_VOICE = 6 * 1024 * 1024          # a recorded voice: about a minute of speech, as base64
 PAIR_MINUTES = 10
 PAIR_TRIES = 5
 STATE = os.environ.get("LOUDBOOK_STATE") or os.path.join(
@@ -204,6 +205,39 @@ class Engine:
         return np.asarray(a.samples, dtype=np.float32), a.sample_rate
 
 
+# ------------------------------------------------------------------ recorded voices
+# Someone (with their say-so) reads a passage into the phone; the recording stays on this PC as the
+# example the natural voice copies. Nothing is sent anywhere else.
+def voices():
+    return [v for v in read_json("voices.json", []) if isinstance(v, dict) and os.path.exists(voice_file(v.get("id", "")))]
+
+def voice_file(vid):
+    if not isinstance(vid, str) or len(vid) != 12 or any(c not in "0123456789abcdef" for c in vid): return ""
+    return path(os.path.join("refs", f"custom-{vid}.wav"))
+
+def add_voice(name, wav_bytes):
+    """Checks the recording is a plain mono WAV of a sensible length and keeps it. Returns its id."""
+    import io, wave
+    with wave.open(io.BytesIO(wav_bytes)) as w:
+        ch, width, rate, n = w.getnchannels(), w.getsampwidth(), w.getframerate(), w.getnframes()
+    if ch != 1 or width != 2 or not 16000 <= rate <= 48000: raise ValueError("expected 16-bit mono audio")
+    secs = n / rate
+    if not 6 <= secs <= 90: raise ValueError(f"the recording should be 6 to 90 seconds (it was {secs:.0f})")
+    vid = secrets.token_hex(6)
+    f = voice_file(vid)
+    os.makedirs(os.path.dirname(f), exist_ok=True)
+    with open(f, "wb") as out: out.write(wav_bytes)
+    name = " ".join(str(name).split())[:40] or "Recorded voice"
+    write_json("voices.json", voices() + [{"id": vid, "name": name, "seconds": round(secs, 1)}])
+    print(f"Loudbook PC voice: added the voice \"{name}\" ({secs:.0f} s)", flush=True)
+    return vid
+
+def delete_voice(vid):
+    f = voice_file(vid)
+    if f and os.path.exists(f): os.remove(f)
+    write_json("voices.json", [v for v in voices() if v.get("id") != vid])
+
+
 # A few sentences of plain narration (written for this) for the natural voice to copy each
 # Kokoro voice from, so a voice sounds like itself whichever engine reads.
 REFERENCE_TEXT = ("The rain had stopped by the time she reached the bridge. Lamps were coming on along the river, "
@@ -242,6 +276,12 @@ class NaturalEngine:
                   "too slow to keep up, so Kokoro reads instead.", flush=True)
 
     def _voice(self, sid):
+        if isinstance(sid, str):                     # a recorded voice
+            if sid not in self.voices:
+                self.model.prepare_conditionals(voice_file(sid))
+                self.voices[sid] = self.model.conds
+            self.model.conds = self.voices[sid]
+            return
         if sid not in self.voices:
             import numpy as np, wave
             ref = path(os.path.join("refs", f"{sid}.wav"))
@@ -365,7 +405,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def body(self):
         if self.headers.get("Transfer-Encoding"): raise ValueError("chunked bodies not accepted")
         n = int(self.headers.get("Content-Length") or 0)
-        if n < 0 or n > MAX_BODY: raise ValueError("too big")
+        # only a paired phone may send a recording; everything else is small
+        big = self.path == "/v1/voice/add" and self.headers.get("Authorization", "").startswith("Bearer ") \
+            and token_ok(self.headers.get("Authorization", "")[7:].strip())
+        if n < 0 or n > (MAX_VOICE if big else MAX_BODY): raise ValueError("too big")
         return json.loads(self.rfile.read(n) or b"{}")
 
     def gate(self):
@@ -392,6 +435,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.reply(200, {"engine": Handler.engine.name, "rate": Handler.engine.rate, "host": socket.gethostname()[:40],
                                     "natural": n.name if n else "", "naturalSpeed": round(n.speed(), 2) if n else 0,
                                     "naturalOk": bool(n and not n.too_slow)})
+        if self.path == "/v1/voices":
+            if not self.authed(): return
+            return self.reply(200, {"voices": [{"id": v["id"], "name": v.get("name", "")} for v in voices()],
+                                    "natural": Handler.natural is not None})
         self.reply(404, {"error": "no such thing"})
 
     def do_POST(self):
@@ -413,6 +460,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     Limits.fail(self.client_address[0])
                     return self.reply(403, {"error": "wrong code"})
                 return self.reply(200, {"token": tok})
+            if self.path == "/v1/voice/add":
+                if not self.authed(): return
+                if Handler.natural is None:
+                    return self.reply(409, {"error": "this PC has no natural voice (it needs an NVIDIA graphics card and Set up PC voice.bat)"})
+                try: vid = add_voice(req.get("name", ""), base64.b64decode(str(req.get("wav", ""))))
+                except Exception as e: return self.reply(400, {"error": str(e)[:200] or "not a recording"})
+                return self.reply(200, {"id": vid})
+            if self.path == "/v1/voice/delete":
+                if not self.authed(): return
+                delete_voice(str(req.get("id", "")))
+                if Handler.natural: Handler.natural.voices.pop(str(req.get("id", "")), None)
+                return self.reply(200, {})
             if self.path == "/v1/speak":
                 if not self.authed(): return
                 text = str(req.get("text", ""))[:MAX_TEXT]
@@ -421,6 +480,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not text.strip(): return self.reply(400, {"error": "no text"})
                 t0 = time.time()
                 n = Handler.natural
+                vid = req.get("voice")
+                if vid:
+                    # a recorded voice: only the natural voice can copy one
+                    if not voice_file(vid) or not os.path.exists(voice_file(vid)): return self.reply(404, {"error": "that recorded voice isn't on this PC"})
+                    if n is None: return self.reply(409, {"error": "this PC has no natural voice"})
+                    try:
+                        pcm, rate = n.speak(text, vid)
+                    except Exception as e:
+                        print("Loudbook PC voice: recorded voice failed:", repr(e)[:200], flush=True)
+                        return self.reply(500, {"error": "the recorded voice failed"})
+                    return self.reply(200, pcm, "audio/L16", {"X-Sample-Rate": str(rate), "X-Work-Ms": str(int((time.time() - t0) * 1000)),
+                                                              "X-Made-At": "1.000", "X-Engine": "recorded"})
                 # the natural voice when asked for, unless it's proving too slow to keep up, or the
                 # text is too short for it (a lone word can come out odd)
                 use_natural = (n is not None and req.get("engine") == "natural" and sum(ch.isalpha() for ch in text) >= 4

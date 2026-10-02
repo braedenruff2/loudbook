@@ -694,6 +694,102 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         }, "lb-voice-setup").start();
     }
 
+    // ---------------------------------------------------------------- recording a voice for the PC
+    static final String VOICE_PASSAGE =
+        "The house at the end of the lane had a green door and a garden full of tall grass. Every summer, the children "
+        + "who lived there would build a fort under the apple tree and stay out until the light was gone. "
+        + "One evening, their grandmother came out with a lantern and a basket of bread. \u201cYou'll miss supper,\u201d she said, "
+        + "but she sat down with them anyway, and told them a story about a fox who wanted to see the sea. "
+        + "By the time she finished, the stars were out, and nobody wanted to go inside.";
+
+    /** Someone reads a passage into the phone; the PC keeps it and reads books in that voice. */
+    private void recordVoice(Runnable done) {
+        PcLink l = svc != null ? svc.voice().pcLink() : null;
+        if (l == null) { onStatus("Pair with your PC and turn \u201cRead with my PC\u201d on first.", true); return; }
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, 43);
+            onStatus("Allow the microphone, then tap \u201cRecord a voice\u201d again.", false);
+            return;
+        }
+        LinearLayout box = vbox(dp(20), dp(8));
+        TextView how = text(14, C_INK, false);
+        how.setText("Only record someone who's happy for their voice to be used this way.\n\n"
+            + "Have them hold the phone near their mouth in a quiet room and read this aloud in their normal reading voice (about 30 seconds):");
+        TextView passage = text(16, C_INK, false);
+        passage.setText(VOICE_PASSAGE);
+        passage.setPadding(0, dp(10), 0, dp(10));
+        EditText name = new EditText(this);
+        name.setHint("Whose voice is it? (a name)");
+        name.setSingleLine(true);
+        TextView state = text(13, C_DIM, false);
+        box.addView(how); box.addView(passage); box.addView(name); box.addView(state);
+        ScrollView sv = new ScrollView(this); sv.addView(box);
+        final boolean[] recording = {false};
+        final java.io.ByteArrayOutputStream pcm = new java.io.ByteArrayOutputStream();
+        final int rate = 24000;
+        AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Record a voice").setView(sv)
+            .setPositiveButton("Start recording", null)
+            .setNegativeButton("Cancel", (d, w) -> recording[0] = false)
+            .setCancelable(false).show();
+        Button go = dlg.getButton(AlertDialog.BUTTON_POSITIVE);
+        go.setOnClickListener(v -> {
+            if (!recording[0] && pcm.size() == 0) {
+                // start
+                recording[0] = true;
+                go.setText("Stop");
+                state.setText("Recording\u2026 read the passage now.");
+                if (svc != null) svc.holdListening(true);
+                new Thread(() -> {
+                    android.media.AudioRecord r = null;
+                    try {
+                        int min = android.media.AudioRecord.getMinBufferSize(rate, android.media.AudioFormat.CHANNEL_IN_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT);
+                        r = new android.media.AudioRecord(android.media.MediaRecorder.AudioSource.MIC, rate, android.media.AudioFormat.CHANNEL_IN_MONO,
+                            android.media.AudioFormat.ENCODING_PCM_16BIT, Math.max(min, rate));
+                        r.startRecording();
+                        byte[] buf = new byte[rate / 5];
+                        long t0 = System.currentTimeMillis();
+                        while (recording[0] && System.currentTimeMillis() - t0 < 60_000) {
+                            int n = r.read(buf, 0, buf.length);
+                            if (n > 0) pcm.write(buf, 0, n);
+                            final long secs = (System.currentTimeMillis() - t0) / 1000;
+                            main.post(() -> { if (recording[0]) state.setText("Recording\u2026 " + secs + " s" + (secs >= 15 ? " (tap Stop when they've finished)" : "")); });
+                        }
+                    } catch (Exception e) {
+                        main.post(() -> state.setText("The microphone didn't work: " + e.getMessage()));
+                    } finally {
+                        if (r != null) { try { r.stop(); } catch (Exception ignored) { } r.release(); }
+                        recording[0] = false;
+                        main.post(() -> { go.setText("Use this recording"); state.setText("Done. Use this recording, or Cancel and try again."); if (svc != null) svc.holdListening(false); });
+                    }
+                }, "lb-record-voice").start();
+                return;
+            }
+            if (recording[0]) { recording[0] = false; return; }
+            // use it
+            byte[] wav = VoiceRecording.toWav(pcm.toByteArray(), rate);
+            if (wav == null) { state.setText("That's too short or too quiet. Cancel and try again, reading the whole passage."); return; }
+            String who = name.getText().toString().trim();
+            if (who.isEmpty()) { state.setText("Add a name for this voice first."); return; }
+            go.setEnabled(false);
+            state.setText("Sending it to your PC\u2026");
+            new Thread(() -> {
+                try {
+                    String id = l.addVoice(who, wav);
+                    prefs.edit().putString("pcVoice", id).apply();
+                    main.post(() -> {
+                        dlg.dismiss();
+                        onStatus("Loudbook now reads in " + who + "'s voice on your PC. Playing a sample\u2026", false);
+                        if (svc != null) { svc.restyle(); svc.preview(); }
+                        done.run();
+                    });
+                } catch (Exception e) {
+                    main.post(() -> { go.setEnabled(true); state.setText("Your PC couldn't take it: " + e.getMessage()); });
+                }
+            }, "lb-send-voice").start();
+        });
+    }
+
     // ---------------------------------------------------------------- settings
     private Runnable settingsSave;
     private void showSettings() {
@@ -904,6 +1000,64 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             @Override public void onNothingSelected(android.widget.AdapterView<?> p) { }
         });
         box.addView(pcStyle);
+        // voices recorded on the PC (someone reads a passage; the natural voice copies them)
+        Spinner pcVoice = new Spinner(this);
+        java.util.List<PcLink.Recorded> recs = new java.util.ArrayList<>();
+        Button pcRecord = smallButton("Record a voice (for example, someone in your family)");
+        Button pcVoiceDel = smallButton("Remove this recorded voice");
+        Runnable[] loadRecs = new Runnable[1];
+        Runnable fillRecs = () -> {
+            java.util.List<String> rnames = new java.util.ArrayList<>();
+            rnames.add("Read with: the voice chosen above");
+            int rsel = 0;
+            for (int i = 0; i < recs.size(); i++) {
+                rnames.add("Read with: " + recs.get(i).name + " (recorded)");
+                if (recs.get(i).id.equals(prefs.getString("pcVoice", ""))) rsel = i + 1;
+            }
+            pcVoice.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, rnames));
+            pcVoice.setSelection(rsel);
+            pcVoiceDel.setVisibility(rsel > 0 ? View.VISIBLE : View.GONE);
+        };
+        loadRecs[0] = () -> {
+            PcLink l = svc != null ? svc.voice().pcLink() : null;
+            if (l == null) return;
+            new Thread(() -> {
+                try {
+                    java.util.List<PcLink.Recorded> got = l.voices(4000);
+                    main.post(() -> { recs.clear(); recs.addAll(got); fillRecs.run(); });
+                } catch (Exception e) { Log.i(TAG, "recorded voices: " + e.getMessage()); }
+            }, "lb-voices").start();
+        };
+        fillRecs.run();
+        loadRecs[0].run();
+        pcVoice.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> p, View v, int i, long id) {
+                String want = i == 0 || i - 1 >= recs.size() ? "" : recs.get(i - 1).id;
+                pcVoiceDel.setVisibility(i > 0 ? View.VISIBLE : View.GONE);
+                if (want.equals(prefs.getString("pcVoice", ""))) return;
+                prefs.edit().putString("pcVoice", want).apply();
+                if (svc != null) svc.restyle();
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> p) { }
+        });
+        pcRecord.setOnClickListener(v -> recordVoice(() -> loadRecs[0].run()));
+        pcVoiceDel.setOnClickListener(v -> {
+            int i = pcVoice.getSelectedItemPosition() - 1;
+            PcLink l = svc != null ? svc.voice().pcLink() : null;
+            if (i < 0 || i >= recs.size() || l == null) return;
+            PcLink.Recorded r = recs.get(i);
+            new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setMessage("Remove " + r.name + "'s voice from your PC? The recording is deleted.")
+                .setPositiveButton("Remove", (d, w) -> new Thread(() -> {
+                    try {
+                        l.deleteVoice(r.id);
+                        if (r.id.equals(prefs.getString("pcVoice", ""))) { prefs.edit().putString("pcVoice", "").apply(); if (svc != null) svc.restyle(); }
+                        main.post(loadRecs[0]);
+                    } catch (Exception e) { main.post(() -> onStatus("Couldn't remove it: " + e.getMessage(), true)); }
+                }).start())
+                .setNegativeButton("Keep", null).show();
+        });
+        box.addView(pcVoice); box.addView(pcRecord); box.addView(pcVoiceDel);
         Button pcPair = smallButton(prefs.getString("pcToken", "").isEmpty() ? "Pair with my PC" : "Pair again");
         Button pcForget = smallButton("Forget my PC");
         box.addView(pcPair); box.addView(pcForget);
@@ -911,6 +1065,9 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             boolean paired = !prefs.getString("pcToken", "").isEmpty();
             pcOn.setVisibility(paired ? View.VISIBLE : View.GONE);
             pcStyle.setVisibility(paired && prefs.getBoolean("pcOn", false) ? View.VISIBLE : View.GONE);
+            pcVoice.setVisibility(paired && prefs.getBoolean("pcOn", false) ? View.VISIBLE : View.GONE);
+            pcRecord.setVisibility(paired && prefs.getBoolean("pcOn", false) ? View.VISIBLE : View.GONE);
+            if (!(paired && prefs.getBoolean("pcOn", false))) pcVoiceDel.setVisibility(View.GONE);
             pcForget.setVisibility(paired ? View.VISIBLE : View.GONE);
             Voice v = svc != null ? svc.voice() : null;
             PcLink.Health hh = v == null ? null : v.pcHealth;

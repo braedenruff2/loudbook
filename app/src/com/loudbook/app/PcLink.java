@@ -68,10 +68,14 @@ final class PcLink {
     }
 
     /** engine: "natural" for the graphics-card voice when the PC has it, otherwise Kokoro. */
-    Audio speak(String text, int sid, float speed, String engine, int timeoutMs) throws IOException {
+    Audio speak(String text, int sid, float speed, String engine, int timeoutMs) throws IOException { return speak(text, sid, speed, engine, null, timeoutMs); }
+
+    /** voice: a voice recorded on the PC (its id), or null for the usual ones. */
+    Audio speak(String text, int sid, float speed, String engine, String voice, int timeoutMs) throws IOException {
         HttpsURLConnection c = open("/v1/speak", fp, timeoutMs);
         c.setRequestProperty("Authorization", "Bearer " + token);
-        byte[] req = ("{\"text\":" + quote(text) + ",\"sid\":" + sid + ",\"speed\":" + speed + ",\"engine\":" + quote(engine) + "}").getBytes(StandardCharsets.UTF_8);
+        byte[] req = ("{\"text\":" + quote(text) + ",\"sid\":" + sid + ",\"speed\":" + speed + ",\"engine\":" + quote(engine)
+            + (voice != null && !voice.isEmpty() ? ",\"voice\":" + quote(voice) : "") + "}").getBytes(StandardCharsets.UTF_8);
         post(c, req);
         int code = c.getResponseCode();
         if (code != 200) { String e = errorText(c); c.disconnect(); throw new IOException("PC said " + code + (e.isEmpty() ? "" : ": " + e)); }
@@ -84,6 +88,40 @@ final class PcLink {
         short[] pcm = new short[b.length / 2];
         for (int i = 0; i < pcm.length; i++) pcm[i] = (short) ((b[2 * i] & 0xff) | (b[2 * i + 1] << 8));
         return new Audio(pcm, rate, w == null ? 0 : Integer.parseInt(w), made == null ? speed : Float.parseFloat(made), used == null ? "kokoro" : used);
+    }
+
+    // ---------------------------------------------------------------- recorded voices
+    static final class Recorded { final String id, name; Recorded(String i, String n) { id = i; name = n; } }
+
+    /** The voices recorded on the PC. */
+    List<Recorded> voices(int timeoutMs) throws IOException {
+        HttpsURLConnection c = open("/v1/voices", fp, timeoutMs);
+        c.setRequestProperty("Authorization", "Bearer " + token);
+        String body = readText(c);
+        List<Recorded> out = new ArrayList<>();
+        Matcher m = Pattern.compile("\\{[^{}]*\\}").matcher(body.substring(Math.max(0, body.indexOf('['))));
+        while (m.find()) {
+            String id = str(m.group(), "id"), name = str(m.group(), "name");
+            if (id != null) out.add(new Recorded(id, name == null ? "Recorded voice" : name));
+        }
+        return out;
+    }
+
+    /** Keeps a recording (a WAV file) on the PC as a voice to read with. Returns its id. */
+    String addVoice(String name, byte[] wav) throws IOException {
+        HttpsURLConnection c = open("/v1/voice/add", fp, 60000);
+        c.setRequestProperty("Authorization", "Bearer " + token);
+        post(c, ("{\"name\":" + quote(name) + ",\"wav\":\"" + Base64.getEncoder().encodeToString(wav) + "\"}").getBytes(StandardCharsets.UTF_8));
+        String id = str(readText(c), "id");
+        if (id == null) throw new IOException("the PC didn't keep it");
+        return id;
+    }
+
+    void deleteVoice(String id) throws IOException {
+        HttpsURLConnection c = open("/v1/voice/delete", fp, 10000);
+        c.setRequestProperty("Authorization", "Bearer " + token);
+        post(c, ("{\"id\":" + quote(id) + "}").getBytes(StandardCharsets.UTF_8));
+        readText(c);
     }
 
     // ---------------------------------------------------------------- pairing

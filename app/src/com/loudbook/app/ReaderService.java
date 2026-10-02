@@ -240,7 +240,12 @@ public class ReaderService extends Service {
         dropClips();
         if (playing) seek(pos);                       // say the current sentence again in the new voice
     }
-    void setAutoNext(boolean on) { autoNext = on; prefs.edit().putBoolean("autoNext", on).apply(); }
+    /** Something about the voice changed (a recorded voice was chosen): make what's ahead again. */
+    void restyle() {
+        dropClips();
+        if (playing) seek(pos);
+    }
+        void setAutoNext(boolean on) { autoNext = on; prefs.edit().putBoolean("autoNext", on).apply(); }
     /** minutes > 0: pause after that long; 0: off. */
     void setSleep(int minutes, boolean atChapterEnd) {
         sleepAt = minutes > 0 ? System.currentTimeMillis() + minutes * 60_000L : 0;
