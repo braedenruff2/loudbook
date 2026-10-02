@@ -37,14 +37,18 @@ final class ChapterFetcher {
     private String loading;                          // the address being opened, or null
     private final List<Done> waiting = new ArrayList<>();
     private int attempt;                             // bumped per load: late answers from an old page are ignored
-    private String doneUrl;
-    private Chapter doneCh;
+    // chapters loaded already, by the address they were asked for (the next few are kept, also on
+    // the phone's storage, so reading carries on without a signal)
+    private final java.util.LinkedHashMap<String, Chapter> done = new java.util.LinkedHashMap<String, Chapter>(16, 0.75f, true) {
+        @Override protected boolean removeEldestEntry(java.util.Map.Entry<String, Chapter> e) { return size() > 8; }
+    };
 
     ChapterFetcher(Context ctx) { this.ctx = ctx.getApplicationContext(); }
 
     /** The chapter at this address, loaded already or as soon as it's ready. */
     void get(String url, Done d) {
-        if (url.equals(doneUrl) && doneCh != null) { d.on(doneCh, null); return; }
+        Chapter have = ready(url);
+        if (have != null) { d.on(have, null); return; }
         if (url.equals(loading)) { waiting.add(d); return; }
         fail("replaced");
         loading = url;
@@ -53,7 +57,41 @@ final class ChapterFetcher {
     }
 
     boolean busyWith(String url) { return url != null && url.equals(loading); }
-    Chapter ready(String url) { return url != null && url.equals(doneUrl) ? doneCh : null; }
+    Chapter ready(String url) {
+        if (url == null) return null;
+        Chapter c = done.get(url);
+        if (c == null && (c = fromDisk(url)) != null) done.put(url, c);
+        return c;
+    }
+
+    // ---- kept on the phone (a week at most; the newest 40)
+    private java.io.File diskFor(String url) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-1");
+            StringBuilder sb = new StringBuilder();
+            for (byte b : md.digest(url.getBytes("UTF-8"))) sb.append(String.format("%02x", b));
+            return new java.io.File(new java.io.File(ctx.getCacheDir(), "chapters"), sb.substring(0, 20) + ".json");
+        } catch (Exception e) { throw new IllegalStateException(e); }
+    }
+    private Chapter fromDisk(String url) {
+        java.io.File f = diskFor(url);
+        if (!f.isFile() || System.currentTimeMillis() - f.lastModified() > 7L * 24 * 3600_000) return null;
+        // (the newest chapter is fetched again when it can be: there may be a next one by now)
+        try { Chapter c = new Chapter(new JSONObject(new String(java.nio.file.Files.readAllBytes(f.toPath()), "UTF-8"))); return c.nextUrl == null ? null : c; }
+        catch (Exception e) { return null; }
+    }
+    private void toDisk(String url, Chapter c) {
+        try {
+            java.io.File f = diskFor(url);
+            f.getParentFile().mkdirs();
+            java.nio.file.Files.write(f.toPath(), c.toJson().toString().getBytes("UTF-8"));
+            java.io.File[] all = f.getParentFile().listFiles();
+            if (all != null && all.length > 40) {
+                java.util.Arrays.sort(all, (a, b) -> Long.compare(a.lastModified(), b.lastModified()));
+                for (int i = 0; i < all.length - 40; i++) all[i].delete();
+            }
+        } catch (Exception e) { Log.w(TAG, "keep chapter", e); }
+    }
 
     void destroy() {
         fail("stopped");
@@ -117,7 +155,7 @@ final class ChapterFetcher {
         String url = loading;
         loading = null;
         attempt++;
-        if (ch != null) { doneUrl = url; doneCh = ch; }
+        if (ch != null && url != null) { done.put(url, ch); toDisk(url, ch); }
         if (web != null) web.loadUrl("about:blank");     // stop the page's scripts and ads
         Log.i("LoudbookTest", "fetched " + url + ": " + (ch != null ? ch.size() + " sentences, next " + ch.nextUrl : error));
         for (Done d : ds) { try { d.on(ch, error); } catch (Throwable t) { Log.w(TAG, "fetcher callback", t); } }

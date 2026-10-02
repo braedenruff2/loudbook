@@ -14,5 +14,9 @@ adb shell input keyevent KEYCODE_HOME
 sleep 2
 adb shell input keyevent KEYCODE_SLEEP
 adb shell log -t LoudbookTest "=== app in the background, screen off ==="
+sleep 10
+# no signal from here on: the chapters loaded ahead must carry it to the end
+pkill -f "http.server 8000" || true
+adb shell log -t LoudbookTest "=== web server stopped (no signal) ==="
 sleep 150
 adb logcat -d > logcat.txt

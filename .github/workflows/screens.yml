@@ -1,0 +1,50 @@
+# Screenshots of the app on an emulator, for reviewing the look. Run by hand (Actions tab) or when
+# test/screens.sh changes. Pictures go to the screens release.
+name: Screenshots
+on:
+  push:
+    branches: [main]
+    paths: ['test/screens.sh', '.github/workflows/screens.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/cache@v4
+        with:
+          path: downloads
+          key: parts-sherpa-v1.13.8-kokoro-v1_0-x86
+      - name: Get parts
+        run: bash tools/ci-parts.sh
+      - name: Build for the emulator
+        run: ABI=x86_64 LB_CODE=1 LB_NAME=emulator LB_REPO="$GITHUB_REPOSITORY" bash build.sh
+      - name: Serve the test chapters
+        run: (cd test/chapters && nohup python3 -m http.server 8000 > /tmp/http.log 2>&1 &) ; sleep 1
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run on the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash test/screens.sh
+      - name: Publish
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view screens >/dev/null 2>&1 || gh release create screens --latest=false --title "Screenshots" --notes "Output of .github/workflows/screens.yml"
+          ls shots
+          gh release upload screens shots/*.png --clobber

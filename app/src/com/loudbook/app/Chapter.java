@@ -40,6 +40,17 @@ final class Chapter {
 
     int size() { return chunks.size(); }
 
+    /** The same shape the page script hands over (so it can be kept on the phone and read back). */
+    JSONObject toJson() throws Exception {
+        JSONObject o = new JSONObject();
+        o.put("url", url).put("site", site).put("title", title).put("fiction", fiction);
+        o.put("nextUrl", nextUrl == null ? JSONObject.NULL : nextUrl).put("prevUrl", prevUrl == null ? JSONObject.NULL : prevUrl);
+        JSONArray a = new JSONArray();
+        for (Chunk c : chunks) a.put(new JSONObject().put("block", c.block).put("text", c.text).put("say", c.say));
+        o.put("chunks", a);
+        return o;
+    }
+
     /** Non-space characters of this paragraph that come before chunk i (to find it on the page). */
     int offsetInBlock(int i) {
         int n = 0;

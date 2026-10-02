@@ -262,6 +262,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         String url = null;
         if (Intent.ACTION_SEND.equals(i.getAction())) url = firstUrl(i.getStringExtra(Intent.EXTRA_TEXT));
         else if (Intent.ACTION_VIEW.equals(i.getAction()) && i.getData() != null) url = i.getData().toString();
+        if (i.getBooleanExtra("settings", false)) { i.removeExtra("settings"); main.postDelayed(this::showSettings, 1500); }   // (screenshots in CI)
         if (url == null) return false;
         go(url);
         if (i.getBooleanExtra("play", false)) resumeOnLoad = url;     // "open and read" (used by the tests)

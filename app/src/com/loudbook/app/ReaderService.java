@@ -812,8 +812,24 @@ public class ReaderService extends Service {
                 if (c == null) { Log.w(TAG, "next chapter ahead: " + err); return; }
                 Chapter now = chapter;
                 if (now != null && url.equals(now.nextUrl)) { nextFor = url; nextCh = c; }
+                aheadFrom(c, AHEAD - 1);
             });
         });
+    }
+
+    static final int AHEAD = 3;
+    /** Loads a few more chapters' text after this one, one at a time, so reading goes on without a signal. */
+    private void aheadFrom(Chapter c, int more) {
+        if (more <= 0 || c == null || c.nextUrl == null || fetcher().ready(c.nextUrl) != null) {
+            if (more > 0 && c != null && c.nextUrl != null) aheadFrom(fetcher().ready(c.nextUrl), more - 1);
+            return;
+        }
+        final String url = c.nextUrl;
+        main.postDelayed(() -> {
+            Chapter now = chapter;
+            if (now == null || fetcher().busyWith(url) || fetcher().busyWith(now.nextUrl)) return;
+            fetcher().get(url, (n, err) -> { if (n != null) aheadFrom(n, more - 1); });
+        }, 3000);
     }
 
     /** Near the end of a chapter: makes the next one's first sentences, so it starts straight away. */
