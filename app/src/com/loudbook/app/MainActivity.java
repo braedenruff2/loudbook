@@ -474,6 +474,12 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         web.loadUrl(url);
     }
 
+    /** Reading started on the last story without the page open (play on the start page, the headphones): show it. */
+    @Override public void onOpened(Chapter ch) {
+        String cur = web.getUrl();
+        if (cur == null || !cur.startsWith("http")) { awaitingTurn = null; web.loadUrl(ch.url); }
+    }
+
     /** The service went on to the next chapter by itself: follow it, if the last one was on screen. */
     @Override public void onTurned(Chapter from, Chapter to) {
         String cur = web.getUrl();
@@ -704,6 +710,60 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 if (refresh != null) refresh.run();
             });
         }, "lb-voice-setup").start();
+    }
+
+    // ---------------------------------------------------------------- fixing how a word is said
+    private void fixAWord() {
+        Chapter ch = svc != null ? svc.chapter() : null;
+        if (ch == null || svc.pos() >= ch.size()) return;
+        String sentence = ch.chunks.get(svc.pos()).text;
+        java.util.LinkedHashSet<String> words = new java.util.LinkedHashSet<>();
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("[\\p{L}][\\p{L}'\u2019\\-]*[\\p{L}]|[\\p{L}]").matcher(sentence);
+        while (m.find()) if (m.group().length() > 1) words.add(m.group());
+        if (words.isEmpty()) return;
+        String[] list = words.toArray(new String[0]);
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Which word is said wrong?")
+            .setItems(list, (d, i) -> fixWord(list[i]))
+            .setNegativeButton("Cancel", null).show();
+    }
+
+    private void fixWord(String word) {
+        LinearLayout box = vbox(dp(20), dp(8));
+        TextView how = text(14, C_INK, false);
+        how.setText("Spell \u201c" + word + "\u201d the way it should sound, e.g. Tah-vee, Ee-ma, Zan-THOOS. Try it, then save. It applies everywhere.");
+        EditText say = new EditText(this);
+        say.setSingleLine(true);
+        // what it's set to already, if anything
+        for (String line : prefs.getString("fixes", "").split("\n")) {
+            int eq = line.indexOf('=');
+            if (eq > 0 && line.substring(0, eq).trim().equalsIgnoreCase(word)) say.setText(line.substring(eq + 1).trim());
+        }
+        say.setHint("How it sounds");
+        box.addView(how); box.addView(say);
+        AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(word).setView(box)
+            .setPositiveButton("Save", null).setNeutralButton("Try it", null).setNegativeButton("Cancel", null).show();
+        dlg.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v -> {
+            String to = say.getText().toString().trim();
+            if (to.isEmpty() || svc == null) return;
+            if (svc.isPlaying() && !svc.isPaused()) svc.pause();
+            svc.sampleRaw(to);
+        });
+        dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String to = say.getText().toString().trim();
+            StringBuilder out = new StringBuilder();
+            for (String line : prefs.getString("fixes", "").split("\n")) {
+                int eq = line.indexOf('=');
+                if (line.trim().isEmpty() || (eq > 0 && line.substring(0, eq).trim().equalsIgnoreCase(word))) continue;
+                out.append(line).append('\n');
+            }
+            if (!to.isEmpty()) out.append(word).append(" = ").append(to).append('\n');
+            prefs.edit().putString("fixes", out.toString().trim()).apply();
+            dlg.dismiss();
+            if (svc != null) svc.refreshSay();
+            onStatus(to.isEmpty() ? "\u201c" + word + "\u201d is back to how the voice says it." : "Saved: \u201c" + word + "\u201d is said \u201c" + to + "\u201d.", false);
+        });
     }
 
     // ---------------------------------------------------------------- recording a voice for the PC
@@ -1168,8 +1228,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 String f = fixes.getText().toString();
                 boolean changed = !f.equals(prefs.getString("fixes", "")) || tidy.isChecked() != prefs.getBoolean("tidy", true);
                 prefs.edit().putString("fixes", f).putBoolean("tidy", tidy.isChecked()).apply();
-                if (changed && pageChapter != null && (svc == null || !svc.isPlaying())) inject(web.getUrl());
-                else if (changed) onStatus("Pronunciation changes apply from the next chapter.", false);
+                if (changed && svc != null) svc.refreshSay();
             })
             .show();
     }
@@ -1212,6 +1271,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         nowText = text(15, C_INK, false);
         nowText.setMaxLines(3); nowText.setEllipsize(TextUtils.TruncateAt.END);
         nowText.setTypeface(Typeface.SERIF);
+        // tap the sentence being read: fix how a word in it is said
+        nowText.setOnClickListener(v -> fixAWord());
         nowText.setPadding(0, dp(4), 0, dp(4));
         statusText = text(12, C_DIM, false);
         updateBtn = smallButton("");

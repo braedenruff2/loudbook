@@ -60,6 +60,8 @@ public class ReaderService extends Service {
         default void onPrefetch(String url) { }
         /** The service went on to the next chapter by itself (it loads it ahead). */
         default void onTurned(Chapter from, Chapter to) { }
+        /** Reading picked up the last story by itself (play with nothing open: the headphones, "Hey Google"). */
+        default void onOpened(Chapter ch) { }
     }
 
     final class LocalBinder extends Binder { ReaderService service() { return ReaderService.this; } }
@@ -288,6 +290,53 @@ public class ReaderService extends Service {
         });
     }
 
+    /** Says exactly this, now (trying out how a word should sound). */
+    void sampleRaw(String text) {
+        if (!voice.ready() && voice.pcLink() == null) return;
+        if (playing) stopPlayback();             // (play carries on from the same sentence afterwards)
+        final int myGen = ++gen;
+        synth.submit(() -> {
+            Voice.Clip c = voice.speak(text, sid, speed);
+            new Thread(() -> { AudioTrack t = ensureTrack(c.rate); t.play(); writeClip(t, c, myGen); }).start();
+            return null;
+        });
+    }
+
+    /** The pronunciation fixes changed: what the voice says is worked out again, and the rest of the chapter re-made. */
+    void refreshSay() {
+        final Chapter ch = chapter;
+        if (ch == null) return;
+        // Gemini's recording of this chapter is matched to its words: changing them would cost
+        // another request, so with Gemini the fix starts with the next chapter
+        if (cloudOn() && !"kindle".equals(ch.site)) { status("Saved. With Gemini it applies from the next chapter.", false); return; }
+        kindleThread.submit(() -> {
+            java.util.List<Chapter.Chunk> now = new java.util.ArrayList<>(ch.chunks);
+            java.util.List<Chapter.Chunk> again = spokenKeepAll(now);
+            if (again == null) return null;
+            main.post(() -> {
+                if (chapter != ch) return;
+                for (int i = 0; i < again.size() && i < ch.chunks.size(); i++) ch.chunks.set(i, again.get(i));
+                boolean was = playing && !paused;
+                dropClips();
+                if (was) seek(pos);
+                status("Pronunciation updated.", false);
+            });
+            return null;
+        });
+    }
+
+    /** Like spoken(), but one for one (nothing dropped), or null if it couldn't. */
+    private java.util.List<Chapter.Chunk> spokenKeepAll(java.util.List<Chapter.Chunk> in) {
+        if (sayer == null) sayer = new Sayer(this);
+        java.util.List<String> texts = new java.util.ArrayList<>();
+        for (Chapter.Chunk c : in) texts.add(c.text);
+        java.util.List<String> said = sayer.say(texts, prefs.getString("fixes", ""), prefs.getBoolean("tidy", true));
+        if (said == texts) return null;
+        java.util.List<Chapter.Chunk> out = new java.util.ArrayList<>();
+        for (int i = 0; i < in.size(); i++) out.add(new Chapter.Chunk(in.get(i).block, in.get(i).text, said.get(i).trim().isEmpty() ? in.get(i).say : said.get(i)));
+        return out;
+    }
+
     // ---------------------------------------------------------------- chapter + position
     Chapter chapter() { return chapter; }
     int pos() { return pos; }
@@ -320,7 +369,7 @@ public class ReaderService extends Service {
 
     // ---------------------------------------------------------------- playing
     void play() {
-        if (chapter == null) { status("Open a chapter first.", false); return; }
+        if (chapter == null) { resumeLast(); return; }
         if (track != null) { try { track.setVolume(1f); } catch (Exception ignored) { } }       // (after a sleep-timer fade)
         if (playing && paused) { paused = false; if (track != null) track.play(); state(); return; }
         if (playing) return;
@@ -822,6 +871,23 @@ public class ReaderService extends Service {
         });
     }
     boolean pendingPauseAfterTurn = false;
+
+    /** Play with nothing open: carry on with the story last read, where it was left. */
+    private boolean resuming;
+    private void resumeLast() {
+        String last = prefs.getString("lastUrl", "");
+        if (last.isEmpty() || !last.startsWith("http")) { status("Open a chapter first.", false); return; }
+        if (resuming) return;
+        resuming = true;
+        status("Opening where you left off\u2026", false);
+        main.post(() -> fetcher().get(last, (c, err) -> {
+            resuming = false;
+            if (c == null) { status("Couldn't open your last chapter (" + err + "). Open it in Loudbook.", true); return; }
+            if (chapter != null) return;                                   // something else was opened meanwhile
+            setChapter(c, Math.min(savedPos(last), Math.max(0, c.size() - 1)), true);
+            if (listener != null) listener.onOpened(c);
+        }));
+    }
 
     // ---------------------------------------------------------------- the next chapter, ahead of time
     private ChapterFetcher fetcher;

@@ -20,3 +20,14 @@ pkill -f "http.server 8000" || true
 adb shell log -t LoudbookTest "=== web server stopped (no signal) ==="
 sleep 150
 adb logcat -d > logcat.txt
+# cold start: Loudbook closed, opened again, play pressed with nothing open -> carries on with the last story
+(cd test/chapters && nohup python3 -m http.server 8000 > /tmp/http2.log 2>&1 &)
+sleep 2
+adb shell am force-stop com.loudbook.app
+adb shell log -t LoudbookTest "=== reopened; play with nothing open ==="
+adb shell am start -n com.loudbook.app/.MainActivity
+sleep 25
+SIZE=$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1); W=${SIZE%x*}; H=${SIZE#*x}
+adb shell input tap $((W * 46 / 100)) $((H * 89 / 100))          # the big play button
+sleep 30
+adb logcat -d > logcat.txt
