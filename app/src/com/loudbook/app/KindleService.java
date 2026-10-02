@@ -308,6 +308,7 @@ public class KindleService extends AccessibilityService {
     static final class Bit { final String text; final Rect r; Bit(String t, Rect r) { text = t; this.r = r; } }
     /** Instructions for screen-reader users ("double tap to…") and the like: never part of a book. */
     static final Pattern HINT = Pattern.compile("(?i).*\\b(double[- ]?tap|tap to|swipe (up|down|left|right)|to activate|to dismiss|continuous reading)\\b.*");
+    static final Pattern HINT_PART = Pattern.compile("(?i)(?<=^|[.!?;])\\s*[^.!?;]*\\b(double[- ]?tap|tap to|swipe (up|down|left|right)|to activate|to dismiss|continuous reading)\\b[^.!?;]*[.!?;]?");
     private static final Pattern CHROME = Pattern.compile("(?i)^(location \\d+.*|page \\d+.*|\\d+\\s*%.*|\\d+ (min|mins|hr|hrs|hours?|minutes?) left.*|learning reading speed.*|.*\\bof \\d+\\s*$)");
 
     /** The text on the Kindle page, in reading order, without the bars around it. */
@@ -386,6 +387,8 @@ public class KindleService extends AccessibilityService {
         if (cls.endsWith("Button") || cls.endsWith("ImageView") || cls.endsWith("EditText") || cls.endsWith("SeekBar") || cls.endsWith("Switch") || cls.endsWith("CheckBox")) return;
         if (control && t.length() < 120 && !cls.contains("Text")) return;
         if (t.length() < 200 && HINT.matcher(t).matches()) return;
+        // a page's text with an instruction tacked on ("... Continuous reading, double tap to start"): drop the instruction
+        if (t.length() >= 200) t = HINT_PART.matcher(t).replaceAll("").trim();
         Rect r = new Rect();
         n.getBoundsInScreen(r);
         if (r.width() <= 0 || r.height() <= 0) return;
