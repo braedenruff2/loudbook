@@ -19,13 +19,13 @@ public class PcTest { public static void main(String[] a) throws Exception {
       }
     } catch (Exception e) { System.out.println("USE FAILED: " + e.getMessage()); }
   } else if (cmd.equals("voice")) {
-    // a "recorded voice": the Kokoro sentence from "use x save", three times over (about 12 s)
+    // a "recorded voice": the Kokoro sentence from "use x save", four times over (about 10 s)
     String[] k = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get("link.txt"))).split("\n");
     PcLink l = new PcLink("127.0.0.1", 8770, k[0], k[1]);
     try {
       byte[] one = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get("kokoro.pcm"));
       java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream();
-      for (int i = 0; i < 3; i++) b.write(one);
+      for (int i = 0; i < 4; i++) b.write(one);
       byte[] wav = VoiceRecording.toWav(b.toByteArray(), 24000);
       System.out.println("recording: " + (wav == null ? "REJECTED" : wav.length + " bytes"));
       String id = l.addVoice("Test reader", wav);
