@@ -36,10 +36,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 /**
- * Plays a chapter, sentence by sentence, in the background: makes each sentence with Kokoro a
- * few sentences ahead, plays it, and at the end asks the screen (MainActivity) to open the next
- * chapter. Runs as a foreground service with a media notification, so it keeps going with the
- * screen off and the lock-screen / headset buttons work.
+ * Plays a chapter, sentence by sentence, in the background: makes each sentence a few sentences
+ * ahead (Kokoro on the phone, the PC, or Gemini), plays it, and goes on to the next chapter by
+ * itself (loaded ahead in a browser with no screen, see ChapterFetcher). Runs as a foreground
+ * service with a media notification, so it keeps going with the screen off and the lock-screen,
+ * headset and "Hey Google" controls work.
  */
 public class ReaderService extends Service {
     static final String TAG = "Loudbook";
