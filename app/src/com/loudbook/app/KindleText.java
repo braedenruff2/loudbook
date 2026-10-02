@@ -24,6 +24,7 @@ final class KindleText {
     }
 
     private static final Pattern SENT = Pattern.compile("(?<=[.!?…][\"'”’)\\]]{0,2})\\s+(?=[\"'“‘(\\[]?[A-Z0-9])");
+    private static final Pattern ABBREV = Pattern.compile("(\\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Mt|vs|etc|No|Vol|Ch|Lt|Col|Gen|Sgt|Capt|Rev|Hon|approx|lvl|Lv|Lvl)|(^|\\s)[A-Z])\\.$");
     private static final Pattern END = Pattern.compile("[.!?…][\"'”’)\\]]{0,2}\\s*$");
 
     /** Sentences from a page's paragraphs. last: no more pages, so nothing is held back. */
@@ -58,7 +59,12 @@ final class KindleText {
     /** A paragraph's sentences: short ones joined, long ones split at a comma or similar. */
     static List<String> sentences(String p) {
         List<String> raw = new ArrayList<>();
-        for (String s : SENT.split(p)) if (!s.trim().isEmpty()) raw.add(s.trim());
+        for (String s : SENT.split(p)) {
+            if (s.trim().isEmpty()) continue;
+            // "Mr." or an initial ("J. Smith") isn't the end of a sentence: join it back on
+            if (!raw.isEmpty() && ABBREV.matcher(raw.get(raw.size() - 1)).find()) raw.set(raw.size() - 1, raw.get(raw.size() - 1) + " " + s.trim());
+            else raw.add(s.trim());
+        }
         List<String> merged = new ArrayList<>();
         StringBuilder pend = new StringBuilder();
         for (String s : raw) {

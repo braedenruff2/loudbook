@@ -261,6 +261,7 @@ public class ReaderService extends Service {
     /** minutes > 0: pause after that long; 0: off. */
     void setSleep(int minutes, boolean atChapterEnd) {
         sleepAt = minutes > 0 ? System.currentTimeMillis() + minutes * 60_000L : 0;
+        if (track != null) { try { track.setVolume(1f); } catch (Exception ignored) { } }
         stopAtChapterEnd = atChapterEnd;
     }
     long sleepAt() { return sleepAt; }
@@ -320,6 +321,7 @@ public class ReaderService extends Service {
     // ---------------------------------------------------------------- playing
     void play() {
         if (chapter == null) { status("Open a chapter first.", false); return; }
+        if (track != null) { try { track.setVolume(1f); } catch (Exception ignored) { } }       // (after a sleep-timer fade)
         if (playing && paused) { paused = false; if (track != null) track.play(); state(); return; }
         if (playing) return;
         playing = true; paused = false;
@@ -758,6 +760,11 @@ public class ReaderService extends Service {
     /** Moves the highlight (and saved place) to the sentence now coming out of the speaker. */
     private void heard(Chapter ch, java.util.ArrayDeque<long[]> marks, int myGen) {
         AudioTrack t = track;
+        if (t != null && sleepAt > 0) {
+            // sleep timer: fade out gently over the last fifteen seconds, rather than stop dead
+            long left = sleepAt - System.currentTimeMillis();
+            if (left < 15_000) { try { t.setVolume(Math.max(0.05f, left / 15_000f)); } catch (Exception ignored) { } }
+        }
         if (t == null || marks.isEmpty()) return;
         long head = t.getPlaybackHeadPosition() & 0xffffffffL;
         int reached = -1;
@@ -1098,13 +1105,21 @@ public class ReaderService extends Service {
         status("Heard \u201c" + word + "\u201d", false);
     }
 
+    private android.graphics.Bitmap art;
+    /** Loudbook's picture for the lock screen, the car and the headphones' app. */
+    private android.graphics.Bitmap art() {
+        if (art == null) try { art = android.graphics.BitmapFactory.decodeResource(getResources(), R.mipmap.ic_launcher); } catch (Exception ignored) { }
+        return art;
+    }
+
     private void updateMetadata() {
         if (chapter == null) return;
         session.setMetadata(new MediaMetadata.Builder()
             .putString(MediaMetadata.METADATA_KEY_TITLE, chapter.title)
             .putString(MediaMetadata.METADATA_KEY_ARTIST, chapter.fiction)
             .putString(MediaMetadata.METADATA_KEY_ALBUM, "Loudbook")
-            .putLong(MediaMetadata.METADATA_KEY_DURATION, msAt(chapter, chapter.size())).build());
+            .putLong(MediaMetadata.METADATA_KEY_DURATION, msAt(chapter, chapter.size()))
+            .putBitmap(MediaMetadata.METADATA_KEY_ART, art()).build());
     }
 
     /**
@@ -1150,6 +1165,22 @@ public class ReaderService extends Service {
         prefs.edit().putInt("pos:" + ch.url, pos)
             .putString("lastUrl", ch.url).putString("lastTitle", ch.title).putString("lastFiction", ch.fiction)
             .putInt("lastPct", ch.size() > 0 ? Math.round(100f * pos / ch.size()) : 0).apply();
+        shelve(ch, pos);
+    }
+
+    /** "Your stories" on the start page: each story read lately, where you got to (newest first, eight at most). */
+    private void shelve(Chapter ch, int at) {
+        if (ch.fiction == null || ch.fiction.trim().isEmpty()) return;
+        try {
+            org.json.JSONArray old = new org.json.JSONArray(prefs.getString("shelf", "[]")), now = new org.json.JSONArray();
+            now.put(new org.json.JSONObject().put("fiction", ch.fiction).put("title", ch.title).put("url", ch.url).put("site", ch.site)
+                .put("pct", ch.size() > 0 ? Math.round(100f * at / ch.size()) : 0).put("at", System.currentTimeMillis()));
+            for (int i = 0; i < old.length() && now.length() < 8; i++) {
+                org.json.JSONObject o = old.getJSONObject(i);
+                if (!(o.optString("fiction").equals(ch.fiction) && o.optString("site").equals(ch.site))) now.put(o);
+            }
+            prefs.edit().putString("shelf", now.toString()).apply();
+        } catch (Exception e) { Log.w(TAG, "shelf", e); }
     }
     int savedPos(String url) { return prefs.getInt("pos:" + url, 0); }
 

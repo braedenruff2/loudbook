@@ -23,6 +23,9 @@ for i in $(seq -w 1 12); do
 done
 adb shell input keyevent KEYCODE_BACK
 sleep 1
+adb shell am start -n com.loudbook.app/.MainActivity --ez home true
+sleep 4
+adb shell screencap -p /sdcard/s.png; adb pull /sdcard/s.png shots/05-home-after.png
 adb shell cmd uimode night yes
 sleep 3
 adb shell screencap -p /sdcard/s.png; adb pull /sdcard/s.png shots/04-dark.png

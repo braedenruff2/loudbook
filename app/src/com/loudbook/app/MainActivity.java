@@ -262,6 +262,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         String url = null;
         if (Intent.ACTION_SEND.equals(i.getAction())) url = firstUrl(i.getStringExtra(Intent.EXTRA_TEXT));
         else if (Intent.ACTION_VIEW.equals(i.getAction()) && i.getData() != null) url = i.getData().toString();
+        if (i.getBooleanExtra("home", false)) { i.removeExtra("home"); web.loadUrl(HOME); return true; }      // (screenshots in CI)
         if (i.getBooleanExtra("settings", false)) { i.removeExtra("settings"); main.postDelayed(this::showSettings, 1500); }   // (screenshots in CI)
         if (url == null) return false;
         go(url);
@@ -365,10 +366,20 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             try {
                 return new JSONObject().put("lastUrl", prefs.getString("lastUrl", ""))
                     .put("lastTitle", prefs.getString("lastTitle", "")).put("lastFiction", prefs.getString("lastFiction", ""))
-                    .put("lastPct", prefs.getInt("lastPct", 0)).toString();
+                    .put("lastPct", prefs.getInt("lastPct", 0)).put("shelf", new org.json.JSONArray(prefs.getString("shelf", "[]"))).toString();
             } catch (Exception e) { return "{}"; }
         }
         @JavascriptInterface public void resume(String url) { main.post(() -> { resumeOnLoad = url; web.loadUrl(url); }); }
+        /** Takes a story off "Your stories". */
+        @JavascriptInterface public void forget(String url) {
+            main.post(() -> {
+                try {
+                    org.json.JSONArray a = new org.json.JSONArray(prefs.getString("shelf", "[]")), b = new org.json.JSONArray();
+                    for (int i = 0; i < a.length(); i++) if (!a.getJSONObject(i).optString("url").equals(url)) b.put(a.getJSONObject(i));
+                    prefs.edit().putString("shelf", b.toString()).apply();
+                } catch (Exception ignored) { }
+            });
+        }
     }
     private String resumeOnLoad = null;
 

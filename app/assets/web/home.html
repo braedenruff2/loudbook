@@ -1,6 +1,8 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
+  [hidden]{display:none!important}
+  #shelf{margin-bottom:16px}
   :root{--bg:#14120f;--panel:#1e1b17;--line:#2e2a24;--ink:#ede6da;--dim:#a79e90;--amber:#e8aa46}
   body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif;padding:20px 16px 40px}
   h1{font:600 26px/1.2 Georgia,serif;margin:8px 0 4px} p{color:var(--dim);margin:0 0 18px}
@@ -11,10 +13,19 @@
   .grid a{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 12px;color:var(--ink);text-decoration:none;font-weight:600}
   .grid a span{display:block;color:var(--dim);font-weight:400;font-size:12px;margin-top:2px}
   .tip{margin-top:22px;color:var(--dim);font-size:13px}
+  h2{font:600 13px/1.2 system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:6px 0 10px}
+  .story{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 8px}
+  .story a{flex:1;color:var(--ink);text-decoration:none;min-width:0}
+  .story b{display:block;font:600 15px/1.3 Georgia,serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .story span{display:block;color:var(--dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .story .bar{height:3px;background:var(--line);border-radius:2px;margin-top:6px}.story .bar i{display:block;height:3px;background:var(--amber);border-radius:2px}
+  .story button{background:none;border:0;color:var(--dim);font-size:18px;padding:4px 6px}
 </style></head><body>
 <h1>Loudbook</h1>
 <p>Open a chapter, press play. It reads on with the screen off and turns the page for you.</p>
 <a class="resume" id="resume" href="#" hidden><small>Continue listening</small><b id="rt"></b><span id="rs"></span></a>
+<div id="shelf" hidden><h2>Your stories</h2><div id="shelfList"></div></div>
+<h2 id="findH">Find something to read</h2>
 <div class="grid">
   <a href="https://www.royalroad.com/fictions/best-rated">Royal Road<span>best rated</span></a>
   <a href="https://archiveofourown.org/">AO3<span>Archive of Our Own</span></a>
@@ -34,6 +45,25 @@
       document.getElementById('rs').textContent = [d.lastFiction ? d.lastTitle : '', d.lastPct ? d.lastPct + '% through' : ''].filter(Boolean).join(' · ');
       const r = document.getElementById('resume'); r.hidden = false;
       r.onclick = (e) => { e.preventDefault(); LoudbookNative.resume(d.lastUrl); };
+    }
+    // the other stories read lately (the newest is "Continue listening" above)
+    const others = (d.shelf || []).filter(x => x.url !== d.lastUrl);
+    if (others.length) {
+      const list = document.getElementById('shelfList');
+      for (const x of others) {
+        const row = document.createElement('div'); row.className = 'story';
+        const a = document.createElement('a'); a.href = '#';
+        const b = document.createElement('b'); b.textContent = x.fiction;
+        const sp = document.createElement('span'); sp.textContent = x.title;
+        const bar = document.createElement('div'); bar.className = 'bar';
+        const fill = document.createElement('i'); fill.style.width = Math.max(2, Math.min(100, x.pct || 0)) + '%'; bar.appendChild(fill);
+        a.append(b, sp, bar);
+        a.onclick = (e) => { e.preventDefault(); LoudbookNative.resume(x.url); };
+        const del = document.createElement('button'); del.textContent = '\u00d7'; del.title = 'Remove';
+        del.onclick = () => { LoudbookNative.forget(x.url); row.remove(); if (!list.children.length) document.getElementById('shelf').hidden = true; };
+        row.append(a, del); list.appendChild(row);
+      }
+      document.getElementById('shelf').hidden = false;
     }
   } catch (e) {}
 </script>

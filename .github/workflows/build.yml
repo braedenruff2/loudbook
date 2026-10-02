@@ -26,8 +26,11 @@ jobs:
           key: parts-sherpa-v1.13.8-kokoro-v1_0
       - name: Get parts
         run: bash tools/ci-parts.sh
-      - name: Check pronunciation rules
-        run: node test/say/run.js
+      - name: Check pronunciation rules and the plain-Java parts
+        run: |
+          node test/say/run.js
+          javac -nowarn -d unit-out -cp "$ANDROID_JAR" app/src/com/loudbook/app/KindleText.java app/src/com/loudbook/app/Chapter.java app/src/com/loudbook/app/VoiceRecording.java test/unit/com/loudbook/app/UnitTest.java
+          java -cp unit-out com.loudbook.app.UnitTest
       - name: Build the APK
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
