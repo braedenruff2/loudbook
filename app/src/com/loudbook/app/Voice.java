@@ -183,6 +183,8 @@ final class Voice {
     /** One chunk of speech. sid: speaker number; speed: 1.0 = normal. */
     Clip speak(String text, int sid, float speed) {
         long t0 = System.currentTimeMillis();
+        // nothing to say (a scene break, a row of symbols): a short silence, without asking anyone
+        if (!text.codePoints().anyMatch(Character::isLetterOrDigit)) return new Clip(new float[2400], 24000, speed, 0);
         PcLink l = pcLink();
         if (l != null && (pcOk || System.currentTimeMillis() >= pcRetryAt)) {
             try {

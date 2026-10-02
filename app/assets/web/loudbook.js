@@ -429,9 +429,14 @@ const UNITS = { km: ['kilometer', 'kilometers'], cm: ['centimeter', 'centimeters
   kph: ['kilometer per hour', 'kilometers per hour'], mi: ['mile', 'miles'], min: ['minute', 'minutes'], hr: ['hour', 'hours'], hrs: ['hour', 'hours'] };
 
 function tidy(t) {
-  return romans(t)
-    // a run of one letter: "Noooooo" -> "Noo", "Hmmmm" -> "Hmm" (but not Roman numerals, "III")
-    .replace(/(\p{L})\1{2,}/gu, (m, c) => (/[IVXLCDM]/.test(c) ? m : c + c))
+  // scene breaks and decorations ("***", "~~~", "=== Chapter 5 ===", "---o0o---", "◇◇◇"): silent
+  t = t.replace(/([~=*#_<>+\-—–])\1{2,}/g, ' ').replace(/(^|\s)[oO0xX]{3}(?=\s|$)/g, '$1 ').replace(/[◇◆◈❖•·♦♢❦☆★✦✧♪♫]+/gu, ' ')
+    .replace(/<3\b/g, '');
+  if (!/[\p{L}\p{N}]/u.test(t)) return '';
+  return romans(t.replace(/\s{2,}/g, ' ').trim())
+    // a run of one letter: "Noooooo" -> "Noo", "Hmmmm" -> "Hmm" (but not Roman numerals, and not
+    // a rank like "SSS")
+    .replace(/(\p{L})\1{2,}/gu, (m, c) => (/[IVXLCDM]/.test(c) || (m.length === 3 && c === c.toUpperCase()) ? m : c + c))
     .replace(/([!?])[!?]{2,}/g, (m) => (m.includes('?') && m.includes('!') ? '?!' : m[0]))
     .replace(/\.{4,}/g, '...')
     // the voice drops "..." altogether (no pause at all): a beat instead, or a full stop before a new sentence
@@ -584,7 +589,8 @@ return { parseFixes, makeSayer, tidy };
       }
       const say = LBSay.makeSayer(LBSay.parseFixes(fixes || ''), { tidy: tidy !== false });
       const chunks = [{ block: -1, text: r.title }, ...LBChunk.chunkBlocks(blocks.map((b, i) => ({ i, text: b.text })))]
-        .map(c => ({ block: c.block, text: c.text, say: speakNumbers(say(c.text)) }));
+        .map(c => ({ block: c.block, text: c.text, say: speakNumbers(say(c.text)) }))
+        .filter(c => /[\p{L}\p{N}]/u.test(c.say));            // scene breaks ("* * *") aren't read
       LoudbookNative.onChapter(JSON.stringify({
         url: location.href, site: r.site, siteName: r.siteName, title: r.title, fiction: r.fiction,
         nextUrl: r.nextUrl, prevUrl: r.prevUrl, chunks,

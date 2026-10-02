@@ -112,7 +112,8 @@
       }
       const say = LBSay.makeSayer(LBSay.parseFixes(fixes || ''), { tidy: tidy !== false });
       const chunks = [{ block: -1, text: r.title }, ...LBChunk.chunkBlocks(blocks.map((b, i) => ({ i, text: b.text })))]
-        .map(c => ({ block: c.block, text: c.text, say: speakNumbers(say(c.text)) }));
+        .map(c => ({ block: c.block, text: c.text, say: speakNumbers(say(c.text)) }))
+        .filter(c => /[\p{L}\p{N}]/u.test(c.say));            // scene breaks ("* * *") aren't read
       LoudbookNative.onChapter(JSON.stringify({
         url: location.href, site: r.site, siteName: r.siteName, title: r.title, fiction: r.fiction,
         nextUrl: r.nextUrl, prevUrl: r.prevUrl, chunks,

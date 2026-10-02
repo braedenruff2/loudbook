@@ -175,6 +175,7 @@ public class ReaderService extends Service {
         kindleThread.shutdownNow();
         asrThread.shutdownNow();
         if (fetcher != null) fetcher.destroy();
+        if (sayer != null) sayer.destroy();
         waiters.shutdownNow();
         if (beeper != null) beeper.release();
         stopPlayback();
@@ -453,13 +454,36 @@ public class ReaderService extends Service {
     /** Starts reading the page open in Kindle (from KindleService's button). */
     void startKindle(KindleService.Page p) {
         kt = new KindleText(prefs.getString("fixes", ""));
-        java.util.List<Chapter.Chunk> first = kt.chunks(p.paragraphs, false);
-        if (first.isEmpty()) first = new KindleText(prefs.getString("fixes", "")).chunks(p.paragraphs, true);
+        java.util.List<Chapter.Chunk> raw = kt.chunks(p.paragraphs, false);
+        if (raw.isEmpty()) raw = new KindleText(prefs.getString("fixes", "")).chunks(p.paragraphs, true);
         kindleSig = p.signature;
         kindleEnded = false; kindleBusy = false;
-        Chapter ch = new Chapter("kindle:" + System.currentTimeMillis(), "kindle", p.title.isEmpty() ? "Kindle" : p.title, "Kindle", first);
-        Log.i("LoudbookTest", "kindle start: " + p.paragraphs.size() + " paragraphs, " + first.size() + " sentences, title " + p.title);
-        setChapter(ch, 0, true);
+        final java.util.List<Chapter.Chunk> page = raw;
+        kindleThread.submit(() -> {
+            java.util.List<Chapter.Chunk> first = spoken(page);
+            main.post(() -> {
+                Chapter ch = new Chapter("kindle:" + System.currentTimeMillis(), "kindle", p.title.isEmpty() ? "Kindle" : p.title, "Kindle", first);
+                Log.i("LoudbookTest", "kindle start: " + p.paragraphs.size() + " paragraphs, " + first.size() + " sentences, title " + p.title);
+                setChapter(ch, 0, true);
+            });
+            return null;
+        });
+    }
+
+    private Sayer sayer;
+    /** Kindle sentences as the voice should get them: the same clean-ups as web pages (numbers, "Mr.", Roman numerals...). */
+    private java.util.List<Chapter.Chunk> spoken(java.util.List<Chapter.Chunk> in) {
+        if (sayer == null) sayer = new Sayer(this);
+        java.util.List<String> texts = new java.util.ArrayList<>();
+        for (Chapter.Chunk c : in) texts.add(c.text);
+        java.util.List<String> said = sayer.say(texts, prefs.getString("fixes", ""), prefs.getBoolean("tidy", true));
+        if (said == texts) return in;                                  // (it couldn't: keep the plain text)
+        java.util.List<Chapter.Chunk> out = new java.util.ArrayList<>();
+        for (int i = 0; i < in.size(); i++) {
+            String s = said.get(i);
+            if (s.codePoints().anyMatch(Character::isLetterOrDigit)) out.add(new Chapter.Chunk(in.get(i).block, in.get(i).text, s));
+        }
+        return out;
     }
 
     /** Turns Kindle's page and adds its sentences to what's being read. */
@@ -472,12 +496,12 @@ public class ReaderService extends Service {
                 KindleService.Page p = k == null ? new KindleService.Page() : k.nextPage(kindleSig);
                 if (p.paragraphs.isEmpty()) {
                     kindleEnded = true;
-                    java.util.List<Chapter.Chunk> rest = kt.chunks(new java.util.ArrayList<>(), true);   // whatever was held back
+                    java.util.List<Chapter.Chunk> rest = spoken(kt.chunks(new java.util.ArrayList<>(), true));   // whatever was held back
                     if (!rest.isEmpty()) ch.chunks.addAll(rest);
                     if (k == null || !k.kindleVisible()) main.post(() -> status("Kindle isn't on screen, so the page can't be turned. Open it to carry on.", false));
                 } else {
                     kindleSig = p.signature;
-                    java.util.List<Chapter.Chunk> more = kt.chunks(p.paragraphs, false);
+                    java.util.List<Chapter.Chunk> more = spoken(kt.chunks(p.paragraphs, false));
                     ch.chunks.addAll(more);
                     Log.i("LoudbookTest", "kindle page turned: +" + more.size() + " sentences");
                 }
@@ -741,7 +765,9 @@ public class ReaderService extends Service {
         if (reached < 0 || gen != myGen) return;
         final int here = reached;
         pos = here;
-        { String said = ch.chunks.get(here).text; Log.i("LoudbookTest", ("kindle".equals(ch.site) ? "kindle " : "") + "speaking " + here + ": " + (said.length() > 60 ? said.substring(0, 60) : said)); }
+        { Chapter.Chunk cc = ch.chunks.get(here); String said = cc.text;
+          Log.i("LoudbookTest", ("kindle".equals(ch.site) ? "kindle " : "") + "speaking " + here + ": " + (said.length() > 60 ? said.substring(0, 60) : said)
+              + (cc.say.equals(cc.text) ? "" : "  [said: " + (cc.say.length() > 70 ? cc.say.substring(0, 70) : cc.say) + "]")); }
         if (here > ch.size() / 2 && ch.nextUrl != null && autoNext && !ch.nextUrl.equals(prefetchAsked) && cloudOn()
             && prefs.getBoolean("gemPrefetch", false)) {
             prefetchAsked = ch.nextUrl;

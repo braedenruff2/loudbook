@@ -24,7 +24,7 @@ public class Reader extends Activity {
          "Mara walked it every morning. She liked the quiet, and she liked that nobody else", },
         {"bothered to come this way anymore, not since the new highway had opened on the far side of the hill.",
          "\"You'll wear out your boots,\" her aunt said, every single time.", "\"Then I'll buy new ones.\""},
-        {"The last page has only one paragraph, and it ends the chapter cleanly."},
+        {"The last page has only one paragraph, and it ends the chapter cleanly when Mr. Hale reaches Lv. 5 in Chapter IV."},
     };
     int page = 0;
     LinearLayout body;

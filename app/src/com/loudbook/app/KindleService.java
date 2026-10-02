@@ -87,9 +87,11 @@ public class KindleService extends AccessibilityService {
         // button stays out of Kindle
         if ((kindle && loudbookOpen()) || speaking) showBubble(); else hideBubble();
         // explore-by-touch only while actually reading (so the phone works normally the rest of the time)
-        if (!reading && !busy) needExplore = false;
+        // (reading takes a moment to start: leave things as they are meanwhile)
+        boolean settling = busy || System.currentTimeMillis() - startedAt < 6000;
+        if (!reading && !settling) needExplore = false;
         boolean explore = needExplore && reading && svc.isPlaying() && !svc.isPaused();
-        if (explore != exploreOn && !busy) setExplore(explore);
+        if (explore != exploreOn && !settling) setExplore(explore);
         if (bubble != null) {
             boolean on = reading && svc.isPlaying() && !svc.isPaused();
             bubble.setText(on ? "❚❚" : "▶");
@@ -249,6 +251,7 @@ public class KindleService extends AccessibilityService {
                     return;
                 }
                 needExplore = ex;
+                startedAt = System.currentTimeMillis();
                 if (ex) toast("Kindle shares this book's text only with screen readers, so while Loudbook reads, the screen works like one. Tap the gold button to pause and get your screen back.");
                 accept(got);
                 svc.startKindle(got);
@@ -257,6 +260,7 @@ public class KindleService extends AccessibilityService {
         }, "lb-kindle").start();
     }
     private volatile boolean busy;
+    private volatile long startedAt;
     private static void pause(long ms) { try { Thread.sleep(ms); } catch (InterruptedException ignored) { } }
 
     // ---------------------------------------------------------------- explore by touch
