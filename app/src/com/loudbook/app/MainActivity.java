@@ -874,7 +874,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         box.addView(kDump);
         Runnable showK = () -> {
             boolean on = KindleService.enabled(this);
-            kInfo.setText(on ? "On. Open a book in the Kindle app and tap the round Loudbook button that appears. Loudbook reads with your voice settings and turns the pages; the button pauses and resumes. Hold the button down to copy what Loudbook sees (to paste to Claude if it reads the wrong things). "
+            kInfo.setText(on ? "On. Open a book in the Kindle app and tap the round Loudbook button that appears. Loudbook reads with your voice settings and turns the pages; the button pauses and resumes. Hold the button down to copy what Loudbook sees (to paste to Claude if it reads the wrong things). The button only shows while Loudbook is open: swipe Loudbook away in recent apps and it's gone from Kindle. "
                 + "It works with books whose publishers let screen readers read them (most do). Gemini isn't used for Kindle, to save its requests."
                 : "Loudbook can read the Kindle app aloud the way a screen reader does: it reads the page text Kindle shares with screen readers and turns the pages. "
                 + "To turn it on: tap the button below, find Loudbook in the list, and switch it on. If Android says it's a restricted setting: go to Settings \u203a Apps \u203a Loudbook, tap \u22ee (top right), \u201cAllow restricted settings\u201d, then try again.");

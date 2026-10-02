@@ -83,8 +83,9 @@ public class KindleService extends AccessibilityService {
         boolean kindle = kindleRoot() != null;
         boolean reading = svc != null && svc.readingKindle();
         boolean speaking = reading && svc.isPlaying() && !svc.isPaused();
-        // (it used to stay up for good once a Kindle book had been read, even with Kindle closed)
-        if (kindle || speaking) showBubble(); else hideBubble();
+        // only while Loudbook is open (in recent apps) or reading: swipe Loudbook away and the
+        // button stays out of Kindle
+        if ((kindle && loudbookOpen()) || speaking) showBubble(); else hideBubble();
         // explore-by-touch only while actually reading (so the phone works normally the rest of the time)
         if (!reading && !busy) needExplore = false;
         boolean explore = needExplore && reading && svc.isPlaying() && !svc.isPaused();
@@ -104,6 +105,16 @@ public class KindleService extends AccessibilityService {
         // keep checking only while the button is up (Kindle's own events say when it comes back)
         main.removeCallbacks(tick);
         if (bubble != null) main.postDelayed(tick, 1000);
+    }
+
+    /** Loudbook's screen is open, or in recent apps (not swiped away, and opened since the phone started). */
+    private boolean loudbookOpen() {
+        try {
+            for (android.app.ActivityManager.AppTask t : ((android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE)).getAppTasks()) {
+                try { if (t.getTaskInfo() != null) return true; } catch (IllegalArgumentException gone) { }
+            }
+        } catch (Exception e) { return true; }
+        return false;
     }
 
     private void showBubble() {
