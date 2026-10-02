@@ -64,7 +64,8 @@
       .replace(/\$(\d[\d,]*)(?:\.(\d{2}))?\b/g, (_, d, c) => { const n = +d.replace(/,/g, ''); return words(n) + (n === 1 ? ' dollar' : ' dollars') + (c && +c ? ' and ' + words(+c) + ' cents' : ''); })
       .replace(/\b(\d{1,2}):(\d{2})\b/g, (_, h, m) => words(+h) + (+m === 0 ? " o'clock" : +m < 10 ? ' oh ' + words(+m) : ' ' + words(+m)))
       .replace(/\b(\d+)(st|nd|rd|th)\b/gi, (_, d) => ordinal(+d))
-      .replace(/\b(1[1-9]\d\d|20\d\d)s?\b/g, (m, y) => yearWords(+y) + (m.endsWith('s') ? 's' : ''))
+      .replace(/\b(1[1-9]\d\d|20\d\d)s?\b/g, (m, y) => { const w = yearWords(+y); return m.endsWith('s') ? (w.endsWith('y') ? w.slice(0, -1) + 'ies' : w + 's') : w; })
+      .replace(/\b(\d)0s\b/g, (m, d) => TENS[+d].replace(/y$/, 'ies'))         // the 80s -> the eighties
       .replace(/\b\d{1,3}(,\d{3})+\b/g, (m) => words(+m.replace(/,/g, '')))
       .replace(/\b(\d+)\.(\d+)\b/g, (_, a, b) => words(+a) + ' point ' + b.split('').map(x => ONES[+x]).join(' '))
       .replace(/\b\d+\b/g, (m) => (m.length > 15 ? m.split('').map(x => ONES[+x]).join(' ') : words(+m)))
@@ -188,5 +189,7 @@
     ::highlight(loudbook-sentence){background-color:rgba(232,170,70,.38)}`;
   (document.head || document.documentElement).appendChild(style);
 
-  window.LB = { run, highlight, clear, blockAt, speakNumbers, words };
+  // sayText: what the voice is given for a bit of text (for the pronunciation tests)
+  const sayText = (t, fixes, tidy) => speakNumbers(LBSay.makeSayer(LBSay.parseFixes(fixes || ""), { tidy: tidy !== false })(t));
+  window.LB = { run, highlight, clear, blockAt, speakNumbers, words, sayText };
 })();

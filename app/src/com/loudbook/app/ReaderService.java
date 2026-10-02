@@ -132,7 +132,17 @@ public class ReaderService extends Service {
         nm.createNotificationChannel(ch);
         voice.attach(this);
         warmUp();
+        // headphones unplugged or Bluetooth dropped: pause instead of carrying on out loud
+        android.content.IntentFilter noisy = new android.content.IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(noisyReceiver, noisy, Context.RECEIVER_NOT_EXPORTED);
+        else registerReceiver(noisyReceiver, noisy);
     }
+
+    private final android.content.BroadcastReceiver noisyReceiver = new android.content.BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) {
+            if (playing && !paused) { pause(); status("Paused: headphones disconnected.", false); }
+        }
+    };
 
     // ---------------------------------------------------------------- PC voice
     Voice voice() { return voice; }
@@ -157,6 +167,7 @@ public class ReaderService extends Service {
     }
 
     @Override public void onDestroy() {
+        try { unregisterReceiver(noisyReceiver); } catch (Exception ignored) { }
         commands.stop();
         cmdThread.shutdownNow();
         loader.shutdownNow();

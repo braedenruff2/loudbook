@@ -358,7 +358,9 @@ const LBSay = (() => {
 //  - the reader's own pronunciation fixes ("Tavi = Tah-vee"), whole words, any case;
 //  - a few clean-ups for how web fiction is written, which otherwise come out badly:
 //    "Noooooo" / "Ahhhhhh" (the voice tries to say every letter), "!!!!" and "?!?!",
-//    "HP: 120/150" (read as "120 slash 150"), "Lv. 5" / "Lvl 5".
+//    "HP: 120/150" (read as "120 slash 150"), "Lv. 5" / "Lvl 5", Roman numerals, stat names, units,
+//    "2x", "#1", "-5", "2-3", "*sigh*", stammers ("N-no"), arrows. Checked by listening to what the
+//    voice makes of it (tools: the pronunciation lab in Loudbook-android/test/say).
 
 // Parse the settings box: one fix per line, "word = say it like this" (also accepts -> or →).
 function parseFixes(text) {
@@ -392,13 +394,77 @@ function makeSayer(fixes = [], { tidy: doTidy = true } = {}) {
   };
 }
 
+// Roman numerals: "Chapter IV" -> "Chapter 4", "Tier III" -> "Tier 3", "Henry VIII" -> "Henry the 8th"
+// (the voice otherwise says "Roman four", and a run of I's used to get squashed).
+const ROMAN = /^M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$/;
+const COUNTED = /^(chapter|book|part|volume|vol\.?|act|arc|season|episode|tier|rank|class|grade|level|stage|phase|type|mark|mk\.?|model|gen|generation|war|floor|circle|realm|step|star|ch\.?)$/i;
+function romanValue(r) {
+  const v = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
+  let n = 0;
+  for (let i = 0; i < r.length; i++) { const a = v[r[i]], b = v[r[i + 1]] || 0; n += a < b ? -a : a; }
+  return n;
+}
+function romans(t) {
+  return t.replace(/\b([A-Z][\w.]*)(\s+)([IVXLCDM]+)\b(?![''’]\w)/g, (m, before, sp, r) => {
+    if (!ROMAN.test(r)) return m;
+    if (COUNTED.test(before)) return before + sp + romanValue(r);
+    // after a name: a king, a pope, a ship. Only two letters or more ("Henry V" stays, "I" is a word).
+    if (r.length >= 2 && /^[A-Z][a-z]+$/.test(before)) return before + sp + 'the ' + romanValue(r) + ord(romanValue(r));
+    return m;
+  });
+}
+const ord = (n) => (n % 100 >= 11 && n % 100 <= 13) ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th';
+
+// LitRPG stat names, said in full when they're clearly stats ("STR: 12", "AGI +3")
+const STATS = { STR: 'Strength', AGI: 'Agility', DEX: 'Dexterity', INT: 'Intelligence', VIT: 'Vitality', END: 'Endurance',
+  WIS: 'Wisdom', CHA: 'Charisma', LUK: 'Luck', LCK: 'Luck', PER: 'Perception', CON: 'Constitution', SPD: 'Speed',
+  DEF: 'Defense', ATK: 'Attack', MAG: 'Magic', RES: 'Resistance', SPI: 'Spirit', FOC: 'Focus', WIL: 'Willpower' };
+const TITLES = { Mr: 'Mister', Mrs: 'Missus', Ms: 'Miz', Dr: 'Doctor', Prof: 'Professor', Capt: 'Captain', Sgt: 'Sergeant',
+  Lt: 'Lieutenant', Gen: 'General', Col: 'Colonel', Rev: 'Reverend', Fr: 'Father', Sr: 'Senior', Jr: 'Junior', Gov: 'Governor',
+  Sen: 'Senator', Rep: 'Representative', Pres: 'President', Insp: 'Inspector', Det: 'Detective', Cpl: 'Corporal', Pvt: 'Private',
+  Adm: 'Admiral', Cmdr: 'Commander', Maj: 'Major', Hon: 'Honorable' };
+const UNITS = { km: ['kilometer', 'kilometers'], cm: ['centimeter', 'centimeters'], mm: ['millimeter', 'millimeters'],
+  m: ['meter', 'meters'], kg: ['kilogram', 'kilograms'], g: ['gram', 'grams'], lb: ['pound', 'pounds'], lbs: ['pound', 'pounds'],
+  ft: ['foot', 'feet'], mph: ['mile per hour', 'miles per hour'], 'km/h': ['kilometer per hour', 'kilometers per hour'],
+  kph: ['kilometer per hour', 'kilometers per hour'], mi: ['mile', 'miles'], min: ['minute', 'minutes'], hr: ['hour', 'hours'], hrs: ['hour', 'hours'] };
+
 function tidy(t) {
-  return t
-    .replace(/(\p{L})\1{2,}/gu, '$1$1')                        // Noooooo -> Noo, Hmmmm -> Hmm
+  return romans(t)
+    // a run of one letter: "Noooooo" -> "Noo", "Hmmmm" -> "Hmm" (but not Roman numerals, "III")
+    .replace(/(\p{L})\1{2,}/gu, (m, c) => (/[IVXLCDM]/.test(c) ? m : c + c))
     .replace(/([!?])[!?]{2,}/g, (m) => (m.includes('?') && m.includes('!') ? '?!' : m[0]))
     .replace(/\.{4,}/g, '...')
+    // the voice drops "..." altogether (no pause at all): a beat instead, or a full stop before a new sentence
+    .replace(/(\.\.\.|…)(?=\s*["'”’)\]]*\s*$)/gu, '.')
+    .replace(/(\.\.\.|…)\s*(?=\p{Lu})/gu, '. ').replace(/(\p{L}|\p{N}|,)\s*(\.\.\.|…)\s*(?=[\p{Ll}\p{N}])/gu, '$1; ')
+    // titles: "Mr. Smith" (the period made the voice stop as if the sentence had ended)
+    .replace(/\b(Mr|Mrs|Ms|Dr|Prof|Capt|Sgt|Lt|Gen|Col|Rev|Fr|Sr|Jr|Gov|Sen|Rep|Pres|Insp|Det|Cpl|Pvt|Adm|Cmdr|Maj|Hon)\.(?=\s+\p{Lu})/gu,
+      (m, t) => TITLES[t])
+    // *sigh*, **bold**: the voice would say "asterisk"
+    .replace(/\*+([^*\n]{1,80}?)\*+/g, '$1').replace(/(^|\s)\*+(?=\s|$)/g, '$1')
+    // stammers: "N-no" -> "no", "S-stop" -> "stop" (otherwise "en no", "ess stop")
+    .replace(/\b(\p{L})-(\1)/giu, (m, a, b) => (a === a.toUpperCase() ? b.toUpperCase() : b))
+    // arrows in stat changes: "15 → 17"
+    .replace(/\s*(?:→|->|⟶|=>)\s*/g, ' to ')
     .replace(/\b(?:Lv|Lvl|LVL|LV)\.?\s*(?=\d)/g, 'Level ')
-    .replace(/(\d)\s*\/\s*(\d)/g, '$1 of $2');                 // 120/150 -> 120 of 150
+    .replace(/\b([A-Z]{3})(?=\s*(?::|\+|-|\d))/g, (m, k) => STATS[k] || m)
+    .replace(/(^|[\s(\[])\+(?=\d)/g, '$1plus ')                     // +5 Agility
+    .replace(/(^|[\s(\[])[-−](?=\d)/g, '$1minus ')                  // -5 degrees
+    .replace(/#(?=\d)/g, 'number ')                                // Rank #1
+    .replace(/\b(\d+)x\b/g, '$1 times').replace(/\bx(\d+)\b/g, 'times $1')   // 2x damage, x3
+    .replace(/\$(\d+(?:\.\d+)?)\s?(k|K|m|M|bn|b|B)\b/g, (m, n, u) => n + ' ' + { k: 'thousand', m: 'million', b: 'billion', bn: 'billion' }[u.toLowerCase()] + ' dollars')
+    .replace(/\b(\d+(?:\.\d+)?)\s?k\b/g, '$1 thousand')            // 10k
+    .replace(/\b(\d+)'\s?(\d+)(?:"|''|”)/g, '$1 foot $2')           // 6'2"
+    .replace(/\b(\d+)\s?(am|pm|AM|PM|a\.m\.|p\.m\.)(?![\w])/g, (m, n, ap) => n + ' ' + ap.replace(/\./g, '').toUpperCase())
+    .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|km|cm|mm|kg|lbs|lb|mph|kph|ft|mi|min|hrs|hr|m|g)\b(?!\/)/g,
+      (m, pre, n, u) => pre + n + ' ' + UNITS[u][n === '1' ? 0 : 1])
+    .replace(/\b1\/2(?=\s+(?:of|a|an|the)\b)/g, 'half').replace(/\b1\/3(?=\s+(?:of|a|an|the)\b)/g, 'a third')
+    .replace(/\b1\/4(?=\s+(?:of|a|an|the)\b)/g, 'a quarter')
+    .replace(/(\d)\s*\/\s*(\d)/g, '$1 of $2')                      // 120/150 -> 120 of 150
+    .replace(/\b(\d+)\s?[-–]\s?(\d+)\b(?![-–/]\d)/g, '$1 to $2')     // 2-3 hours
+    .replace(/\b(\d+):(\d)\b(?!\d)/g, '$1 to $2')                  // a 3:1 ratio (times have two digits)
+    .replace(/\bvs\.?(?=\s)/gi, 'versus').replace(/\bi\.e\.(?=[\s,])/gi, 'that is')
+    .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)/g, '$1 Street');
 }
 
 return { parseFixes, makeSayer, tidy };
@@ -470,7 +536,8 @@ return { parseFixes, makeSayer, tidy };
       .replace(/\$(\d[\d,]*)(?:\.(\d{2}))?\b/g, (_, d, c) => { const n = +d.replace(/,/g, ''); return words(n) + (n === 1 ? ' dollar' : ' dollars') + (c && +c ? ' and ' + words(+c) + ' cents' : ''); })
       .replace(/\b(\d{1,2}):(\d{2})\b/g, (_, h, m) => words(+h) + (+m === 0 ? " o'clock" : +m < 10 ? ' oh ' + words(+m) : ' ' + words(+m)))
       .replace(/\b(\d+)(st|nd|rd|th)\b/gi, (_, d) => ordinal(+d))
-      .replace(/\b(1[1-9]\d\d|20\d\d)s?\b/g, (m, y) => yearWords(+y) + (m.endsWith('s') ? 's' : ''))
+      .replace(/\b(1[1-9]\d\d|20\d\d)s?\b/g, (m, y) => { const w = yearWords(+y); return m.endsWith('s') ? (w.endsWith('y') ? w.slice(0, -1) + 'ies' : w + 's') : w; })
+      .replace(/\b(\d)0s\b/g, (m, d) => TENS[+d].replace(/y$/, 'ies'))         // the 80s -> the eighties
       .replace(/\b\d{1,3}(,\d{3})+\b/g, (m) => words(+m.replace(/,/g, '')))
       .replace(/\b(\d+)\.(\d+)\b/g, (_, a, b) => words(+a) + ' point ' + b.split('').map(x => ONES[+x]).join(' '))
       .replace(/\b\d+\b/g, (m) => (m.length > 15 ? m.split('').map(x => ONES[+x]).join(' ') : words(+m)))
@@ -594,7 +661,9 @@ return { parseFixes, makeSayer, tidy };
     ::highlight(loudbook-sentence){background-color:rgba(232,170,70,.38)}`;
   (document.head || document.documentElement).appendChild(style);
 
-  window.LB = { run, highlight, clear, blockAt, speakNumbers, words };
+  // sayText: what the voice is given for a bit of text (for the pronunciation tests)
+  const sayText = (t, fixes, tidy) => speakNumbers(LBSay.makeSayer(LBSay.parseFixes(fixes || ""), { tidy: tidy !== false })(t));
+  window.LB = { run, highlight, clear, blockAt, speakNumbers, words, sayText };
 })();
 
 }

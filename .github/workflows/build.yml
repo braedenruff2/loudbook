@@ -26,6 +26,8 @@ jobs:
           key: parts-sherpa-v1.13.8-kokoro-v1_0
       - name: Get parts
         run: bash tools/ci-parts.sh
+      - name: Check pronunciation rules
+        run: node test/say/run.js
       - name: Build the APK
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
