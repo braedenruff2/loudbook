@@ -16,13 +16,12 @@ adb shell input keyevent KEYCODE_SLEEP
 adb shell log -t LoudbookTest "=== app in the background, screen off ==="
 sleep 10
 # no signal from here on: the chapters loaded ahead must carry it to the end
-pkill -f "http.server 8000" || true
+adb reverse --remove tcp:8000 || true
 adb shell log -t LoudbookTest "=== web server stopped (no signal) ==="
 sleep 150
 adb logcat -d > logcat.txt
 # cold start: Loudbook closed, opened again, play pressed with nothing open -> carries on with the last story
-(cd test/chapters && nohup python3 -m http.server 8000 > /tmp/http2.log 2>&1 &)
-sleep 2
+adb reverse tcp:8000 tcp:8000
 adb shell am force-stop com.loudbook.app
 adb shell log -t LoudbookTest "=== reopened; play with nothing open ==="
 adb shell am start -n com.loudbook.app/.MainActivity
