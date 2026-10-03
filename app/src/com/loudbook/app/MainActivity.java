@@ -1219,6 +1219,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         teach.setOnClickListener(v -> setUpCommands(true, showCmdInfo));
 
         TextView ver = label("Version " + BuildInfo.VERSION + (Updater.enabled() ? "" : " (updates off in this build)"));
+        ver.setTag("end");
         box.addView(ver);
         if (Updater.enabled()) {
             Button check = smallButton("Check for updates");
@@ -1235,6 +1236,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             box.addView(check);
         }
 
+        foldSections(box);
         ScrollView sv = new ScrollView(this);
         sv.addView(box);
         new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
@@ -1347,9 +1349,45 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     private LinearLayout vbox(int padH, int padV) { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.VERTICAL); l.setPadding(padH, padV, padH, padV); return l; }
     private LinearLayout hbox(int padH, int padV) { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.HORIZONTAL); l.setGravity(Gravity.CENTER_VERTICAL); l.setPadding(padH, padV, padH, padV); return l; }
     private TextView text(float sp, int color, boolean bold) { TextView t = new TextView(this); t.setTextSize(sp); t.setTextColor(color); if (bold) t.setTypeface(Typeface.DEFAULT_BOLD); return t; }
+    /**
+     * Settings in sections that open and close (tap a title), so it isn't one long scroll. "Voice"
+     * starts open; each section remembers whether it was left open. Everything from the version
+     * line down stays outside.
+     */
+    private void foldSections(LinearLayout box) {
+        java.util.List<View> kids = new java.util.ArrayList<>();
+        for (int i = 0; i < box.getChildCount(); i++) kids.add(box.getChildAt(i));
+        box.removeAllViews();
+        LinearLayout section = null;
+        for (View v : kids) {
+            if ("hdr".equals(v.getTag())) {
+                TextView h = (TextView) v;
+                String name = h.getText().toString();
+                LinearLayout sec = new LinearLayout(this);
+                sec.setOrientation(LinearLayout.VERTICAL);
+                boolean open = prefs.getBoolean("open:" + name, name.equals("Voice"));
+                sec.setVisibility(open ? View.VISIBLE : View.GONE);
+                h.setText((open ? "\u25BE  " : "\u25B8  ") + name);
+                h.setOnClickListener(x -> {
+                    boolean now = sec.getVisibility() != View.VISIBLE;
+                    sec.setVisibility(now ? View.VISIBLE : View.GONE);
+                    h.setText((now ? "\u25BE  " : "\u25B8  ") + name);
+                    prefs.edit().putBoolean("open:" + name, now).apply();
+                });
+                box.addView(h);
+                box.addView(sec);
+                section = sec;
+                continue;
+            }
+            if ("end".equals(v.getTag())) section = null;
+            (section != null ? section : box).addView(v);
+        }
+    }
+
     /** A section title in Settings: bigger and brighter, with room above. */
     private TextView header(String s) {
         TextView t = text(17, C_AMBER, true); t.setText(s); t.setPadding(0, dp(22), 0, dp(6));
+        t.setTag("hdr");
         return t;
     }
     private TextView label(String s) { TextView t = text(13, C_DIM, false); t.setText(s); t.setPadding(0, dp(12), 0, dp(4)); return t; }

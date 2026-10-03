@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Screenshots of Loudbook on an emulator (for reviewing how it looks): the start screen, a chapter
-# being read, and every part of Settings. (Edit this file to take a new set.) v2
+# being read, and every part of Settings. (Edit this file to take a new set.) v3
 set -x
 adb reverse tcp:8000 tcp:8000
 adb install -r build/Loudbook.apk
