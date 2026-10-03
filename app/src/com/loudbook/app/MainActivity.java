@@ -382,10 +382,13 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             try {
                 return new JSONObject().put("lastUrl", prefs.getString("lastUrl", ""))
                     .put("lastTitle", prefs.getString("lastTitle", "")).put("lastFiction", prefs.getString("lastFiction", ""))
-                    .put("lastPct", prefs.getInt("lastPct", 0)).put("shelf", new org.json.JSONArray(prefs.getString("shelf", "[]"))).toString();
+                    .put("lastPct", prefs.getInt("lastPct", 0)).put("shelf", new org.json.JSONArray(prefs.getString("shelf", "[]")))
+                    .put("news", newsToShow()).toString();
             } catch (Exception e) { return "{}"; }
         }
         @JavascriptInterface public void resume(String url) { main.post(() -> { resumeOnLoad = url; web.loadUrl(url); }); }
+        /** "What's new" was read: don't show it again until there's something newer. */
+        @JavascriptInterface public void newsSeen() { prefs.edit().putInt("newsSeen", readAsset("web/new.txt").hashCode()).apply(); }
         /** Takes a story off "Your stories". */
         @JavascriptInterface public void forget(String url) {
             main.post(() -> {
@@ -925,6 +928,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
 
         Switch auto = toggle("Roll into the next chapter", svc == null || svc.autoNext, (b, on) -> { if (svc != null) svc.setAutoNext(on); });
         box.addView(auto);
+        box.addView(toggle("Tell me when a story I've caught up on has a new chapter", prefs.getBoolean("newChapterAlerts", true),
+            (b, on) -> prefs.edit().putBoolean("newChapterAlerts", on).apply()));
 
         box.addView(label("Sleep timer"));
         Spinner sleep = new Spinner(this);
@@ -1377,6 +1382,13 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     }
     private static String fmtSpeed(float s) { String t = String.format(java.util.Locale.US, "%.2f", s).replaceAll("0$", ""); return t + "×"; }
     private void hideKeyboard() { ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(address.getWindowToken(), 0); web.requestFocus(); }
+    /** The latest "What's new" lines, if they haven't been dismissed (not on a first install: everything is new then). */
+    private String newsToShow() {
+        String n = readAsset("web/new.txt").trim();
+        if (!prefs.contains("newsSeen")) { prefs.edit().putInt("newsSeen", prefs.contains("lastUrl") ? 0 : n.hashCode()).apply(); }
+        return prefs.getInt("newsSeen", 0) == n.hashCode() ? "" : n;
+    }
+
     private String readAsset(String path) {
         try (InputStream in = getAssets().open(path)) {
             java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();

@@ -1,0 +1,7 @@
+Loudbook now tells you when a story you've caught up on has a new chapter (Settings to turn off).
+Tap the sentence being read to fix how a word in it is said (try it, then save).
+Play with nothing open carries on with your last story; "Your stories" on this page lists the others.
+Share text from any app to Loudbook and it reads it out.
+The next few chapters load ahead, so reading carries on without a signal; headphones unplugged = pause.
+Better reading of web-fiction text: Roman numerals, "Mr.", "...", stat blocks, units, 2x, #1, scene breaks.
+Speeds up to 2.5x; the sleep timer fades out gently.

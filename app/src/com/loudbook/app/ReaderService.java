@@ -883,7 +883,8 @@ public class ReaderService extends Service {
             } else {
                 stopPlayback();
                 dropForeground(false);
-                status(ch.nextUrl == null ? "That's the latest chapter — you're caught up." : "End of chapter.", false);
+                status(ch.nextUrl == null ? "That's the latest chapter — you're caught up. Loudbook will tell you when the next one is out." : "End of chapter.", false);
+                if (ch.nextUrl == null && ch.url.startsWith("http")) { saveProgress(); NewChapters.caughtUp(this, ch); NewChapters.schedule(this); }
                 if (listener != null) listener.onFinished(ch);
             }
         });

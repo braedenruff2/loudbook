@@ -35,4 +35,11 @@ sleep 30
 adb shell log -t LoudbookTest "=== shared text ==="
 adb shell am start -n com.loudbook.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "'Mr. Hale walked to the market on a cold morning. He bought 3 apples and a loaf of bread before heading home.'"
 sleep 20
+# a new chapter comes out for the story read to the end: the background check notices it
+adb shell log -t LoudbookTest "=== new chapter published ==="
+sed -i 's#<nav>#<nav><a href="ch4.html">Next chapter</a> #' test/chapters/ch3.html
+sed 's/Chapter Three: The House/Chapter Four: The Kettle/; s#ch2.html">Previous#ch3.html">Previous#' test/chapters/ch3.html > test/chapters/ch4.html
+adb shell cmd jobscheduler run -f com.loudbook.app 4711
+sleep 25
+adb shell dumpsys notification --noredact | grep -o "New chapter[^,]*" | head -3 | sed 's/^/notification: /' > newchapter.txt
 adb logcat -d > logcat.txt

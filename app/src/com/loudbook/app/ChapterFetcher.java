@@ -56,6 +56,14 @@ final class ChapterFetcher {
         start(url);
     }
 
+    /** The page as it is now (not a copy kept from before): for seeing whether a new chapter is out. */
+    void fresh(String url, Done d) {
+        done.remove(url);
+        java.io.File f = diskFor(url);
+        if (f.isFile()) f.delete();
+        get(url, d);
+    }
+
     boolean busyWith(String url) { return url != null && url.equals(loading); }
     Chapter ready(String url) {
         if (url == null) return null;
