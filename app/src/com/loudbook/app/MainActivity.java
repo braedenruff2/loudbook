@@ -103,6 +103,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         setContentView(buildUi());
         setupWeb();
         ReaderService.start(this);
+        NewChapters.schedule(this);
         bindService(new Intent(this, ReaderService.class), conn, BIND_AUTO_CREATE);
         if (!handleIntent(getIntent())) {
             if (state != null) web.restoreState(state); else web.loadUrl(HOME);

@@ -39,6 +39,7 @@ sleep 20
 adb shell log -t LoudbookTest "=== new chapter published ==="
 sed -i 's#<nav>#<nav><a href="ch4.html">Next chapter</a> #' test/chapters/ch3.html
 sed 's/Chapter Three: The House/Chapter Four: The Kettle/; s#ch2.html">Previous#ch3.html">Previous#' test/chapters/ch3.html > test/chapters/ch4.html
+adb shell dumpsys jobscheduler | grep -i "loudbook" | head -5 > jobs.txt
 adb shell cmd jobscheduler run -f com.loudbook.app 4711
 sleep 25
 adb shell dumpsys notification --noredact | grep -o "New chapter[^,]*" | head -3 | sed 's/^/notification: /' > newchapter.txt

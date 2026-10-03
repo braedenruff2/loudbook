@@ -1258,8 +1258,10 @@ public class ReaderService extends Service {
         if (ch.fiction == null || ch.fiction.trim().isEmpty()) return;
         try {
             org.json.JSONArray old = new org.json.JSONArray(prefs.getString("shelf", "[]")), now = new org.json.JSONArray();
+            boolean caught = false;                       // (still caught up if it's the same, latest, chapter)
+            for (int i = 0; i < old.length(); i++) if (old.getJSONObject(i).optString("url").equals(ch.url)) caught = old.getJSONObject(i).optBoolean("caughtUp");
             now.put(new org.json.JSONObject().put("fiction", ch.fiction).put("title", ch.title).put("url", ch.url).put("site", ch.site)
-                .put("pct", ch.size() > 0 ? Math.round(100f * at / ch.size()) : 0).put("at", System.currentTimeMillis()));
+                .put("pct", ch.size() > 0 ? Math.round(100f * at / ch.size()) : 0).put("at", System.currentTimeMillis()).put("caughtUp", caught));
             for (int i = 0; i < old.length() && now.length() < 8; i++) {
                 org.json.JSONObject o = old.getJSONObject(i);
                 if (!(o.optString("fiction").equals(ch.fiction) && o.optString("site").equals(ch.site))) now.put(o);

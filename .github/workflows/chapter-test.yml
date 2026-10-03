@@ -49,7 +49,7 @@ jobs:
         run: |
           {
             echo '## Next chapter, in the background (Android 15)'; echo
-            cat newchapter.txt 2>/dev/null; echo
+            cat newchapter.txt jobs.txt 2>/dev/null; echo
             echo 'Pages served:'; echo '```'; grep -o 'GET [^ ]*' /tmp/http.log; echo '```'; echo
             echo '```'
             grep -E "LoudbookTest|Loudbook|AndroidRuntime|FATAL| F DEBUG" logcat.txt 2>/dev/null | grep -v "SearchServiceCore\|ResourcesManager\|Choreographer" | tail -150

@@ -63,6 +63,7 @@ public class NewChapters extends JobService {
             JSONArray a = new JSONArray(p.getString("shelf", "[]"));
             for (int i = 0; i < a.length(); i++) if (a.getJSONObject(i).optBoolean("caughtUp")) watch.add(a.getJSONObject(i));
         } catch (Exception e) { return false; }
+        Log.i("LoudbookTest", "new-chapter check: " + watch.size() + " stories to look at");
         if (watch.isEmpty()) return false;
         fetcher = new ChapterFetcher(this);
         next(watch, 0, params);
