@@ -8,7 +8,7 @@ adb shell pm grant com.loudbook.app android.permission.POST_NOTIFICATIONS
 adb logcat -c
 adb shell am start -n com.loudbook.app/.MainActivity
 sleep 100                                   # the phone voice downloads and loads the first time
-adb shell am start -n com.loudbook.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "http://localhost:8000/ch1.html" --ez play true
+adb shell am start -n com.loudbook.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "http://localhost:8000/ch1.html" --ez play true --ez dual true
 sleep 12
 adb shell input keyevent KEYCODE_HOME
 sleep 2

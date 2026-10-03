@@ -462,7 +462,8 @@ public class ReaderService extends Service {
                 clips.put(i, f);
                 return f;
             }
-            f = synth.submit(() -> learned(makeHere(text, want, sp), want));
+            final int at = i;
+            f = synth.submit(() -> learned(makeVoiced(ch, at, text, want, sp), want));
             clips.put(i, f);
             return f;
         }
@@ -471,6 +472,27 @@ public class ReaderService extends Service {
     private Voice.Clip learned(Voice.Clip c, int want) {
         if (commands.loaded()) cmdThread.submit(() -> commands.learnReader(want, c.samples, c.rate));
         return c;
+    }
+
+    // ---------------------------------------------------------------- dialogue in a second voice
+    /** The voice for what characters say, when that's on (one that contrasts with the reader's). */
+    int dialogueVoice(int narrator) {
+        int d = prefs.getInt("dialogueVoice", -1);
+        if (d >= 0 && d != narrator) return d;
+        boolean narratorFemale = narrator <= 10 || (narrator >= 20 && narrator <= 23);
+        return narratorFemale ? 16 : 3;                        // Michael, or Heart
+    }
+
+    /** A sentence, with the parts in quotes said in the dialogue voice when that's on. */
+    private Voice.Clip makeVoiced(Chapter ch, int i, String text, int want, float sp) throws Exception {
+        if (!prefs.getBoolean("dualVoice", false) || !prefs.getString("pcVoice", "").isEmpty()) return makeHere(text, want, sp);
+        java.util.List<String[]> parts = Dialogue.split(text, Dialogue.openAt(ch, i));
+        int other = dialogueVoice(want);
+        if (parts.size() == 1) return makeHere(text, "q".equals(parts.get(0)[1]) ? other : want, sp);
+        Log.i("LoudbookTest", "two voices: " + parts.size() + " parts, characters in voice " + other);
+        java.util.List<Voice.Clip> clips = new java.util.ArrayList<>();
+        for (String[] p : parts) clips.add(makeHere(p[0], "q".equals(p[1]) ? other : want, sp));
+        return Voice.join(clips, 0.08);
     }
 
     /** A sentence from the PC or the phone (not Gemini). */

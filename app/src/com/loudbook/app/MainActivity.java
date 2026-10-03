@@ -279,6 +279,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             }
         }
         else if (Intent.ACTION_VIEW.equals(i.getAction()) && i.getData() != null) url = i.getData().toString();
+        if (i.getBooleanExtra("dual", false)) prefs.edit().putBoolean("dualVoice", true).apply();             // (tests)
         if (i.getBooleanExtra("home", false)) { i.removeExtra("home"); web.loadUrl(HOME); return true; }      // (screenshots in CI)
         if (i.getBooleanExtra("settings", false)) { i.removeExtra("settings"); main.postDelayed(this::showSettings, 1500); }   // (screenshots in CI)
         if (url == null) return false;
@@ -897,6 +898,29 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         Button hear = smallButton("Hear this voice");
         hear.setOnClickListener(v -> { if (svc != null) { svc.setVoice(Integer.parseInt(Voice.VOICES[voices.getSelectedItemPosition()][0])); svc.preview(); } });
         box.addView(hear);
+        // what characters say ("in quotes") in a second voice, like a two-person audiobook
+        Spinner dlg = new Spinner(this);
+        String[] dnames = new String[Voice.VOICES.length];
+        int dsel = 0, dcur = svc != null ? svc.dialogueVoice(svc.voiceId()) : 16;
+        for (int i = 0; i < dnames.length; i++) { dnames[i] = "Characters: " + Voice.VOICES[i][1]; if (Integer.parseInt(Voice.VOICES[i][0]) == dcur) dsel = i; }
+        dlg.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, dnames));
+        dlg.setSelection(dsel);
+        dlg.setVisibility(prefs.getBoolean("dualVoice", false) ? View.VISIBLE : View.GONE);
+        dlg.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> p, View v, int i, long id) {
+                int want = Integer.parseInt(Voice.VOICES[i][0]);
+                if (svc == null || want == svc.dialogueVoice(svc.voiceId())) return;     // (the first call, when it's set up)
+                prefs.edit().putInt("dialogueVoice", want).apply();
+                if (svc != null) svc.restyle();
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> p) { }
+        });
+        box.addView(toggle("Read what characters say in a second voice", prefs.getBoolean("dualVoice", false), (b, on) -> {
+            prefs.edit().putBoolean("dualVoice", on).apply();
+            dlg.setVisibility(on ? View.VISIBLE : View.GONE);
+            if (svc != null) svc.restyle();
+        }));
+        box.addView(dlg);
 
         TextView speedLabel = label("Speed " + fmtSpeed(svc != null ? svc.speed() : 1f));
         box.addView(speedLabel);

@@ -211,6 +211,30 @@ final class Voice {
         return new Clip(trim(a.getSamples(), a.getSampleRate()), a.getSampleRate(), speed, System.currentTimeMillis() - t0);
     }
 
+    /** Clips one after another, with a short breath between (all at the first one's rate and speed). */
+    static Clip join(java.util.List<Clip> clips, double gapSecs) {
+        Clip first = clips.get(0);
+        int rate = first.rate, gap = (int) (gapSecs * rate);
+        int n = 0;
+        for (Clip c : clips) n += (c.rate == rate ? c.samples.length : (int) ((long) c.samples.length * rate / c.rate)) + gap;
+        float[] out = new float[Math.max(0, n - gap)];
+        int at = 0; long ms = 0;
+        for (int k = 0; k < clips.size(); k++) {
+            Clip c = clips.get(k);
+            float[] x = c.samples;
+            if (c.rate != rate) {                                  // (a different engine: match the rate)
+                float[] y = new float[(int) ((long) x.length * rate / c.rate)];
+                for (int j = 0; j < y.length; j++) { double p = (double) j * c.rate / rate; int q = (int) p; double f = p - q;
+                    y[j] = (float) (x[Math.min(q, x.length - 1)] * (1 - f) + x[Math.min(q + 1, x.length - 1)] * f); }
+                x = y;
+            }
+            System.arraycopy(x, 0, out, at, Math.min(x.length, out.length - at));
+            at += x.length + (k < clips.size() - 1 ? gap : 0);
+            ms += c.ms;
+        }
+        return new Clip(out, rate, first.madeAt, ms);
+    }
+
     /** Kokoro pads each sentence with silence; keep just a natural sliver so sentences and
      *  paragraphs run on like speech. */
     static float[] trim(float[] s, int rate) {
