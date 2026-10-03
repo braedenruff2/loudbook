@@ -1341,6 +1341,11 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         playBtn = imageButton(R.drawable.ic_play, 0xFF1B1712, C_AMBER);
         LinearLayout.LayoutParams big = new LinearLayout.LayoutParams(dp(64), dp(64));
         big.setMargins(dp(10), 0, dp(10), 0);
+        // names for screen readers (and long-press tooltips)
+        prevCh.setContentDescription("Previous chapter"); back.setContentDescription("Back a sentence");
+        fwd.setContentDescription("Forward a sentence"); nextCh.setContentDescription("Next chapter");
+        playBtn.setContentDescription("Play or pause");
+        for (View v : new View[]{prevCh, back, fwd, nextCh, playBtn}) if (Build.VERSION.SDK_INT >= 26) v.setTooltipText(v.getContentDescription());
         prevCh.setOnClickListener(v -> chapterStep(false));
         nextCh.setOnClickListener(v -> chapterStep(true));
         back.setOnClickListener(v -> { if (svc != null) svc.seek(svc.pos() - 1); });
