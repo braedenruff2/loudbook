@@ -5,7 +5,7 @@ name: Chapter test
 on:
   push:
     branches: [main]
-    paths: ['app/src/com/loudbook/app/ReaderService.java', 'app/src/com/loudbook/app/ChapterFetcher.java', 'app/src/com/loudbook/app/MainActivity.java', 'test/chapters/**', '.github/workflows/chapter-test.yml']
+    paths: ['app/src/com/loudbook/app/ReaderService.java', 'app/src/com/loudbook/app/ChapterFetcher.java', 'app/src/com/loudbook/app/MainActivity.java', 'test/chapters/**', '.github/workflows/chapter-test.yml', 'app/src/com/loudbook/app/NewChapters.java', 'app/AndroidManifest.xml']
   workflow_dispatch:
 permissions:
   contents: write
