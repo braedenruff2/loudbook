@@ -77,14 +77,24 @@ final class InkLayout {
             int[] r = keptRows.get(ri);
             List<int[]> runs = rowRuns.get(ri);
             List<int[]> ws = new ArrayList<>();
+            int rh = r[1] - r[0];
             for (int[] q : runs) {
-                if (!ws.isEmpty() && q[0] - ws.get(ws.size() - 1)[1] < gapMin) ws.get(ws.size() - 1)[1] = q[1];
+                int gap = ws.isEmpty() ? Integer.MAX_VALUE : q[0] - ws.get(ws.size() - 1)[1];
+                // a full stop or comma set a little apart still belongs to the word before it
+                boolean mark = gap < gapMin * 2.5 && q[1] - q[0] < rh * 0.25 && inkHeight(ink, w, q, r) < rh * 0.35;
+                if (gap < gapMin || mark) ws.get(ws.size() - 1)[1] = q[1];
                 else ws.add(new int[]{q[0], q[1]});
             }
             for (int k = 0; k < ws.size(); k++)
                 out.add(new Word(offX + ws.get(k)[0], offY + r[0], offX + ws.get(k)[1], offY + r[1], k == ws.size() - 1));
         }
         return out;
+    }
+
+    private static int inkHeight(boolean[] ink, int w, int[] q, int[] r) {
+        int top = -1, bottom = -1;
+        for (int y = r[0]; y < r[1]; y++) for (int x = q[0]; x < q[1]; x++) if (ink[y * w + x]) { if (top < 0) top = y; bottom = y; break; }
+        return top < 0 ? 0 : bottom - top + 1;
     }
 
     /**
