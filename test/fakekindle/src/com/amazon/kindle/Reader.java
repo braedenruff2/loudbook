@@ -33,30 +33,35 @@ public class Reader extends Activity {
     boolean explore;
     Drawn drawn;
 
-    class Drawn extends View {
-        // like Kindle's renderer: the page is one block of wrapped, book-like text
-        final List<String> lines = new ArrayList<>();     // (unused now; kept for show())
+    class Drawn extends android.widget.FrameLayout {
+        // like Kindle's renderer: the page is one block of wrapped, book-like text, and screen
+        // readers get it as one piece (the text view inside is hidden from them)
+        final List<String> lines = new ArrayList<>();     // (unused; kept for show())
         final List<Integer> indents = new ArrayList<>();
         String[] paras = new String[0];
-        android.text.StaticLayout layout;
-        final android.text.TextPaint paint = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
-        Drawn() { super(Reader.this); paint.setTextSize(52); paint.setTypeface(android.graphics.Typeface.SERIF); }
-        String text() { StringBuilder b = new StringBuilder(); for (String p : paras) { if (b.length() > 0) b.append('\n'); b.append(p); } return b.toString(); }
-        android.text.StaticLayout lay() {
-            if (layout == null && getWidth() > 0) {
-                String t = text();
-                android.text.SpannableString sp = new android.text.SpannableString(t);
-                int at = 0;
-                for (String p : paras) {
-                    sp.setSpan(new android.text.style.LeadingMarginSpan.Standard(70, 0), at, Math.min(t.length(), at + p.length() + 1), android.text.Spanned.SPAN_PARAGRAPH);
-                    at += p.length() + 1;
-                }
-                layout = android.text.StaticLayout.Builder.obtain(sp, 0, t.length(), paint, getWidth()).setLineSpacing(0, 1.5f).setIncludePad(false).build();
-            }
-            return layout;
+        final TextView page;
+        Drawn() {
+            super(Reader.this);
+            page = new TextView(Reader.this);
+            page.setTextSize(22);
+            page.setTypeface(android.graphics.Typeface.SERIF);
+            page.setLineSpacing(0, 1.5f);
+            page.setTextColor(0xFF222222);
+            page.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            addView(page, new android.widget.FrameLayout.LayoutParams(-1, -2));
         }
-        void setParas(String[] p) { paras = p; layout = null; invalidate(); }
-        @Override protected void onDraw(Canvas c) { android.text.StaticLayout l = lay(); if (l != null) l.draw(c); }
+        String text() { StringBuilder b = new StringBuilder(); for (String p : paras) { if (b.length() > 0) b.append('\n'); b.append(p); } return b.toString(); }
+        void setParas(String[] p) {
+            paras = p;
+            String t = text();
+            android.text.SpannableString sp = new android.text.SpannableString(t);
+            int at = 0;
+            for (String q : p) {
+                sp.setSpan(new android.text.style.LeadingMarginSpan.Standard(70, 0), at, Math.min(t.length(), at + q.length() + 1), android.text.Spanned.SPAN_PARAGRAPH);
+                at += q.length() + 1;
+            }
+            page.setText(sp);
+        }
         @Override public AccessibilityNodeProvider getAccessibilityNodeProvider() {
             AccessibilityManager am = (AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE);
             if (!am.isTouchExplorationEnabled()) return null;
@@ -89,8 +94,7 @@ public class Reader extends Activity {
                     info.setText(text());
                     int[] at = new int[2];
                     getLocationOnScreen(at);
-                    android.text.StaticLayout l = lay();
-                    Rect r = new Rect(0, 0, getWidth(), l == null ? getHeight() : l.getHeight());
+                    Rect r = new Rect(0, 0, page.getWidth(), page.getHeight());
                     r.offset(at[0], at[1]);
                     info.setBoundsInScreen(r);
                     info.setVisibleToUser(true);
