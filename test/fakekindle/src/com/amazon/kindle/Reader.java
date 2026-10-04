@@ -34,19 +34,29 @@ public class Reader extends Activity {
     Drawn drawn;
 
     class Drawn extends View {
-        final List<String> lines = new ArrayList<>();
+        // like Kindle's renderer: the page is one block of wrapped, book-like text
+        final List<String> lines = new ArrayList<>();     // (unused now; kept for show())
         final List<Integer> indents = new ArrayList<>();
-        final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        final int lineH = 64;
-        Drawn() { super(Reader.this); paint.setTextSize(44); }
-        Rect lineRect(int i) {
-            int y = 0;
-            for (int k = 0; k < i; k++) y += lines.get(k).isEmpty() ? 30 : lineH;
-            return new Rect(indents.get(i), y, getWidth(), y + lineH);
+        String[] paras = new String[0];
+        android.text.StaticLayout layout;
+        final android.text.TextPaint paint = new android.text.TextPaint(Paint.ANTI_ALIAS_FLAG);
+        Drawn() { super(Reader.this); paint.setTextSize(52); paint.setTypeface(android.graphics.Typeface.SERIF); }
+        String text() { StringBuilder b = new StringBuilder(); for (String p : paras) { if (b.length() > 0) b.append('\n'); b.append(p); } return b.toString(); }
+        android.text.StaticLayout lay() {
+            if (layout == null && getWidth() > 0) {
+                String t = text();
+                android.text.SpannableString sp = new android.text.SpannableString(t);
+                int at = 0;
+                for (String p : paras) {
+                    sp.setSpan(new android.text.style.LeadingMarginSpan.Standard(70, 0), at, Math.min(t.length(), at + p.length() + 1), android.text.Spanned.SPAN_PARAGRAPH);
+                    at += p.length() + 1;
+                }
+                layout = android.text.StaticLayout.Builder.obtain(sp, 0, t.length(), paint, getWidth()).setLineSpacing(0, 1.5f).setIncludePad(false).build();
+            }
+            return layout;
         }
-        @Override protected void onDraw(Canvas c) {
-            for (int i = 0; i < lines.size(); i++) { Rect r = lineRect(i); c.drawText(lines.get(i), r.left, r.top + 48, paint); }
-        }
+        void setParas(String[] p) { paras = p; layout = null; invalidate(); }
+        @Override protected void onDraw(Canvas c) { android.text.StaticLayout l = lay(); if (l != null) l.draw(c); }
         @Override public AccessibilityNodeProvider getAccessibilityNodeProvider() {
             AccessibilityManager am = (AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE);
             if (!am.isTouchExplorationEnabled()) return null;
@@ -76,14 +86,11 @@ public class Reader extends Activity {
                     AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain(Drawn.this, id);
                     info.setParent(Drawn.this);
                     info.setClassName("android.view.View");
-                    StringBuilder all = new StringBuilder();
-                    for (String l : lines) { if (l.isEmpty()) { if (all.length() > 0) all.append('\n'); } else { if (all.length() > 0 && all.charAt(all.length() - 1) != '\n') all.append(' '); all.append(l); } }
-                    info.setText(all.toString().trim());
+                    info.setText(text());
                     int[] at = new int[2];
                     getLocationOnScreen(at);
-                    int bottom = 0;
-                    for (int i = 0; i < lines.size(); i++) if (!lines.get(i).isEmpty()) bottom = lineRect(i).bottom;
-                    Rect r = new Rect(0, 0, getWidth(), bottom);
+                    android.text.StaticLayout l = lay();
+                    Rect r = new Rect(0, 0, getWidth(), l == null ? getHeight() : l.getHeight());
                     r.offset(at[0], at[1]);
                     info.setBoundsInScreen(r);
                     info.setVisibleToUser(true);
@@ -143,7 +150,7 @@ public class Reader extends Activity {
 
     void show() {
         body.removeAllViews();
-        if (drawn != null) { drawn.lines.clear(); drawn.indents.clear(); }
+        if (drawn != null) drawn.setParas(PAGES[page]);
         for (String para : PAGES[page]) {
             // lay each paragraph out as lines of about 40 characters, like a book page
             StringBuilder line = new StringBuilder();
@@ -155,7 +162,7 @@ public class Reader extends Activity {
             }
             if (line.length() > 0) addLine(line.toString(), first);
             TextView gap = new TextView(this); gap.setText(""); gap.setHeight(30); body.addView(gap);
-            if (drawn != null) { drawn.lines.add(""); drawn.indents.add(0); }
+
         }
         if (drawn != null) { drawn.invalidate(); drawn.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED); }
         foot.setText("Location " + (120 + page * 7) + " of 4000 • " + (3 + page) + "%");
@@ -163,7 +170,7 @@ public class Reader extends Activity {
     }
 
     void addLine(String s, boolean indent) {
-        if (drawn != null) { drawn.lines.add(s); drawn.indents.add(indent ? 40 : 0); return; }
+        if (drawn != null) return;
         TextView t = new TextView(this);
         t.setText(s); t.setTextSize(18);
         t.setPadding(indent ? 40 : 0, 0, 0, 0);

@@ -726,6 +726,13 @@ public class KindleService extends AccessibilityService {
           .append(n.isScrollable() ? " scroll" : "").append(n.isClickable() ? " click" : "").append(n.isVisibleToUser() ? "" : " hidden");
         if (t != null && t.length() > 0) sb.append(" text[").append(t.length()).append("]=\"").append(t.length() > 50 ? t.subSequence(0, 50) + "…" : t).append('"');
         if (d != null && d.length() > 0) sb.append(" desc[").append(d.length()).append("]=\"").append(d.length() > 50 ? d.subSequence(0, 50) + "…" : d).append('"');
+        // what the reader could use for exact placement (line by line, character boxes)
+        if (t != null && t.length() > 40) {
+            sb.append(" gran=").append(n.getMovementGranularities());
+            if (n.getAvailableExtraData() != null && !n.getAvailableExtraData().isEmpty()) sb.append(" extra=").append(n.getAvailableExtraData());
+            int nl = 0; for (int i = 0; i < t.length(); i++) if (t.charAt(i) == '\n') nl++;
+            sb.append(" newlines=").append(nl);
+        }
         sb.append('\n');
         for (int i = 0; i < n.getChildCount(); i++) dumpNode(n.getChild(i), sb, depth + 1);
     }
