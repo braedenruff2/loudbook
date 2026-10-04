@@ -54,6 +54,24 @@ public class UnitTest {
         for (int i = 0; i < 11; i++) cb[i] = i < 5 ? new float[]{10 + i * 10, 100, 20 + i * 10, 120} : i == 5 ? new float[]{0, 0, 0, 0} : new float[]{10 + (i - 6) * 10, 120, 20 + (i - 6) * 10, 140};
         KindleLayout wrap = new KindleLayout(Arrays.asList("hello world"), Arrays.asList(new float[]{10, 100, 70, 140}), Arrays.asList(new float[][][]{cb}));
         check("wrapped line: one box per row", wrap.boxesFor(0, 10).size(), 2);
+        // words found on a picture of the screen: rows of ink, words separated by gaps
+        String inkText = "The road out of the valley was older than the town, and in places the stones had sunk deep.";
+        int W = 600, H = 400;
+        int[] px = new int[W * H];
+        java.util.Arrays.fill(px, 0xFF101010);                          // a dark page (light text)
+        int x = 20, y = 20; java.util.Map<String, int[]> where = new java.util.HashMap<>();
+        for (String word : inkText.split(" ")) {
+            int w = word.length() * 18;
+            if (x + w > W - 20) { x = 20; y += 60; }
+            for (int yy = y; yy < y + 36; yy++) for (int xx = x; xx < x + w; xx++) if ((xx / 3) % 2 == 0 || yy % 7 == 0) px[yy * W + xx] = 0xFFE0E0E0;
+            where.put(word, new int[]{x, y});
+            x += w + 22;
+        }
+        java.util.List<InkLayout.Word> found = InkLayout.words(px, W, H, 0, 0);
+        check("ink: every word found", found.size(), inkText.split(" ").length);
+        float[][] icb = InkLayout.charBoxes(inkText, found);
+        int vi = inkText.indexOf("valley");
+        check("ink: 'valley' boxed where it is", icb != null && Math.abs(icb[vi][0] - where.get("valley")[0]) < 6 && Math.abs(icb[vi][1] - where.get("valley")[1]) < 4, true);
         System.out.println(bad == 0 ? "ALL OK" : bad + " FAILED");
         System.exit(bad == 0 ? 0 : 1);
     }

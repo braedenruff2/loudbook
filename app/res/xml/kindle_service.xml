@@ -10,4 +10,5 @@
     android:canRetrieveWindowContent="true"
     android:canPerformGestures="true"
     android:canRequestTouchExplorationMode="true"
+    android:canTakeScreenshot="true"
     android:notificationTimeout="200" />

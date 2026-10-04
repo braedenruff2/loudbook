@@ -453,7 +453,77 @@ public class KindleService extends AccessibilityService {
     void accept(Page p) {
         lastEdges = p.edges;
         // where this page's lines are, for the highlight (exact character boxes take a moment: off the main thread)
-        new Thread(() -> { shown = p.layout(true); spansFor = -1; }, "lb-kindle-layout").start();
+        new Thread(() -> {
+            KindleLayout k = p.layout(true);
+            shown = k; shownPage = p; spansFor = -1;
+            if (k.exactLines < p.lines.size()) main.post(() -> fromScreen(p));
+        }, "lb-kindle-layout").start();
+    }
+    private volatile Page shownPage;
+
+    /**
+     * Kindle didn't say where its words are: find them on a picture of the screen instead (each
+     * row of text is a band of ink, each word a run of ink). Only shapes are used, nothing is kept.
+     */
+    private void fromScreen(Page p) {
+        if (android.os.Build.VERSION.SDK_INT < 30 || p != shownPage) return;
+        if (hl != null) hl.setVisibility(View.INVISIBLE);           // (not our own marks)
+        main.postDelayed(() -> {
+            try {
+                takeScreenshot(android.view.Display.DEFAULT_DISPLAY, getMainExecutor(), new TakeScreenshotCallback() {
+                    @Override public void onSuccess(ScreenshotResult r) {
+                        android.graphics.Bitmap shot = null;
+                        try {
+                            android.graphics.Bitmap hw = android.graphics.Bitmap.wrapHardwareBuffer(r.getHardwareBuffer(), r.getColorSpace());
+                            if (hw != null) shot = hw.copy(android.graphics.Bitmap.Config.ARGB_8888, false);
+                        } catch (Throwable t) { Log.w(TAG, "kindle screen", t); }
+                        finally { try { r.getHardwareBuffer().close(); } catch (Throwable ignored) { } }
+                        if (hl != null) hl.setVisibility(View.VISIBLE);
+                        final android.graphics.Bitmap pic = shot;
+                        final Rect button = bubble == null ? null : new Rect(bubbleLp.x, bubbleLp.y, bubbleLp.x + bubbleLp.width, bubbleLp.y + bubbleLp.height);
+                        if (pic != null) new Thread(() -> placeFromPicture(p, pic, button), "lb-kindle-ink").start();
+                    }
+                    @Override public void onFailure(int code) {
+                        if (hl != null) hl.setVisibility(View.VISIBLE);
+                        Log.i("LoudbookTest", "kindle: no picture of the screen (" + code + "), word places estimated");
+                    }
+                });
+            } catch (Throwable t) { if (hl != null) hl.setVisibility(View.VISIBLE); Log.w(TAG, "kindle screen", t); }
+        }, 120);
+    }
+
+    private void placeFromPicture(Page p, android.graphics.Bitmap pic, Rect button) {
+        try {
+            List<String> texts = new ArrayList<>();
+            List<float[]> boxes = new ArrayList<>();
+            List<float[][]> chars = new ArrayList<>();
+            KindleLayout before = shown;
+            int found = 0;
+            for (int i = 0; i < p.lines.size(); i++) {
+                Bit b = p.lines.get(i);
+                texts.add(b.text);
+                boxes.add(new float[]{b.r.left, b.r.top, b.r.right, b.r.bottom});
+                float[][] have = before != null && i < before.chars.size() ? before.chars.get(i) : null;
+                Rect r = new Rect(b.r);
+                if (b.text.length() < 30 || !r.intersect(0, 0, pic.getWidth(), pic.getHeight()) || r.width() < 8 || r.height() < 8) { chars.add(have); continue; }
+                int[] px = new int[r.width() * r.height()];
+                pic.getPixels(px, 0, r.width(), r.left, r.top, r.width(), r.height());
+                if (button != null && Rect.intersects(r, button)) {          // (not the gold button)
+                    int bgv = InkLayout.background(px), fill = 0xFF000000 | (bgv << 16) | (bgv << 8) | bgv;
+                    Rect cut = new Rect(button); cut.intersect(r);
+                    for (int y = cut.top; y < cut.bottom; y++) for (int x = cut.left; x < cut.right; x++) px[(y - r.top) * r.width() + (x - r.left)] = fill;
+                }
+                float[][] ink = InkLayout.charBoxes(b.text, InkLayout.words(px, r.width(), r.height(), r.left, r.top));
+                if (ink != null) found++;
+                chars.add(ink != null ? ink : have);
+            }
+            if (found == 0) { Log.i("LoudbookTest", "kindle: couldn't place the words from the screen, estimated instead"); return; }
+            KindleLayout k = new KindleLayout(texts, boxes, chars);
+            k.exactLines = found;
+            if (p == shownPage) { shown = k; spansFor = -1; }
+            Log.i("LoudbookTest", "kindle: words placed from the screen on " + found + " of " + p.lines.size() + " pieces");
+        } catch (Throwable t) { Log.w(TAG, "kindle ink", t); }
+        finally { pic.recycle(); }
     }
 
     /** The page now being read: its lines and where they are. */
