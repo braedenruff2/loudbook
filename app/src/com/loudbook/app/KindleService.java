@@ -485,9 +485,14 @@ public class KindleService extends AccessibilityService {
      */
     /** Paragraphs after a line break start indented, as books set them. */
     private static CharSequence indented(String text, float size) {
-        if (text.indexOf('\n') < 0) return text;
+        boolean firstIndented = !text.isEmpty() && (Character.isUpperCase(text.charAt(0)) || "\"\u201C\u2018'".indexOf(text.charAt(0)) >= 0);
+        if (text.indexOf('\n') < 0 && !firstIndented) return text;
         android.text.SpannableString sp = new android.text.SpannableString(text);
         int indent = Math.round(size * 1.6f);
+        if (firstIndented) {
+            int e0 = text.indexOf('\n');
+            sp.setSpan(new android.text.style.LeadingMarginSpan.Standard(indent, 0), 0, e0 < 0 ? text.length() : e0 + 1, android.text.Spanned.SPAN_PARAGRAPH);
+        }
         for (int i = text.indexOf('\n'); i >= 0 && i + 1 < text.length(); i = text.indexOf('\n', i + 1)) {
             int end = text.indexOf('\n', i + 1);
             sp.setSpan(new android.text.style.LeadingMarginSpan.Standard(indent, 0), i + 1, end < 0 ? text.length() : end + 1, android.text.Spanned.SPAN_PARAGRAPH);
@@ -502,6 +507,7 @@ public class KindleService extends AccessibilityService {
         paint.setTypeface(android.graphics.Typeface.SERIF);
         android.text.StaticLayout best = null;
         int bestRows = 1;
+        float bestF = 1.5f;
         float[] spacing = {1.5f, 1.4f, 1.6f, 1.3f, 1.7f, 1.25f, 1.8f};
         int maxRows = Math.max(1, Math.min(80, h / 18));
         search:
@@ -509,7 +515,7 @@ public class KindleService extends AccessibilityService {
             for (int rows = 1; rows <= maxRows; rows++) {
                 paint.setTextSize(h / (rows * f));
                 android.text.StaticLayout l = android.text.StaticLayout.Builder.obtain(indented(text, paint.getTextSize()), 0, n, paint, w).setIncludePad(false).build();
-                if (l.getLineCount() == rows) { best = l; bestRows = rows; break search; }
+                if (l.getLineCount() == rows) { best = l; bestRows = rows; bestF = f; break search; }
                 if (l.getLineCount() < rows) break;                  // smaller text only makes fewer rows
             }
         }
@@ -518,7 +524,9 @@ public class KindleService extends AccessibilityService {
             best = android.text.StaticLayout.Builder.obtain(indented(text, paint.getTextSize()), 0, n, paint, w).setIncludePad(false).build();
             bestRows = Math.max(1, best.getLineCount());
         }
-        float rowH = h / (float) bestRows;
+        // rows are spaced evenly, the space between them below each row's letters (none after the
+        // last): pitch p with h = (rows - 1) * p + p / f
+        float pitch = h / (bestRows - 1 + 1f / bestF), glyphs = pitch / bestF;
         float[][] out = new float[n][];
         for (int c = 0; c < n; c++) {
             if (Character.isWhitespace(text.charAt(c))) continue;
@@ -526,8 +534,8 @@ public class KindleService extends AccessibilityService {
             float x0 = best.getPrimaryHorizontal(c);
             float x1 = c + 1 < n && best.getLineForOffset(c + 1) == line ? best.getPrimaryHorizontal(c + 1) : best.getLineRight(line);
             if (x1 < x0) { float t = x0; x0 = x1; x1 = t; }
-            float top = r.top + line * rowH;
-            out[c] = new float[]{r.left + x0, top, r.left + Math.max(x1, x0 + 1), top + rowH};
+            float top = r.top + line * pitch;
+            out[c] = new float[]{r.left + x0, top, r.left + Math.max(x1, x0 + 1), top + glyphs};
         }
         return out;
     }
