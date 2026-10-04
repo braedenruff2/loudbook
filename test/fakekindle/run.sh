@@ -9,6 +9,11 @@ adb shell pm grant com.loudbook.app android.permission.POST_NOTIFICATIONS
 adb logcat -c
 adb shell am start -n com.loudbook.app/.MainActivity
 sleep 100                                   # the phone voice downloads and loads the first time
+# (switch the reader on again now that everything's installed and running: the first time can be missed)
+adb shell settings put secure enabled_accessibility_services ""
+sleep 1
+adb shell settings put secure enabled_accessibility_services com.loudbook.app/com.loudbook.app.KindleService
+sleep 3
 adb shell am start -n com.amazon.kindle/.Reader
 sleep 6
 SIZE=$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1)
