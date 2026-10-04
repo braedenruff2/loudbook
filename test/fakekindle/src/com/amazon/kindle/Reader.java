@@ -48,6 +48,13 @@ public class Reader extends Activity {
             page.setLineSpacing(0, 1.5f);
             page.setTextColor(0xFF222222);
             page.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            // (and gives screen readers nothing itself: the text only comes as the one big piece)
+            page.setAccessibilityDelegate(new View.AccessibilityDelegate() {
+                @Override public void onInitializeAccessibilityNodeInfo(View host, AccessibilityNodeInfo info) {
+                    super.onInitializeAccessibilityNodeInfo(host, info);
+                    info.setText(null); info.setContentDescription(null);
+                }
+            });
             addView(page, new android.widget.FrameLayout.LayoutParams(-1, -2));
         }
         String text() { StringBuilder b = new StringBuilder(); for (String p : paras) { if (b.length() > 0) b.append('\n'); b.append(p); } return b.toString(); }
