@@ -65,6 +65,7 @@ public class KindleService extends AccessibilityService {
 
     @Override public void onDestroy() {
         me = null;
+        hideHighlight(); hidePicker();
         if (exploreOn) setExplore(false);
         hideBubble();
         if (bound) { try { unbindService(conn); } catch (Exception ignored) { } bound = false; }
@@ -81,7 +82,9 @@ public class KindleService extends AccessibilityService {
     private void watch() {
         if (me != this) return;
         boolean kindle = kindleRoot() != null;
+        kindleOnScreen = kindle;
         boolean reading = svc != null && svc.readingKindle();
+        if (reading && kindle) main.post(paint); else hideHighlight();
         boolean speaking = reading && svc.isPlaying() && !svc.isPaused();
         // only while Loudbook is open (in recent apps) or reading: swipe Loudbook away and the
         // button stays out of Kindle
@@ -174,14 +177,156 @@ public class KindleService extends AccessibilityService {
     }
 
     private final boolean[] longPressed = {false};
-    /** Holding the button: copies what Loudbook sees in Kindle, to paste to Claude if it reads the wrong things. */
-    private final Runnable longPress = () -> {
-        longPressed[0] = true;
+    /** Holding the button: tap the page to choose where reading starts. */
+    private final Runnable longPress = () -> { longPressed[0] = true; showPicker(); };
+
+    // ---------------------------------------------------------------- the highlight on Kindle's page
+    private volatile boolean kindleOnScreen;
+    private HighlightView hl;
+    private volatile int spansFor = -1;
+    private int lastLit = -1;
+    private List<int[]> spans;
+    private final Runnable paint = this::paintHighlight;
+
+    /** Marks the sentence being read on Kindle's page, and the word in it, as the reading goes. */
+    private void paintHighlight() {
+        main.removeCallbacks(paint);
+        if (me != this) return;
+        boolean reading = svc != null && svc.readingKindle() && svc.isPlaying();
+        if (!reading || !kindleOnScreen) { hideHighlight(); return; }
+        KindleLayout lay = shown;
+        float[] now = svc.kindleNow();
+        Chapter ch = svc.chapter();
+        if (lay == null || now == null || ch == null) { main.postDelayed(paint, 200); return; }
+        int idx = (int) now[0], from = (int) now[2], to = Math.min((int) now[3], ch.size());
+        int key = from * 100_000 + to;
+        if (spansFor != key || spans == null) {
+            List<String> texts = new ArrayList<>();
+            for (int i = from; i < to; i++) texts.add(ch.chunks.get(i).text);
+            spans = lay.spans(texts);
+            spansFor = key;
+        }
+        List<float[]> sentence = new ArrayList<>();
+        float[] word = null;
+        int k = idx - from;
+        if (k >= 0 && k < spans.size() && spans.get(k) != null) {
+            int[] sp = spans.get(k);
+            sentence = lay.boxesFor(sp[0], sp[1]);
+            if (!svc.isPaused()) word = lay.wordAt(sp[0], sp[1], now[1]);
+        }
+        if (idx != lastLit) {
+            lastLit = idx;
+            Log.i("LoudbookTest", "kindle highlight: sentence " + idx + " on " + sentence.size() + " lines"
+                + (sentence.isEmpty() ? "" : " from y=" + Math.round(sentence.get(0)[1])) + (lay.chars.contains(null) ? "" : " (exact)"));
+        }
+        showHighlight(sentence, word);
+        main.postDelayed(paint, 80);
+    }
+
+    private void showHighlight(List<float[]> sentence, float[] word) {
+        if (hl == null) {
+            hl = new HighlightView(this);
+            WindowManager.LayoutParams lp = new WindowManager.LayoutParams(-1, -1, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                    | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT);
+            try { wm.addView(hl, lp); } catch (Exception e) { Log.w(TAG, "highlight", e); hl = null; return; }
+            // the button stays above the highlight
+            if (bubble != null) { try { wm.removeView(bubble); wm.addView(bubble, bubbleLp); } catch (Exception ignored) { } }
+        }
+        hl.set(sentence, word);
+    }
+
+    private void hideHighlight() {
+        main.removeCallbacks(paint);
+        if (hl != null) { try { wm.removeView(hl); } catch (Exception ignored) { } hl = null; }
+    }
+
+    /** Draws the marks: the sentence lightly, the word being said more strongly. */
+    static final class HighlightView extends View {
+        private final android.graphics.Paint soft = new android.graphics.Paint(), strong = new android.graphics.Paint();
+        private List<float[]> sentence = new ArrayList<>();
+        private float[] word;
+        private final int[] at = new int[2];
+        private final float radius;
+        HighlightView(Context c) {
+            super(c);
+            soft.setColor(0x38E8AA46); strong.setColor(0x80E8AA46);
+            radius = 4 * c.getResources().getDisplayMetrics().density;
+        }
+        void set(List<float[]> s, float[] w) {
+            sentence = s; word = w;
+            invalidate();
+        }
+        @Override protected void onDraw(android.graphics.Canvas c) {
+            getLocationOnScreen(at);
+            for (float[] r : sentence) c.drawRoundRect(r[0] - at[0] - 2, r[1] - at[1], r[2] - at[0] + 2, r[3] - at[1], radius, radius, soft);
+            if (word != null) c.drawRoundRect(word[0] - at[0] - 3, word[1] - at[1], word[2] - at[0] + 3, word[3] - at[1], radius, radius, strong);
+        }
+    }
+
+    // ---------------------------------------------------------------- choosing where to start
+    private View picker;
+    private void showPicker() {
+        if (picker != null || wm == null) return;
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        android.widget.FrameLayout f = new android.widget.FrameLayout(this);
+        f.setBackgroundColor(0x33000000);
+        TextView hint = new TextView(this);
+        hint.setText("Tap where Loudbook should start reading");
+        hint.setTextColor(0xFF1B1712); hint.setTextSize(16); hint.setGravity(Gravity.CENTER);
+        int pad = Math.round(10 * dm.density);
+        hint.setPadding(pad * 2, pad, pad * 2, pad);
+        GradientDrawable g = new GradientDrawable(); g.setColor(0xF2E8AA46); g.setCornerRadius(24 * dm.density);
+        hint.setBackground(g);
+        android.widget.FrameLayout.LayoutParams hp = new android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        hp.topMargin = Math.round(40 * dm.density);
+        f.addView(hint, hp);
+        TextView copyIt = new TextView(this);
+        copyIt.setText("Something read wrong? Copy what Loudbook sees");
+        copyIt.setTextColor(0xFFEDE6DA); copyIt.setTextSize(13); copyIt.setPadding(pad, pad, pad, pad);
+        copyIt.setBackgroundColor(0xCC1E1B17);
+        android.widget.FrameLayout.LayoutParams cp = new android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        cp.bottomMargin = Math.round(40 * dm.density);
+        f.addView(copyIt, cp);
+        copyIt.setOnClickListener(v -> {
+            hidePicker();
+            new Thread(() -> {
+                String d = report(readPage());
+                main.post(() -> { copy(d); toast("Copied what Loudbook sees in Kindle. Paste it to Claude to get the reading fixed."); });
+            }, "lb-kindle-copy").start();
+        });
+        f.setOnTouchListener((v, ev) -> {
+            if (ev.getActionMasked() != MotionEvent.ACTION_UP) return true;
+            final float x = ev.getRawX(), y = ev.getRawY();
+            hidePicker();
+            startFrom(x, y);
+            return true;
+        });
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(-1, -1, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT);
+        try { wm.addView(f, lp); picker = f; Log.i("LoudbookTest", "kindle: choose where to start"); } catch (Exception e) { Log.w(TAG, "picker", e); }
+        main.postDelayed(this::hidePicker, 20_000);                  // (tapped nothing: put it away)
+    }
+    private void hidePicker() { if (picker != null) { try { wm.removeView(picker); } catch (Exception ignored) { } picker = null; } }
+
+    /** Starts reading from the sentence at a point on the page. */
+    private void startFrom(float x, float y) {
+        if (svc == null) return;
         new Thread(() -> {
-            String d = report(readPage());
-            main.post(() -> { copy(d); toast("Copied what Loudbook sees in Kindle. Paste it to Claude to get the reading fixed."); });
-        }, "lb-kindle-copy").start();
-    };
+            Page p = readPage();
+            if (p.paragraphs.isEmpty()) { main.post(() -> toast("No book text found there.")); return; }
+            KindleLayout lay = p.layout(false);
+            int letter = lay.letterAt(x, y);
+            Log.i("LoudbookTest", "kindle: start at letter " + letter + " (tap " + Math.round(x) + "," + Math.round(y) + ")");
+            main.post(() -> {
+                accept(p);
+                svc.startKindle(p, letter);
+                watch();
+            });
+        }, "lb-kindle-from").start();
+    }
 
     private void copy(String d) {
         try {
@@ -254,7 +399,7 @@ public class KindleService extends AccessibilityService {
                 startedAt = System.currentTimeMillis();
                 if (ex) toast("Kindle shares this book's text only with screen readers, so while Loudbook reads, the screen works like one. Tap the gold button to pause and get your screen back.");
                 accept(got);
-                svc.startKindle(got);
+                svc.startKindle(got, 0);
                 watch();
             });
         }, "lb-kindle").start();
@@ -286,6 +431,8 @@ public class KindleService extends AccessibilityService {
         String title = "";
         String signature = "";
         List<Bit> edges = new ArrayList<>();
+        List<Bit> lines = new ArrayList<>();          // the book's lines, in reading order
+        KindleLayout layout(boolean exact) { return KindleService.layoutOf(lines, exact); }
     }
 
     private AccessibilityNodeInfo kindleRoot() {
@@ -303,9 +450,49 @@ public class KindleService extends AccessibilityService {
 
     private volatile List<Bit> lastEdges = new ArrayList<>();
     /** This page is the one being read now: its header and footer are known from here on. */
-    void accept(Page p) { lastEdges = p.edges; }
+    void accept(Page p) {
+        lastEdges = p.edges;
+        // where this page's lines are, for the highlight (exact character boxes take a moment: off the main thread)
+        new Thread(() -> { shown = p.layout(true); spansFor = -1; }, "lb-kindle-layout").start();
+    }
 
-    static final class Bit { final String text; final Rect r; Bit(String t, Rect r) { text = t; this.r = r; } }
+    /** The page now being read: its lines and where they are. */
+    private volatile KindleLayout shown;
+
+    static KindleLayout layoutOf(List<Bit> lines, boolean exact) {
+        List<String> texts = new ArrayList<>();
+        List<float[]> boxes = new ArrayList<>();
+        List<float[][]> chars = new ArrayList<>();
+        for (Bit b : lines) {
+            texts.add(b.text);
+            boxes.add(new float[]{b.r.left, b.r.top, b.r.right, b.r.bottom});
+            chars.add(exact ? charBoxes(b) : null);
+        }
+        return new KindleLayout(texts, boxes, chars);
+    }
+
+    /** Each character's box on screen, if Kindle shares them (as text views do); null if not. */
+    private static float[][] charBoxes(Bit b) {
+        if (!b.ownText || b.node == null || b.text.length() > 2000) return null;
+        try {
+            String key = AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_KEY;
+            if (!b.node.getAvailableExtraData().contains(key)) return null;
+            android.os.Bundle args = new android.os.Bundle();
+            args.putInt(AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_ARG_START_INDEX, 0);
+            args.putInt(AccessibilityNodeInfo.EXTRA_DATA_TEXT_CHARACTER_LOCATION_ARG_LENGTH, b.text.length());
+            if (!b.node.refreshWithExtraData(key, args)) return null;
+            android.os.Parcelable[] a = b.node.getExtras().getParcelableArray(key);
+            if (a == null || a.length != b.text.length()) return null;
+            float[][] out = new float[a.length][];
+            for (int i = 0; i < a.length; i++) if (a[i] instanceof android.graphics.RectF) { android.graphics.RectF f = (android.graphics.RectF) a[i]; out[i] = new float[]{f.left, f.top, f.right, f.bottom}; }
+            return out;
+        } catch (Throwable t) { return null; }
+    }
+
+    static final class Bit {
+        final String text; final Rect r; AccessibilityNodeInfo node; boolean ownText;
+        Bit(String t, Rect r) { text = t; this.r = r; }
+    }
     /** Instructions for screen-reader users ("double tap to…") and the like: never part of a book. */
     static final Pattern HINT = Pattern.compile("(?i).*\\b(double[- ]?tap|tap to|swipe (up|down|left|right)|to activate|to dismiss|continuous reading)\\b.*");
     static final Pattern HINT_PART = Pattern.compile("(?i)(?<=^|[.!?;])\\s*[^.!?;]*\\b(double[- ]?tap|tap to|swipe (up|down|left|right)|to activate|to dismiss|continuous reading)\\b[^.!?;]*[.!?;]?");
@@ -363,6 +550,7 @@ public class KindleService extends AccessibilityService {
         }
         if (para.length() > 0) p.paragraphs.add(para.toString());
         p.edges = edges;
+        p.lines = body;
         // what's on screen, unfiltered: tells whether the page really changed
         StringBuilder sig = new StringBuilder();
         for (Bit b : bits) sig.append(b.text.length() > 40 ? b.text.substring(0, 40) : b.text).append('|');
@@ -392,7 +580,10 @@ public class KindleService extends AccessibilityService {
         Rect r = new Rect();
         n.getBoundsInScreen(r);
         if (r.width() <= 0 || r.height() <= 0) return;
-        out.add(new Bit(t.toString(), r));
+        Bit b = new Bit(t.toString(), r);
+        b.node = n;
+        b.ownText = n.getText() != null && n.getText().toString().equals(b.text);
+        out.add(b);
     }
 
     /**

@@ -38,6 +38,17 @@ public class UnitTest {
         check("straight quotes", str(Dialogue.split("He said \"stop it\" and left.", false)), "[n:He said][q:stop it][n:and left.]");
         check("inside a quote from before", str(Dialogue.split("And then we ran.\u201d She laughed.", true)), "[q:And then we ran.][n:She laughed.]");
         check("no quotes", str(Dialogue.split("The road was long.", false)), "[n:The road was long.]");
+        // Kindle page geometry: where sentences and words are, and what a tap points at
+        java.util.List<String> ls = Arrays.asList("The road out of the valley was", "older than the town. Mara walked", "it every morning, and liked it.");
+        java.util.List<float[]> bx = Arrays.asList(new float[]{40, 100, 400, 140}, new float[]{0, 140, 400, 180}, new float[]{0, 180, 380, 220});
+        KindleLayout kl = new KindleLayout(ls, bx, null);
+        java.util.List<int[]> sp = kl.spans(Arrays.asList("The road out of the valley was older than the town.", "Mara walked it every morning, and liked it."));
+        check("sentence spans", Arrays.toString(sp.get(0)) + Arrays.toString(sp.get(1)), "[0, 40][40, 74]");
+        check("second sentence covers two lines", kl.boxesFor(sp.get(1)[0], sp.get(1)[1]).size(), 2);
+        check("its first word starts mid-line", Math.round(kl.wordAt(sp.get(1)[0], sp.get(1)[1], 0f)[0]), 263);
+        check("a tap on 'Mara' starts that sentence", kl.letterAt(300, 160), 40);
+        check("a sentence begun on the page before is found by its end",
+            Arrays.toString(kl.spans(Arrays.asList("Far off, the road out of the valley was older than the town.")).get(0)), "[0, 40]");
         System.out.println(bad == 0 ? "ALL OK" : bad + " FAILED");
         System.exit(bad == 0 ? 0 : 1);
     }

@@ -29,7 +29,7 @@ jobs:
       - name: Check pronunciation rules and the plain-Java parts
         run: |
           node test/say/run.js
-          javac -nowarn -d unit-out -cp "$ANDROID_JAR" app/src/com/loudbook/app/KindleText.java app/src/com/loudbook/app/Chapter.java app/src/com/loudbook/app/VoiceRecording.java app/src/com/loudbook/app/Dialogue.java test/unit/com/loudbook/app/UnitTest.java
+          javac -nowarn -d unit-out -cp "$ANDROID_JAR" app/src/com/loudbook/app/KindleText.java app/src/com/loudbook/app/Chapter.java app/src/com/loudbook/app/VoiceRecording.java app/src/com/loudbook/app/Dialogue.java app/src/com/loudbook/app/KindleLayout.java test/unit/com/loudbook/app/UnitTest.java
           java -cp unit-out com.loudbook.app.UnitTest
       - name: Build the APK
         env:

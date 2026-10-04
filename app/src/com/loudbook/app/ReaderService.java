@@ -350,6 +350,7 @@ public class ReaderService extends Service {
     private void setChapter(Chapter ch, int startAt, boolean play, Map<Integer, Future<Voice.Clip>> premade) {
         stopPlayback();
         chapter = ch;
+        heardIdx = -1;
         pos = Math.max(0, Math.min(startAt, ch.size() - 1));
         dropClips();
         if (premade != null && startAt == 0) synchronized (clips) { clips.putAll(premade); }
@@ -525,8 +526,24 @@ public class ReaderService extends Service {
     /** Kindle was read to the end of the book (or of what could be turned to). */
     boolean kindleDone() { return readingKindle() && kindleEnded && !playing; }
 
-    /** Starts reading the page open in Kindle (from KindleService's button). */
-    void startKindle(KindleService.Page p) {
+    /** The sentences of the Kindle page on screen now: [from, to) in the chapter. */
+    private volatile int kindleFrom = 0, kindleTo = Integer.MAX_VALUE;
+    /** The sentence being heard, its first frame and its length, for the highlight on Kindle's page. */
+    private volatile long heardStart, heardLen;
+    private volatile int heardIdx = -1;
+
+    /** For the highlight: {sentence, how far through it (0..1), page's first sentence, page's end}. */
+    float[] kindleNow() {
+        AudioTrack t = track;
+        int i = heardIdx;
+        if (t == null || i < 0) return null;
+        long head = t.getPlaybackHeadPosition() & 0xffffffffL;
+        float f = heardLen > 0 ? Math.max(0f, Math.min(1f, (head - heardStart) / (float) heardLen)) : 0f;
+        return new float[]{i, f, kindleFrom, kindleTo};
+    }
+
+    /** Starts reading the page open in Kindle (from KindleService's button); letter: where on the page to start (0 = the top). */
+    void startKindle(KindleService.Page p, int letter) {
         kt = new KindleText(prefs.getString("fixes", ""));
         java.util.List<Chapter.Chunk> raw = kt.chunks(p.paragraphs, false);
         if (raw.isEmpty()) raw = new KindleText(prefs.getString("fixes", "")).chunks(p.paragraphs, true);
@@ -535,10 +552,20 @@ public class ReaderService extends Service {
         final java.util.List<Chapter.Chunk> page = raw;
         kindleThread.submit(() -> {
             java.util.List<Chapter.Chunk> first = spoken(page);
+            // the sentence at the place tapped (or the first)
+            int at = 0;
+            if (letter > 0) {
+                java.util.List<String> texts = new java.util.ArrayList<>();
+                for (Chapter.Chunk c : first) texts.add(c.text);
+                java.util.List<int[]> sp = p.layout(false).spans(texts);
+                for (int k = 0; k < sp.size(); k++) if (sp.get(k) != null && sp.get(k)[1] > letter) { at = k; break; }
+            }
+            final int startAt = at;
             main.post(() -> {
                 Chapter ch = new Chapter("kindle:" + System.currentTimeMillis(), "kindle", p.title.isEmpty() ? "Kindle" : p.title, "Kindle", first);
-                Log.i("LoudbookTest", "kindle start: " + p.paragraphs.size() + " paragraphs, " + first.size() + " sentences, title " + p.title);
-                setChapter(ch, 0, true);
+                Log.i("LoudbookTest", "kindle start: " + p.paragraphs.size() + " paragraphs, " + first.size() + " sentences, from sentence " + startAt + ", title " + p.title);
+                kindleFrom = 0; kindleTo = first.size();
+                setChapter(ch, startAt, true);
             });
             return null;
         });
@@ -578,9 +605,11 @@ public class ReaderService extends Service {
     }
 
     /** Turns Kindle's page and adds its sentences to what's being read. */
+    private volatile boolean kindleQueued;
     private void kindleMore(Chapter ch) {
         if (kindleBusy || kindleEnded || kt == null) return;
         kindleBusy = true;
+        kindleQueued = false;
         kindleThread.submit(() -> {
             try {
                 KindleService k = KindleService.me;
@@ -593,11 +622,13 @@ public class ReaderService extends Service {
                 } else {
                     kindleSig = p.signature;
                     java.util.List<Chapter.Chunk> more = spoken(kt.chunks(p.paragraphs, false));
+                    int from = ch.size();
                     ch.chunks.addAll(more);
+                    kindleFrom = from; kindleTo = ch.size();
                     Log.i("LoudbookTest", "kindle page turned: +" + more.size() + " sentences");
                 }
             } catch (Throwable t) { Log.w(TAG, "kindle page", t); kindleEnded = true; }
-            finally { kindleBusy = false; }
+            finally { kindleQueued = true; kindleBusy = false; }
             return null;
         });
     }
@@ -744,11 +775,14 @@ public class ReaderService extends Service {
                     return;
                 }
                 if (chapter != ch) return;
-                if (kt != null && "kindle".equals(ch.site)) {
-                    // Kindle: turn the page a few sentences before the end, so the next is ready
-                    if (next >= ch.size() - 2) kindleMore(ch);
+                if (kt != null && "kindle".equals(ch.site) && next >= ch.size() && !kindleEnded) {
+                    // Kindle: everything on this page is queued. Turn the page only once its last
+                    // word has been heard (the screen shows what's being read), then carry on
+                    if (!drain(myGen, ch, marks)) return;
+                    Log.i("LoudbookTest", "kindle: page read to its last word, turning");
+                    kindleMore(ch);
                     long until = System.currentTimeMillis() + 10_000;
-                    while (gen == myGen && next >= ch.size() && kindleBusy && System.currentTimeMillis() < until) { heard(ch, marks, myGen); sleep(60); }
+                    while (gen == myGen && next >= ch.size() && (kindleBusy || !kindleQueued) && System.currentTimeMillis() < until) { heard(ch, marks, myGen); sleep(40); }
                     if (gen != myGen) return;
                 }
                 if (next >= ch.size()) {
@@ -778,7 +812,7 @@ public class ReaderService extends Service {
                     if (next == pos) main.post(() -> status("", false));
                     AudioTrack t = ensureTrack(c.rate);
                     current = c;
-                    marks.add(new long[]{framesWritten, next});
+                    marks.add(new long[]{framesWritten, next, c.samples.length});
                     if (!stream(t, c, myGen, ch, marks)) return;
                     if (!rest(t, gapAfter(ch, next), myGen, ch, marks)) return;
                 }
@@ -857,7 +891,11 @@ public class ReaderService extends Service {
         if (t == null || marks.isEmpty()) return;
         long head = t.getPlaybackHeadPosition() & 0xffffffffL;
         int reached = -1;
-        while (!marks.isEmpty() && head >= marks.peek()[0]) reached = (int) marks.poll()[1];
+        while (!marks.isEmpty() && head >= marks.peek()[0]) {
+            long[] m = marks.poll();
+            reached = (int) m[1];
+            heardStart = m[0]; heardLen = m.length > 2 ? m[2] : 0; heardIdx = reached;
+        }
         if (reached < 0 || gen != myGen) return;
         final int here = reached;
         pos = here;

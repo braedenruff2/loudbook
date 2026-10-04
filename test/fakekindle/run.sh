@@ -18,7 +18,10 @@ DP=$(( DEN * 100 / 160 ))
 X=$(( W - (52 + 12) * DP / 100 + 26 * DP / 100 )); Y=$(( H * 2 / 3 + 26 * DP / 100 ))
 adb shell screencap -p /sdcard/before.png
 adb shell input tap $X $Y
-sleep 75
+sleep 9
+adb shell screencap -p /sdcard/reading.png             # the highlight on the page, mid-sentence
+adb pull /sdcard/reading.png .
+sleep 66
 adb shell screencap -p /sdcard/after.png
 adb pull /sdcard/before.png . ; adb pull /sdcard/after.png .
 # second book: a Kindle that shares its text only with an explore-by-touch screen reader
@@ -29,6 +32,21 @@ adb shell input tap $X $Y
 sleep 80
 adb shell screencap -p /sdcard/explore.png
 adb pull /sdcard/explore.png .
+# choosing where to start: hold the button, then tap the second paragraph ("Mara walked...")
+adb shell log -t LoudbookTest "=== choose where to start ==="
+adb shell am start -S -n com.amazon.kindle/.Reader
+sleep 6
+adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml . >/dev/null 2>&1
+B=$(grep -o 'text="Mara walked[^"]*"[^>]*bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' ui.xml | grep -o 'bounds="[^"]*"' | head -1 | grep -o '[0-9]*' | tr '\n' ' ')
+set -- $B
+TX=$(( ($1 + $3) / 2 )); TY=$(( ($2 + $4) / 2 ))
+adb shell log -t LoudbookTest "tapping the line at $TX,$TY"
+adb shell input swipe $X $Y $X $Y 1200                # hold the button
+sleep 2
+adb shell screencap -p /sdcard/pick.png; adb pull /sdcard/pick.png .
+adb shell input tap $TX $TY
+sleep 12
+adb shell input tap $X $Y                              # pause
 # Kindle closed after reading: the round button must go away
 adb shell am force-stop com.amazon.kindle
 adb shell input keyevent KEYCODE_HOME

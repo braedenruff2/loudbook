@@ -55,4 +55,4 @@ jobs:
           gh release view kindle-test >/dev/null 2>&1 || gh release create kindle-test --latest=false --title "Kindle reader test" --notes "Output of .github/workflows/kindle-test.yml"
           gh release upload kindle-test results.md --clobber
           [ -f logcat.txt ] && gzip -kf logcat.txt && gh release upload kindle-test logcat.txt.gz --clobber || true
-          for f in before.png after.png explore.png closed.png; do [ -f $f ] && gh release upload kindle-test $f --clobber; done; true
+          for f in before.png reading.png after.png explore.png pick.png closed.png; do [ -f $f ] && gh release upload kindle-test $f --clobber; done; true
