@@ -68,7 +68,7 @@ final class KindleLayout {
         for (int i = s; i < e; i++) {
             boolean lineEnds = i == e - 1 || nLine[i + 1] != l;
             if (lineEnds) {
-                out.add(piece(l, a, nPos[i] + 1));
+                out.addAll(rows(l, a, nPos[i] + 1));
                 if (i + 1 < e) { l = nLine[i + 1]; a = nPos[i + 1]; }
             }
         }
@@ -84,7 +84,7 @@ final class KindleLayout {
         int a = nPos[i], b = nPos[i] + 1;
         while (a > 0 && !Character.isWhitespace(t.charAt(a - 1))) a--;
         while (b < t.length() && !Character.isWhitespace(t.charAt(b))) b++;
-        return piece(l, a, b);
+        return rows(l, a, b).get(0);
     }
 
     /** The page letter closest to a point on screen (a tap): the start of the line tapped, or the word. */
@@ -103,6 +103,26 @@ final class KindleLayout {
         for (int i = 0; i < nLine.length; i++) if (nLine[i] == best && nPos[i] >= c) return i;
         for (int i = 0; i < nLine.length; i++) if (nLine[i] > best) return i;
         return nLine.length - 1;
+    }
+
+    /**
+     * Characters [a, b) of line l as one box per row on screen: a piece of text Kindle hands over
+     * as one line may wrap onto several rows (only known when it shares character boxes).
+     */
+    private List<float[]> rows(int l, int a, int b) {
+        List<float[]> out = new ArrayList<>();
+        float[][] cs = chars == null || l >= chars.size() ? null : chars.get(l);
+        if (cs == null || b > cs.length) { out.add(piece(l, a, b)); return out; }
+        float[] cur = null;
+        for (int c = a; c < b; c++) {
+            float[] r = cs[c];
+            if (r == null || r[2] <= r[0]) continue;                       // (spaces at a wrap have no box)
+            if (cur != null && Math.abs(r[1] - cur[1]) < (cur[3] - cur[1]) / 2) { cur[2] = Math.max(cur[2], r[2]); cur[3] = Math.max(cur[3], r[3]); continue; }
+            cur = new float[]{r[0], r[1], r[2], r[3]};
+            out.add(cur);
+        }
+        if (out.isEmpty()) out.add(piece(l, a, b));
+        return out;
     }
 
     /** The box of characters [a, b) of line l: exact if Kindle shared the character boxes, else estimated from the line. */

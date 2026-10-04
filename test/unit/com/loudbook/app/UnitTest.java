@@ -49,6 +49,11 @@ public class UnitTest {
         check("a tap on 'Mara' starts that sentence", kl.letterAt(300, 160), 40);
         check("a sentence begun on the page before is found by its end",
             Arrays.toString(kl.spans(Arrays.asList("Far off, the road out of the valley was older than the town.")).get(0)), "[0, 40]");
+        // a line that wraps onto two rows on screen (known from the character boxes): a box per row
+        float[][] cb = new float[11][];
+        for (int i = 0; i < 11; i++) cb[i] = i < 5 ? new float[]{10 + i * 10, 100, 20 + i * 10, 120} : i == 5 ? new float[]{0, 0, 0, 0} : new float[]{10 + (i - 6) * 10, 120, 20 + (i - 6) * 10, 140};
+        KindleLayout wrap = new KindleLayout(Arrays.asList("hello world"), Arrays.asList(new float[]{10, 100, 70, 140}), Arrays.asList(new float[][][]{cb}));
+        check("wrapped line: one box per row", wrap.boxesFor(0, 10).size(), 2);
         System.out.println(bad == 0 ? "ALL OK" : bad + " FAILED");
         System.exit(bad == 0 ? 0 : 1);
     }
