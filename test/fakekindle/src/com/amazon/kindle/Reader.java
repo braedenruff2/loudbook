@@ -55,7 +55,7 @@ public class Reader extends Activity {
                     if (id == View.NO_ID) {
                         AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain(Drawn.this);
                         onInitializeAccessibilityNodeInfo(info);
-                        for (int i = 0; i < lines.size(); i++) if (!lines.get(i).isEmpty()) info.addChild(Drawn.this, i);
+                        info.addChild(Drawn.this, 0);
                         info.addChild(Drawn.this, 999);
                         return info;
                     }
@@ -72,14 +72,18 @@ public class Reader extends Activity {
                         info.setPackageName(getPackageName());
                         return info;
                     }
-                    if (id < 0 || id >= lines.size()) return null;
+                    if (id != 0) return null;
                     AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain(Drawn.this, id);
                     info.setParent(Drawn.this);
-                    info.setClassName("android.widget.TextView");
-                    info.setText(lines.get(id));
+                    info.setClassName("android.view.View");
+                    StringBuilder all = new StringBuilder();
+                    for (String l : lines) { if (l.isEmpty()) { if (all.length() > 0) all.append('\n'); } else { if (all.length() > 0 && all.charAt(all.length() - 1) != '\n') all.append(' '); all.append(l); } }
+                    info.setText(all.toString().trim());
                     int[] at = new int[2];
                     getLocationOnScreen(at);
-                    Rect r = lineRect(id);
+                    int bottom = 0;
+                    for (int i = 0; i < lines.size(); i++) if (!lines.get(i).isEmpty()) bottom = lineRect(i).bottom;
+                    Rect r = new Rect(0, 0, getWidth(), bottom);
                     r.offset(at[0], at[1]);
                     info.setBoundsInScreen(r);
                     info.setVisibleToUser(true);

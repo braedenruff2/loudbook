@@ -14,6 +14,8 @@ final class KindleLayout {
     final List<float[]> boxes;
     /** Per line, each character's box if Kindle shares them (null otherwise: then it's estimated). */
     final List<float[][]> chars;
+    /** How many lines Kindle gave exact character boxes for (the rest are estimated). */
+    int exactLines;
     private final StringBuilder norm = new StringBuilder();
     private int[] nLine = new int[0], nPos = new int[0];
 

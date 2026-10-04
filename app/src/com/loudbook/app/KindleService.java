@@ -217,7 +217,7 @@ public class KindleService extends AccessibilityService {
         if (idx != lastLit) {
             lastLit = idx;
             Log.i("LoudbookTest", "kindle highlight: sentence " + idx + " on " + sentence.size() + " lines"
-                + (sentence.isEmpty() ? "" : " from y=" + Math.round(sentence.get(0)[1])) + (lay.chars.contains(null) ? "" : " (exact)"));
+                + (sentence.isEmpty() ? "" : " from y=" + Math.round(sentence.get(0)[1])) + (lay.exactLines > 0 ? " (exact)" : " (estimated)"));
         }
         showHighlight(sentence, word);
         main.postDelayed(paint, 80);
@@ -463,12 +463,73 @@ public class KindleService extends AccessibilityService {
         List<String> texts = new ArrayList<>();
         List<float[]> boxes = new ArrayList<>();
         List<float[][]> chars = new ArrayList<>();
+        int exactOnes = 0;
         for (Bit b : lines) {
             texts.add(b.text);
             boxes.add(new float[]{b.r.left, b.r.top, b.r.right, b.r.bottom});
-            chars.add(exact ? charBoxes(b) : null);
+            float[][] cb = exact ? charBoxes(b) : null;
+            if (cb != null) exactOnes++;
+            else { try { cb = estimateChars(b.text, b.r); } catch (Throwable t) { Log.w(TAG, "kindle layout", t); } }
+            chars.add(cb);
         }
-        return new KindleLayout(texts, boxes, chars);
+        KindleLayout k = new KindleLayout(texts, boxes, chars);
+        k.exactLines = exactOnes;
+        return k;
+    }
+
+    /**
+     * Where each character probably is, when Kindle doesn't say: Kindle often hands over a whole
+     * paragraph (or page) as one piece, many rows tall. The text is laid out again here, in a
+     * book-like font at the size that makes it wrap into as many rows as fit the piece's height,
+     * which puts each word on the right row and close to its place in it.
+     */
+    /** Paragraphs after a line break start indented, as books set them. */
+    private static CharSequence indented(String text, float size) {
+        if (text.indexOf('\n') < 0) return text;
+        android.text.SpannableString sp = new android.text.SpannableString(text);
+        int indent = Math.round(size * 1.6f);
+        for (int i = text.indexOf('\n'); i >= 0 && i + 1 < text.length(); i = text.indexOf('\n', i + 1)) {
+            int end = text.indexOf('\n', i + 1);
+            sp.setSpan(new android.text.style.LeadingMarginSpan.Standard(indent, 0), i + 1, end < 0 ? text.length() : end + 1, android.text.Spanned.SPAN_PARAGRAPH);
+        }
+        return sp;
+    }
+
+    static float[][] estimateChars(String text, Rect r) {
+        int n = text.length(), w = r.width(), h = r.height();
+        if (n == 0 || w <= 0 || h <= 0) return null;
+        android.text.TextPaint paint = new android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        paint.setTypeface(android.graphics.Typeface.SERIF);
+        android.text.StaticLayout best = null;
+        int bestRows = 1;
+        float[] spacing = {1.5f, 1.4f, 1.6f, 1.3f, 1.7f, 1.25f, 1.8f};
+        int maxRows = Math.max(1, Math.min(80, h / 18));
+        search:
+        for (float f : spacing) {
+            for (int rows = 1; rows <= maxRows; rows++) {
+                paint.setTextSize(h / (rows * f));
+                android.text.StaticLayout l = android.text.StaticLayout.Builder.obtain(indented(text, paint.getTextSize()), 0, n, paint, w).setIncludePad(false).build();
+                if (l.getLineCount() == rows) { best = l; bestRows = rows; break search; }
+                if (l.getLineCount() < rows) break;                  // smaller text only makes fewer rows
+            }
+        }
+        if (best == null) {                                           // nothing fits exactly: one row per... the nearest
+            paint.setTextSize(h / (Math.max(1, Math.round(h / 60f)) * 1.5f));
+            best = android.text.StaticLayout.Builder.obtain(indented(text, paint.getTextSize()), 0, n, paint, w).setIncludePad(false).build();
+            bestRows = Math.max(1, best.getLineCount());
+        }
+        float rowH = h / (float) bestRows;
+        float[][] out = new float[n][];
+        for (int c = 0; c < n; c++) {
+            if (Character.isWhitespace(text.charAt(c))) continue;
+            int line = best.getLineForOffset(c);
+            float x0 = best.getPrimaryHorizontal(c);
+            float x1 = c + 1 < n && best.getLineForOffset(c + 1) == line ? best.getPrimaryHorizontal(c + 1) : best.getLineRight(line);
+            if (x1 < x0) { float t = x0; x0 = x1; x1 = t; }
+            float top = r.top + line * rowH;
+            out[c] = new float[]{r.left + x0, top, r.left + Math.max(x1, x0 + 1), top + rowH};
+        }
+        return out;
     }
 
     /** Each character's box on screen, if Kindle shares them (as text views do); null if not. */

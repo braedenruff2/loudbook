@@ -29,7 +29,10 @@ adb shell log -t LoudbookTest "=== explore-only Kindle ==="
 adb shell am start -S -n com.amazon.kindle/.Reader --ez explore true
 sleep 6
 adb shell input tap $X $Y
-sleep 80
+sleep 12
+adb shell screencap -p /sdcard/explore-reading.png      # the highlight worked out for a whole-page piece of text
+adb pull /sdcard/explore-reading.png .
+sleep 68
 adb shell screencap -p /sdcard/explore.png
 adb pull /sdcard/explore.png .
 # choosing where to start: hold the button, then tap the second paragraph ("Mara walked...")
