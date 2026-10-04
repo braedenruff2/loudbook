@@ -1,3 +1,4 @@
+Kindle: the highlight now finds each word on the page itself, so it sits on the exact word being read, row by row (it used to be one tall box).
 Kindle: the sentence and word being read are highlighted on the page; hold the gold button, then tap a line to start there; pages turn only after their last word.
 New: what characters say can be read in a second voice, like a two-person audiobook (Settings > Voice).
 Loudbook now tells you when a story you've caught up on has a new chapter (Settings to turn off).

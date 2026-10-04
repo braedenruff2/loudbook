@@ -72,6 +72,21 @@ public class UnitTest {
         float[][] icb = InkLayout.charBoxes(inkText, found);
         int vi = inkText.indexOf("valley");
         check("ink: 'valley' boxed where it is", icb != null && Math.abs(icb[vi][0] - where.get("valley")[0]) < 6 && Math.abs(icb[vi][1] - where.get("valley")[1]) < 4, true);
+        // the whole screen: a clock above, "mins left" below, the text in two pieces, and the last
+        // words of the page not on screen (they're on the next)
+        int[] px2 = new int[W * (H + 120)];
+        java.util.Arrays.fill(px2, 0xFFF8F0E0);                         // a light page (dark text)
+        for (int yy = 0; yy < H; yy++) for (int xx = 0; xx < W; xx++) if (px[yy * W + xx] != 0xFF101010) px2[(yy + 60) * W + xx] = 0xFF202020;
+        for (int yy = 10; yy < 30; yy++) for (int xx = 20; xx < 80; xx++) px2[yy * W + xx] = 0xFF202020;          // clock
+        for (int yy = H + 80; yy < H + 100; yy++) for (int xx = 20; xx < 200; xx += 1) if (xx % 50 < 40) px2[yy * W + xx] = 0xFF202020;   // footer
+        java.util.List<float[][]> pg = InkLayout.pageBoxes(Arrays.asList("The road out of the valley was older than the town,",
+            "and in places the stones had sunk deep. Beyond them lay the river"), InkLayout.words(px2, W, H + 120, 0, 0));
+        check("page: both pieces placed", pg != null && pg.get(0) != null && pg.get(1) != null, true);
+        String pieceTwo = "and in places the stones had sunk deep. Beyond them lay the river";
+        int si = pieceTwo.indexOf("stones");
+        check("page: 'stones' boxed where it is", pg != null && pg.get(1) != null && pg.get(1)[si] != null
+            && Math.abs(pg.get(1)[si][0] - where.get("stones")[0]) < 6 && Math.abs(pg.get(1)[si][1] - (where.get("stones")[1] + 60)) < 4, true);
+        check("page: words not on screen have no box", pg != null && pg.get(1) != null && pg.get(1)[pieceTwo.indexOf("river")] == null, true);
         System.out.println(bad == 0 ? "ALL OK" : bad + " FAILED");
         System.exit(bad == 0 ? 0 : 1);
     }
