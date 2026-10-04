@@ -10,7 +10,7 @@ adb logcat -c
 adb shell am start -n com.loudbook.app/.MainActivity
 sleep 100                                   # the phone voice downloads and loads the first time
 # (switch the reader on again now that everything's installed and running: the first time can be missed)
-adb shell settings put secure enabled_accessibility_services ""
+adb shell settings delete secure enabled_accessibility_services || true
 sleep 1
 adb shell settings put secure enabled_accessibility_services com.loudbook.app/com.loudbook.app.KindleService
 sleep 3
