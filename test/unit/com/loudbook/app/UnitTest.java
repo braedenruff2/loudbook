@@ -31,6 +31,8 @@ public class UnitTest {
             "[She liked the quiet,, and she liked that nobody else since the war had walked that road at dawn.]");
         check("quick start before and", KindleText.quickStart("The road out of the valley was older than the town and in places the stones had sunk into the grass."),
             "[The road out of the valley was older than the town, and in places the stones had sunk into the grass.]");
+        check("a long rest is cut again at a comma", KindleText.quickStart("She liked the quiet, and she liked that nobody else bothered to come this way anymore, not since the new highway had opened on the far side of the hill."),
+            "[She liked the quiet,, and she liked that nobody else bothered to come this way anymore,, not since the new highway had opened on the far side of the hill.]");
         check("short sentence stays whole", KindleText.quickStart("Mara walked it every morning."), "[Mara walked it every morning.]");
         check("no good place stays whole", KindleText.quickStart("Abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghij."),
             "[Abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghij.]");

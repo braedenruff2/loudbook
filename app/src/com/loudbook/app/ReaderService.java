@@ -565,9 +565,11 @@ public class ReaderService extends Service {
                 // started mid-page: give the voice a short first piece there too, so it starts sooner
                 Chapter.Chunk c = first.get(at);
                 java.util.List<String> q = KindleText.quickStart(c.text);
-                if (q.size() == 2) {
-                    java.util.List<Chapter.Chunk> two = spoken(java.util.Arrays.asList(new Chapter.Chunk(c.block, q.get(0), q.get(0)), new Chapter.Chunk(c.block, q.get(1), q.get(1))));
-                    if (two.size() == 2) { first.remove(at); first.addAll(at, two); }
+                if (q.size() > 1) {
+                    java.util.List<Chapter.Chunk> parts = new java.util.ArrayList<>();
+                    for (String t : q) parts.add(new Chapter.Chunk(c.block, t, t));
+                    java.util.List<Chapter.Chunk> said = spoken(parts);
+                    if (said.size() == q.size()) { first.remove(at); first.addAll(at, said); }
                 }
             }
             final int startAt = at;

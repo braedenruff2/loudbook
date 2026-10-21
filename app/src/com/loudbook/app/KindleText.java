@@ -60,7 +60,7 @@ final class KindleText {
 
     private static final Pattern PAUSE = Pattern.compile("[,;:\u2014\u2013]\\s");
     private static final Pattern JOIN = Pattern.compile("\\s(?=(and|but|so|then|when|while|because|until|though|as|or|which|where)\\s)");
-    /** A long sentence as a short first piece and the rest, cut where a reader would breathe; else as it is. */
+    /** A long sentence as a short first piece and the rest (in a few pieces if long), cut where a reader would breathe; else as it is. */
     static List<String> quickStart(String s) {
         List<String> out = new ArrayList<>();
         int cut = -1;
@@ -75,7 +75,20 @@ final class KindleText {
         }
         if (cut < 0) { out.add(s); return out; }
         out.add(s.substring(0, cut).trim());
-        out.add(s.substring(cut).trim());
+        String rest = s.substring(cut).trim();
+        // a long rest takes longer to make than the short piece takes to say: cut it again at a
+        // comma (only), each piece at most about three times the one before, so each is ready in time
+        while (out.size() < 4) {
+            int last = out.get(out.size() - 1).length(), most = Math.max(70, 3 * last + 10);
+            if (rest.length() <= Math.max(60, 2 * last)) break;
+            int c = -1;
+            Matcher m = PAUSE.matcher(rest);
+            while (m.find()) { if (m.end() > most || rest.length() - m.end() < 20) break; if (m.end() >= 20) c = m.end(); }
+            if (c < 0) break;
+            out.add(rest.substring(0, c).trim());
+            rest = rest.substring(c).trim();
+        }
+        out.add(rest);
         return out;
     }
 
