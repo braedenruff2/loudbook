@@ -35,6 +35,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
       - name: Run on the emulator
+        id: emu
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -49,6 +50,7 @@ jobs:
         run: |
           {
             echo '## Next chapter, in the background (Android 15)'; echo
+            echo "commit ${GITHUB_SHA::7}, run ${{ github.run_id }}, emulator step: ${{ steps.emu.outcome }}"; echo
             cat newchapter.txt jobs.txt 2>/dev/null; echo
             echo 'Pages served:'; echo '```'; grep -o 'GET [^ ]*' /tmp/http.log; echo '```'; echo
             echo '```'
