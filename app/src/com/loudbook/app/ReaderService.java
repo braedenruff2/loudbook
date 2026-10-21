@@ -511,6 +511,7 @@ public class ReaderService extends Service {
                     }
                 }
                 audioSecs += c.seconds(); workSecs += c.ms / 1000.0;
+                Log.i("LoudbookTest", "voice: " + text.length() + " letters in " + c.ms + " ms (" + Math.round(c.seconds() * 10) / 10.0 + " s of speech)");
                 return c;
             }
         }
@@ -559,6 +560,15 @@ public class ReaderService extends Service {
                 for (Chapter.Chunk c : first) texts.add(c.text);
                 java.util.List<int[]> sp = p.layout(false).spans(texts);
                 for (int k = 0; k < sp.size(); k++) if (sp.get(k) != null && sp.get(k)[1] > letter) { at = k; break; }
+            }
+            if (at > 0) {
+                // started mid-page: give the voice a short first piece there too, so it starts sooner
+                Chapter.Chunk c = first.get(at);
+                java.util.List<String> q = KindleText.quickStart(c.text);
+                if (q.size() == 2) {
+                    java.util.List<Chapter.Chunk> two = spoken(java.util.Arrays.asList(new Chapter.Chunk(c.block, q.get(0), q.get(0)), new Chapter.Chunk(c.block, q.get(1), q.get(1))));
+                    if (two.size() == 2) { first.remove(at); first.addAll(at, two); }
+                }
             }
             final int startAt = at;
             main.post(() -> {

@@ -26,6 +26,17 @@ public class UnitTest {
         List<Chapter.Chunk> p2 = kt.chunks(Arrays.asList("the page break, then stops."), true);
         check("page 1", p1.size() + ":" + p1.get(0).text, "1:The first page ends here.");
         check("page 2 joins the cut sentence", p2.get(0).text, "And this one runs over the page break, then stops.");
+        // a page's first long sentence starts with a short piece, so the voice starts sooner after a turn
+        check("quick start at a comma", KindleText.quickStart("She liked the quiet, and she liked that nobody else since the war had walked that road at dawn."),
+            "[She liked the quiet,, and she liked that nobody else since the war had walked that road at dawn.]");
+        check("quick start before and", KindleText.quickStart("The road out of the valley was older than the town and in places the stones had sunk into the grass."),
+            "[The road out of the valley was older than the town, and in places the stones had sunk into the grass.]");
+        check("short sentence stays whole", KindleText.quickStart("Mara walked it every morning."), "[Mara walked it every morning.]");
+        check("no good place stays whole", KindleText.quickStart("Abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghij."),
+            "[Abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghij.]");
+        KindleText kq = new KindleText("");
+        List<Chapter.Chunk> pq = kq.chunks(Arrays.asList("It was late in the year, and the first snow had already come to the high passes. Nobody went up."), true);
+        check("only the page's first sentence is cut", pq.size() + ":" + pq.get(0).text + "|" + pq.get(1).block, "2:It was late in the year,|0");
         // a recorded voice: too short is refused, long enough is a WAV
         byte[] quiet = new byte[24000 * 2 * 3];
         check("silence refused", VoiceRecording.toWav(quiet, 24000) == null, true);

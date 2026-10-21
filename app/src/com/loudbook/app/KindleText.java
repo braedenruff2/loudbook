@@ -48,9 +48,34 @@ final class KindleText {
         }
         List<Chapter.Chunk> out = new ArrayList<>();
         for (String p : paras) {
-            for (String s : sentences(p)) out.add(new Chapter.Chunk(block, s, say(s)));
+            List<String> ss = sentences(p);
+            // the page's first sentence is what's waited for after a page turn: make its first
+            // piece short (at a comma, or before "and"/"but"...), so the voice can start sooner
+            if (out.isEmpty() && !ss.isEmpty()) { List<String> q = quickStart(ss.get(0)); ss.remove(0); ss.addAll(0, q); }
+            for (String s : ss) out.add(new Chapter.Chunk(block, s, say(s)));
             block++;
         }
+        return out;
+    }
+
+    private static final Pattern PAUSE = Pattern.compile("[,;:\u2014\u2013]\\s");
+    private static final Pattern JOIN = Pattern.compile("\\s(?=(and|but|so|then|when|while|because|until|though|as|or|which|where)\\s)");
+    /** A long sentence as a short first piece and the rest, cut where a reader would breathe; else as it is. */
+    static List<String> quickStart(String s) {
+        List<String> out = new ArrayList<>();
+        int cut = -1;
+        if (s.length() >= 70) {
+            Matcher m = PAUSE.matcher(s);
+            while (m.find()) { if (m.end() > 90) break; if (m.end() >= 18) { cut = m.end(); break; } }
+            if (cut < 0) {
+                m = JOIN.matcher(s);
+                while (m.find()) { if (m.start() > 90) break; if (m.start() >= 25) { cut = m.start(); break; } }
+            }
+            if (cut > 0 && s.length() - cut < 20) cut = -1;           // the rest too short to say on its own
+        }
+        if (cut < 0) { out.add(s); return out; }
+        out.add(s.substring(0, cut).trim());
+        out.add(s.substring(cut).trim());
         return out;
     }
 
