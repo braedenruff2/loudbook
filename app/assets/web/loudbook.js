@@ -428,6 +428,10 @@ const UNITS = { km: ['kilometer', 'kilometers'], cm: ['centimeter', 'centimeters
   ft: ['foot', 'feet'], mph: ['mile per hour', 'miles per hour'], 'km/h': ['kilometer per hour', 'kilometers per hour'],
   kph: ['kilometer per hour', 'kilometers per hour'], mi: ['mile', 'miles'], min: ['minute', 'minutes'], hr: ['hour', 'hours'], hrs: ['hour', 'hours'] };
 
+const GRUNTS = [[/^[Hh](m+p+h|m+f)$/, 'humph'], [/^[Hh]m$/, 'hmm'], [/^([Mm]hm+|[Mm]m-?hm+)$/, 'mm-hmm'], [/^[Mm]m+$/, 'hmm'],
+  [/^[Ss]hh+$/, 'shush'], [/^[Pp]f+t?$/, 'puh'], [/^[Gg]rr+$/, 'grur'], [/^[Bb]rr+$/, 'burr'], [/^[Nn]+g+h$|^[Nn]n+g$|^[Nn]+h$/, 'ungh'],
+  [/^[Tt]ch$/, 'tsk']];
+
 function tidy(t) {
   // scene breaks and decorations ("***", "~~~", "=== Chapter 5 ===", "---o0o---", "◇◇◇"): silent
   t = t.replace(/([~=*#_<>+\-—–])\1{2,}/g, ' ').replace(/(^|\s)[oO0xX]{3}(?=\s|$)/g, '$1 ').replace(/[◇◆◈❖•·♦♢❦☆★✦✧♪♫]+/gu, ' ')
@@ -453,6 +457,7 @@ function tidy(t) {
     .replace(/\s*(?:→|->|⟶|=>)\s*/g, ' to ')
     .replace(/\b(?:Lv|Lvl|LVL|LV)\.?\s*(?=\d)/g, 'Level ')
     .replace(/\b([A-Z]{3})(?=\s*(?::|\+|-|—|–|\d))/g, (m, k) => STATS[k] || m)
+    .replace(/(\d\s*)([A-Z]{3})\b(?![a-z])/g, (m, n, k) => n + (STATS[k] || k))   // +5 STR
     .replace(/(^|[\s(\[])\+(?=\d)/g, '$1plus ')                     // +5 Agility
     .replace(/(^|[\s(\[])[-−](?=\d)/g, '$1minus ')                  // -5 degrees
     .replace(/#(?=\d)/g, 'number ')                                // Rank #1
@@ -475,7 +480,17 @@ function tidy(t) {
       return n + ' ' + (n === '1' ? one : many) + (p && +p ? ' ' + (+p) : '');
     })
     .replace(/\bvs\.?(?=\s)/gi, 'versus').replace(/\bi\.e\.(?=[\s,])/gi, 'that is')
-    .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)/g, '$1 Street');
+    .replace(/\bMt\.(?=\s+[A-Z])/g, 'Mount')                     // the voice says "M T." and stops
+    .replace(/(^|\s)~\s?(?=\d)/g, '$1about ')                     // ~5 minutes (the voice says "tilde")
+    .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)/g, '$1 Street')
+    .replace(/\b(Lt|Sgt|Capt|Cpl|Pvt|Cmdr)\.(?=\s+\p{Ll}|\s*$)/gu, (m, t) => TITLES[t])   // "the Lt. arrived"
+    .replace(/\ba\.k\.a\.?(?=\s)/gi, 'also known as').replace(/\bCh\s+(?=\d)/g, 'Chapter ')
+    .replace(/\b([4-7])'(\d|1[01])(?![\d'"”])/g, '$1 foot $2')         // a 5'2 girl
+    // sounds the voice would spell out ("Hmph" -> "H M P H"): the nearest word it says right
+    .replace(/(?<![\p{L}\d]\s?)\b([HhMmSsPpGgBbNnTt][a-z-]{0,6})\b(?![-'’]\p{L})/gu, (m) => {
+      const w = GRUNTS.find(([re]) => re.test(m));
+      return w ? (m[0] === m[0].toUpperCase() ? w[1][0].toUpperCase() + w[1].slice(1) : w[1]) : m;
+    });
 }
 
 return { parseFixes, makeSayer, tidy };

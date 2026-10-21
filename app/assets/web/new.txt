@@ -1,3 +1,4 @@
+Says sounds like "Hmph", "Mhm", "Shh" and "Grr" as sounds instead of spelling them out; also "+5 STR", "~5", "Mt.", "a.k.a.".
 Kindle: after a page turn the voice starts again sooner (the new page's first sentence begins with a short piece).
 Kindle: the highlight now finds each word on the page itself, so it sits on the exact word being read, row by row (it used to be one tall box).
 Kindle: the sentence and word being read are highlighted on the page; hold the gold button, then tap a line to start there; pages turn only after their last word.
