@@ -511,6 +511,9 @@ function tidy(t) {
       return n + ' ' + (n === '1' ? one : many) + (p && +p ? ' ' + (+p) : '');
     })
     .replace(/\bvs\.?(?=\s)/gi, 'versus').replace(/\bi\.e\.(?=[\s,])/gi, 'that is')
+    // gamer words the voice gets wrong: "AoE" ("ow-ee"), "DoT" ("doo-tee"), "IRL" ("url"), "idk"
+    .replace(/\bAoEs?\b/g, (m) => 'AOE' + m.slice(3)).replace(/\bDoT(s?)\b/g, 'dot$1')
+    .replace(/\bIRL\b/g, 'I-R-L').replace(/\b(?:idk|IDK)\b/g, 'I-D-K')
     .replace(/\bMk\.?\s*(?=\d)/g, 'Mark ')                          // Mk. II (already "Mk. 2")
     .replace(/\bv(\d+)\.(\d+)\b/g, 'version $1 point $2')            // v2.0
     // born '98, the '90s (not an opening quote: "'10 more,' she said")

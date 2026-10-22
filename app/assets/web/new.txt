@@ -1,4 +1,4 @@
-Says drawn-out words ("Nooooo", "Okaaay", "Helllooo?") as the word, "Uhh", "Hrm", "Eww", "Ow" and "Mwahaha" as sounds, and no longer drops "XXX" in "Chapter XXX".
+Says drawn-out words ("Nooooo", "Okaaay", "Helllooo?") as the word, "Uhh", "Hrm", "Eww", "Ow" and "Mwahaha" as sounds, "AoE", "DoT", "IRL" and "idk" right, and no longer drops "XXX" in "Chapter XXX".
 Also reads "1.2k/3k", "3/4 of", "Mk. II", "v2.0", "Agent 007" and "born '98" the way you'd say them.
 Says "50%" as "fifty percent", "1.5M" as "one point five million", "1v1", "25 y/o" and "50/50" naturally, and "+2/sec" as "per second"; no more "ten o'clock o'clock".
 Says sounds like "Hmph", "Mhm", "Shh" and "Grr" as sounds instead of spelling them out; also "+5 STR", "~5", "Mt.", "a.k.a.".
