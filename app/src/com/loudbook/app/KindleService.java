@@ -669,7 +669,9 @@ public class KindleService extends AccessibilityService {
             String t = b.text.trim();
             // a line of the book itself, even if it's near the top or bottom: it carries on a
             // sentence (starts lower case), or runs on into the line just below it
-            if (t.length() >= 12 && !CHROME.matcher(t).matches() && (startsLower(t) || runsOn(b, byTop))) { body.add(b); continue; }
+            boolean seenBefore = false;                               // the same text in the same place last page: a header
+            for (Bit o : lastEdges) seenBefore |= o.text.equals(b.text) && Math.abs(o.r.top - b.r.top) < 60;
+            if (t.length() >= 12 && !seenBefore && !CHROME.matcher(t).matches() && (startsLower(t) || runsOn(b, byTop))) { body.add(b); continue; }
             // a short line that was in the same place on the last page too is a running header or
             // footer (the book's title, say), not part of the text
             boolean nearEdge = b.r.top < screen.top + h * 0.2 || b.r.bottom > screen.bottom - h * 0.15;
@@ -718,6 +720,10 @@ public class KindleService extends AccessibilityService {
     private static boolean runsOn(Bit b, List<Bit> byTop) {
         String t = b.text.trim();
         if (t.isEmpty() || ".!?:…\"”’)]".indexOf(t.charAt(t.length() - 1)) >= 0) return false;
+        // it ends mid-sentence: on a comma or dash, or a lower-case word (a title above the text,
+        // "The Valley Road", ends on a capital)
+        String lastWord = t.substring(t.lastIndexOf(' ') + 1);
+        if (",;—–-".indexOf(t.charAt(t.length() - 1)) < 0 && !startsLower(lastWord)) return false;
         int lineH = Math.max(1, b.r.height());
         for (Bit o : byTop) {
             if (o == b || o.r.top < b.r.bottom - lineH / 2) continue;
