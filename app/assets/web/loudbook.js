@@ -535,6 +535,7 @@ function tidy(t) {
     // rates: "+2/sec", "5 MP/min" -> "per second", "per minute"
     .replace(/(\d|\b[A-Z]{2,3})\s?\/\s?(sec|second|s|min|minute|hr|hour|h|day|turn)\b(?!\/)/g, (m, a, u) =>
       a + ' per ' + ({ sec: 'second', s: 'second', min: 'minute', hr: 'hour', h: 'hour' }[u] || u))
+    .replace(/(?<!\b[A-Za-z]{2,}:\s?)(?<![\d.,])\b(100|1,?000)s(?![\w'’])/g, (m, n) => (n === '100' ? 'hundreds' : 'thousands'))   // 1000s of people (not "Cooldown: 100s")
     // durations: "5m 30s", "2h 30m", "Cooldown: 30s", "1.5s" (not "in his 30s", "the 80s", "two 6s")
     .replace(/\b(\d+)\s?h\s(\d+)\s?m\b(?!\/)/g, (m, h, n) => h + (h === '1' ? ' hour ' : ' hours ') + n + (n === '1' ? ' minute' : ' minutes'))
     .replace(/\b(\d+)\s?m\s(\d+(?:\.\d+)?)\s?s\b(?!\/)/g, (m, a, b) => a + (a === '1' ? ' minute ' : ' minutes ') + b + (b === '1' ? ' second' : ' seconds'))
@@ -548,6 +549,15 @@ function tidy(t) {
     .replace(/\b1\/4(?=\s+(?:of|a|an|the)\b)/g, 'a quarter')
     .replace(/\b1\/(\d)(?:st|nd|rd|th)\b/g, (m, d) => ({ 2: 'half', 3: 'a third', 4: 'a quarter' }[d] || 'one ' + d + 'th'))   // 1/3rd
     .replace(/\b([2-9])\/([3-9]|10)(?=\s+of\b)/g, (m, a, b) => a + ' ' + ({ 3: 'thirds', 4: 'quarters', 5: 'fifths' }[b] || b + 'ths'))   // 3/4 of
+    // military time: "0300 hours" -> "oh three hundred hours", "1430 hours" -> "fourteen thirty hours"
+    .replace(/\b([01]\d|2[0-4])([0-5]\d)(?=\s+hours\b)/g, (m, h, n) =>
+      (h[0] === '0' ? 'oh ' + h[1] : h) + (n === '00' ? ' hundred' : n[0] === '0' ? ' oh ' + n[1] : ' ' + n))
+    .replace(/\bFig\.\s*(?=\d)/g, 'Figure ')
+    .replace(/\b24\s?\/\s?7\b/g, '24 7')                                 // 24/7 (not "twenty-four of seven")
+    .replace(/\b1\/2(?=\s+(?:done|full|empty|way|price|off|hour|mile|cup|dozen|inch|pound|gone|finished|asleep|dead|awake)\b)/g, 'half')   // 1/2 done
+    // room and error numbers the way people say them: "Room 404" -> "four oh four", "Room 212" -> "two twelve"
+    .replace(/\b((?:[Rr]oom|[Ee]rror|[Ss]uite|[Aa]pt\.?|[Aa]partment|[Ff]light|[Cc]ell|[Ll]ocker|[Gg]ate|[Pp]latform)\s+#?)([1-9])(\d)(\d)\b(?![\d/:-]|[.,]\d)/g,
+      (m, pre, a, b, c) => pre.replace(/^([Aa])pt\.?/, '$1partment') + (b === '0' && c === '0' ? a + b + c : b === '0' ? a + ' oh ' + c : a + ' ' + b + c))
     .replace(/\b(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})\b/g, '$1 $2 $3')            // 10/12/2025 (not "ten of twelve of")
     .replace(/(\d|\bthousand|\bmillion|\bbillion)\s*\/\s*(\d)/g, '$1 of $2')   // 120/150 -> 120 of 150, 1.2k/3k
     // phone numbers digit by digit: "555-1234", "(555) 123-4567" (not "five hundred and fifty-five to...")
@@ -556,9 +566,9 @@ function tidy(t) {
     .replace(/\b(\d+)\s?[-–]\s?(\d+)\b(?![-–/]\d)/g, '$1 to $2')     // 2-3 hours
     .replace(/\b(\d+):(\d)\b(?!\d)/g, '$1 to $2')                  // a 3:1 ratio (times have two digits)
     .replace(/\bCh\.\s*(?=\d)/g, 'Chapter ').replace(/\bVol\.\s*(?=\d)/g, 'Volume ').replace(/\bNo\.\s*(?=\d)/g, 'Number ')
-    .replace(/\bpg\.\s*(?=\d)/gi, 'page ').replace(/\bpp\.\s*(?=\d)/g, 'pages ')     // "pg. 45" (the voice said "P G")
+    .replace(/\bEp\.\s*(?=\d)/g, 'Episode ').replace(/\bpg\.\s*(?=\d)/gi, 'page ').replace(/\bpp\.\s*(?=\d)/g, 'pages ')     // "pg. 45" (the voice said "P G")
     .replace(/\b([CF])#(?![\w#])/g, '$1 sharp')                     // C#, F# (languages, notes)
-    .replace(/\b([Aa])pprox\.(?=\s)/g, '$1pproximately').replace(/(^|\s)w\/(?=\s)/g, '$1with').replace(/\bb\/c\b/g, 'because')
+    .replace(/\b([Aa])pprox\.(?=\s)/g, '$1pproximately').replace(/(^|\s)w\/o(?=[\s,.!?]|$)/g, '$1without').replace(/(^|\s)w\/(?=\s)/g, '$1with').replace(/\bb\/c\b/g, 'because')
     .replace(/([£€¥])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d\d))?\b/g, (m, c, n, p) => {   // £1,000, ¥10,000
       const [one, many] = c === '£' ? ['pound', 'pounds'] : c === '¥' ? ['yen', 'yen'] : ['euro', 'euros'];
       return n + ' ' + (n === '1' ? one : many) + (p && +p ? ' ' + (+p) : '');

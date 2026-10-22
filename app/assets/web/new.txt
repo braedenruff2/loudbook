@@ -1,3 +1,4 @@
+Says "Room 404" as "four oh four", "Apt. 305", "24/7", "w/o", "Ep. 4" and "1/2 done" the way you would. Also "0300 hours", "1000s of people" and "Fig. 3".
 On sites Loudbook doesn't know, the story's name now comes from the page title ("The Story - Chapter 12"), so the shelf, lock screen and new-chapter alerts show it instead of the site's address.
 Says "pg. 45" and "pp. 10-12" as pages, and "C#" as "C sharp".
 Reads links as just the site name ("royalroad.com"), "Ph.D." as "PhD", and "U.S." or "J.R.R. Tolkien" without stopping at each dot.
