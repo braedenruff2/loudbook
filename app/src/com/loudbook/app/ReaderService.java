@@ -922,6 +922,7 @@ public class ReaderService extends Service {
             else main.post(() -> { if (listener != null) listener.onPrefetch(ch.nextUrl); });
         }
         if (here >= ch.size() - 4 && ch.nextUrl != null && autoNext && nextCh != null) premakeNext();
+        if (here > 0 && here % 15 == 0 && ch.nextUrl != null && autoNext && nextCh == null) main.post(() -> preloadAgain(ch));
         main.post(() -> { if (listener != null && gen == myGen) listener.onSpeaking(ch, here); if (gen == myGen) state(); });
         if (here % 3 == 0) saveProgress();
     }
@@ -1005,6 +1006,19 @@ public class ReaderService extends Service {
                 aheadFrom(c, AHEAD - 1);
             });
         });
+    }
+
+    // the next chapter didn't load ahead (no signal, or the site was slow): try again now and then
+    // while this one plays, so the page turn doesn't wait for it (at most 3 more tries a chapter)
+    private String againFor;
+    private int againTries;
+    private void preloadAgain(Chapter ch) {
+        if (chapter != ch || nextCh != null || ch.nextUrl == null) return;
+        if (!ch.nextUrl.equals(againFor)) { againFor = ch.nextUrl; againTries = 0; }
+        if (againTries >= 3 || fetcher().busyWith(ch.nextUrl)) return;
+        againTries++;
+        Log.i("LoudbookTest", "next chapter ahead: trying again (" + againTries + ")");
+        preloadNext(ch);
     }
 
     static final int AHEAD = 3;
