@@ -1,3 +1,5 @@
+On sites Loudbook doesn't know, the story's name now comes from the page title ("The Story - Chapter 12"), so the shelf, lock screen and new-chapter alerts show it instead of the site's address.
+Says "pg. 45" and "pp. 10-12" as pages, and "C#" as "C sharp".
 Reads links as just the site name ("royalroad.com"), "Ph.D." as "PhD", and "U.S." or "J.R.R. Tolkien" without stopping at each dot.
 Reads phone numbers digit by digit, "10/12/2025" as a date, "A/N" as "Author's note", "Mon-Fri" and ranks like "S+" and "B-".
 Says "Cooldown: 30s", "5m 30s", "2h 30m", "-5°C", "£1,000", "¥10,000", "5d6" and "1d20+5" the way you would; "10s" is no longer skipped, and "MP: 50/50" is "fifty of fifty".

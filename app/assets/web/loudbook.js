@@ -67,10 +67,44 @@ if (!window.LB) {
     }
     return bestScore >= 5 ? best : null;
   }
+  // A page title like "Chapter 12 - The Story - Some Blog" or "The Story | Ch. 3": which part is
+  // the chapter, and which the story. On sites Loudbook doesn't know, the story used to be the
+  // site's address ("localhost", "someblog.com"), so every story there shared one shelf entry and
+  // new-chapter alerts said "New chapter: someblog.com".
+  const CHAPTER_WORD = /(^|\s)(chapter|chap\.|ch\.?\s*\d|episode|ep\.\s*\d|part\s+\w+$|prologue|epilogue|interlude|side story|afterword|volume\s+\w+$|vol\.\s*\d)|^\d+$|^#\d+$/i;
+  const SEP = /\s(?:[|–—-]|::)\s/;
+  function titleSplit(doc) {
+    const parts = titleParts(doc, SEP);
+    const chapterAt = parts.findIndex(p => CHAPTER_WORD.test(p));
+    return { parts, chapterAt };
+  }
   function genericTitle(doc) {
     const h1 = q(doc, 'article h1, main h1, h1');
     if (h1 && txt(h1)) return txt(h1);
-    return titleParts(doc, /\s[|–-]\s/)[0] || '';
+    const { parts, chapterAt } = titleSplit(doc);
+    return parts[chapterAt >= 0 ? chapterAt : 0] || '';
+  }
+  function genericFiction(doc, url) {
+    let host = '';
+    try { host = new URL(url).hostname.replace(/^www\./, ''); } catch {}
+    const meta = q(doc, 'meta[property="og:site_name"]');
+    const siteName = meta ? (meta.getAttribute('content') || '').trim().toLowerCase() : '';
+    const hostWord = host.split('.').slice(-2, -1)[0] || host;
+    const isSite = (p) => {
+      const l = p.toLowerCase();
+      return l === siteName || l === host || l.replace(/[^a-z0-9]/g, '') === hostWord.replace(/[^a-z0-9]/g, '') || /\.(com|net|org|io|co|me|blog)$/.test(l);
+    };
+    const { parts, chapterAt } = titleSplit(doc);
+    if (chapterAt >= 0) {
+      const rest = parts.filter((p, i) => i !== chapterAt && !CHAPTER_WORD.test(p) && !isSite(p) && p.length <= 120);
+      if (rest.length) return rest[0];
+    }
+    // "The Story Chapter 12" / "The Story, Ch. 3: Title" in one part
+    for (const p of parts) {
+      const m = p.match(/^(.{2,100}?)[\s,:–—-]+(?:chapter|chap\.|ch\.?|episode|ep\.)\s*\d/i);
+      if (m && !isSite(m[1])) return m[1].trim();
+    }
+    return host;
   }
   function genericNav(doc, url, dir, accept) {
     const rel = q(doc, `link[rel="${dir}"][href], a[rel="${dir}"][href]`);
@@ -246,7 +280,7 @@ if (!window.LB) {
       roots,
       blocks,
       title: (site && site.title && site.title(doc, url)) || genericTitle(doc),
-      fiction: (site && site.fiction && site.fiction(doc, url)) || (() => { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; } })(),
+      fiction: (site && site.fiction && site.fiction(doc, url)) || genericFiction(doc, url),
       nextUrl: nav('next'),
       prevUrl: nav('prev'),
       textApi: site && site.textApi ? site.textApi(url) : null,
@@ -522,6 +556,8 @@ function tidy(t) {
     .replace(/\b(\d+)\s?[-–]\s?(\d+)\b(?![-–/]\d)/g, '$1 to $2')     // 2-3 hours
     .replace(/\b(\d+):(\d)\b(?!\d)/g, '$1 to $2')                  // a 3:1 ratio (times have two digits)
     .replace(/\bCh\.\s*(?=\d)/g, 'Chapter ').replace(/\bVol\.\s*(?=\d)/g, 'Volume ').replace(/\bNo\.\s*(?=\d)/g, 'Number ')
+    .replace(/\bpg\.\s*(?=\d)/gi, 'page ').replace(/\bpp\.\s*(?=\d)/g, 'pages ')     // "pg. 45" (the voice said "P G")
+    .replace(/\b([CF])#(?![\w#])/g, '$1 sharp')                     // C#, F# (languages, notes)
     .replace(/\b([Aa])pprox\.(?=\s)/g, '$1pproximately').replace(/(^|\s)w\/(?=\s)/g, '$1with').replace(/\bb\/c\b/g, 'because')
     .replace(/([£€¥])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d\d))?\b/g, (m, c, n, p) => {   // £1,000, ¥10,000
       const [one, many] = c === '£' ? ['pound', 'pounds'] : c === '¥' ? ['yen', 'yen'] : ['euro', 'euros'];
