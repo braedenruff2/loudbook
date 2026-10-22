@@ -70,6 +70,7 @@
       .replace(/\b(\d)0s\b/g, (m, d) => TENS[+d].replace(/y$/, 'ies'))         // the 80s -> the eighties
       .replace(/\b\d{1,3}(,\d{3})+\b/g, (m) => words(+m.replace(/,/g, '')))
       .replace(/\b(\d+)\.(\d+)\b/g, (_, a, b) => words(+a) + ' point ' + b.split('').map(x => ONES[+x]).join(' '))
+      .replace(/\b0\d+\b/g, (m) => m.split('').map(x => (x === '0' ? 'oh' : ONES[+x])).join(' '))   // Agent 007
       .replace(/\b\d+\b/g, (m) => (m.length > 15 ? m.split('').map(x => ONES[+x]).join(' ') : words(+m)));
   }
 

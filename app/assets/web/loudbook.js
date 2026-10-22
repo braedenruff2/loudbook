@@ -481,7 +481,9 @@ function tidy(t) {
       (m, pre, n, u) => pre + n + ' ' + UNITS[u][n === '1' ? 0 : 1])
     .replace(/\b1\/2(?=\s+(?:of|a|an|the)\b)/g, 'half').replace(/\b1\/3(?=\s+(?:of|a|an|the)\b)/g, 'a third')
     .replace(/\b1\/4(?=\s+(?:of|a|an|the)\b)/g, 'a quarter')
-    .replace(/(\d)\s*\/\s*(\d)/g, '$1 of $2')                      // 120/150 -> 120 of 150
+    .replace(/\b1\/(\d)(?:st|nd|rd|th)\b/g, (m, d) => ({ 2: 'half', 3: 'a third', 4: 'a quarter' }[d] || 'one ' + d + 'th'))   // 1/3rd
+    .replace(/\b([2-9])\/([3-9]|10)(?=\s+of\b)/g, (m, a, b) => a + ' ' + ({ 3: 'thirds', 4: 'quarters', 5: 'fifths' }[b] || b + 'ths'))   // 3/4 of
+    .replace(/(\d|\bthousand|\bmillion|\bbillion)\s*\/\s*(\d)/g, '$1 of $2')   // 120/150 -> 120 of 150, 1.2k/3k
     .replace(/\b(\d+)\s?[-–]\s?(\d+)\b(?![-–/]\d)/g, '$1 to $2')     // 2-3 hours
     .replace(/\b(\d+):(\d)\b(?!\d)/g, '$1 to $2')                  // a 3:1 ratio (times have two digits)
     .replace(/\bCh\.\s*(?=\d)/g, 'Chapter ').replace(/\bVol\.\s*(?=\d)/g, 'Volume ').replace(/\bNo\.\s*(?=\d)/g, 'Number ')
@@ -491,6 +493,10 @@ function tidy(t) {
       return n + ' ' + (n === '1' ? one : many) + (p && +p ? ' ' + (+p) : '');
     })
     .replace(/\bvs\.?(?=\s)/gi, 'versus').replace(/\bi\.e\.(?=[\s,])/gi, 'that is')
+    .replace(/\bMk\.?\s*(?=\d)/g, 'Mark ')                          // Mk. II (already "Mk. 2")
+    .replace(/\bv(\d+)\.(\d+)\b/g, 'version $1 point $2')            // v2.0
+    // born '98, the '90s (not an opening quote: "'10 more,' she said")
+    .replace(/(\b\p{Ll}+\s)['’](\d\d)(s?)\b(?![\d'’%])(?![^'’\n]*['’](?:[\s,.!?;:]|$))/gu, '$1$2$3')
     .replace(/\bMt\.(?=\s+[A-Z])/g, 'Mount')                     // the voice says "M T." and stops
     .replace(/(^|\s)~\s?(?=\d)/g, '$1about ')                     // ~5 minutes (the voice says "tilde")
     .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)/g, '$1 Street')
@@ -579,6 +585,7 @@ return { parseFixes, makeSayer, tidy };
       .replace(/\b(\d)0s\b/g, (m, d) => TENS[+d].replace(/y$/, 'ies'))         // the 80s -> the eighties
       .replace(/\b\d{1,3}(,\d{3})+\b/g, (m) => words(+m.replace(/,/g, '')))
       .replace(/\b(\d+)\.(\d+)\b/g, (_, a, b) => words(+a) + ' point ' + b.split('').map(x => ONES[+x]).join(' '))
+      .replace(/\b0\d+\b/g, (m) => m.split('').map(x => (x === '0' ? 'oh' : ONES[+x])).join(' '))   // Agent 007
       .replace(/\b\d+\b/g, (m) => (m.length > 15 ? m.split('').map(x => ONES[+x]).join(' ') : words(+m)));
   }
 
