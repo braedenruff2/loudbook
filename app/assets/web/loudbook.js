@@ -430,17 +430,35 @@ const UNITS = { km: ['kilometer', 'kilometers'], cm: ['centimeter', 'centimeters
 
 const GRUNTS = [[/^[Hh](m+p+h|m+f)$/, 'humph'], [/^[Hh]m$/, 'hmm'], [/^([Mm]hm+|[Mm]m-?hm+)$/, 'mm-hmm'], [/^[Mm]m+$/, 'hmm'],
   [/^[Ss]hh+$/, 'shush'], [/^[Pp]f+t?$/, 'puh'], [/^[Gg]rr+$/, 'grur'], [/^[Bb]rr+$/, 'burr'], [/^[Nn]+g+h$|^[Nn]n+g$|^[Nn]+h$/, 'ungh'],
-  [/^[Tt]ch$/, 'tsk']];
+  [/^[Tt]ch$/, 'tsk'], [/^[Hh]r+m+$/, 'hmm'], [/^[Uu]hh+$/, 'uh'], [/^[Ee]rr+$/, 'er'], [/^[Pp]s+t$/, 'psst'],
+  [/^[Mm](?:w|u)ah?(?:-?ha)+h?$/, 'moo-ah-ha-ha'], [/^[Bb](?:w|u)ah?(?:-?ha)+h?$/, 'boo-ah-ha-ha'],
+  [/^[Ee]ww+$/, 'ew'], [/^[Aa]ww+$/, 'aw'], [/^[Oo]w+$/, 'ouw']];
+
+// a drawn-out word ("Nooooo", "Okaaay", "Whyyy?"): the word itself, or the voice says "noo-oh", "ah-kah-ee".
+// These keep a double letter ("Goooood" -> "Good", "Hmmmm" -> "Hmm").
+const STRETCH_KEEP = /^(good|soon|cool|too|boo|moon|food|noon|ooh|oops|woo|whoo|woohoo|yoo|hoo|see|free|wee|whee|sweet|sleep|need|feel|three|eek|beep|well|hell|hello|all|kill|still|will|yell|tell|call|fall|ball|really|sorry|hurry|happy|little|off|stuff|kiss|miss|hiss|boss|mess|less|guess|bless|press|yummy|shh|grr|brr|hmm|mmm|mm|zzz|zz|ahh|uhh|umm|err|ehh|pff|pfft|ugh|ahem)$/i;
+function stretched(w) {
+  if (/^[IVXLCDM]+$/.test(w) || /^(\p{Lu})\1\1$/u.test(w)) return w;   // Roman numerals, a rank like "SSS"
+  // each run as one letter or two ("Helllooo" -> "Hello"): the first that's a word kept double, else all single
+  const runs = w.match(/(\p{L})\1{2,}/giu);
+  for (let k = 0; runs.length < 5 && k < 1 << runs.length; k++) {
+    let i = 0;
+    const v = w.replace(/(\p{L})\1{2,}/giu, (m) => (k >> i++ & 1 ? m[0] : m.slice(0, 2)));
+    if (STRETCH_KEEP.test(v)) return v;
+  }
+  const one = w.replace(/(\p{L})\1{2,}/giu, (m) => m[0]);
+  return one.length < 2 ? w.replace(/(\p{L})\1{2,}/giu, (m) => m.slice(0, 2)) : one;
+}
 
 function tidy(t) {
   // scene breaks and decorations ("***", "~~~", "=== Chapter 5 ===", "---o0o---", "◇◇◇"): silent
-  t = t.replace(/([~=*#_<>+\-—–])\1{2,}/g, ' ').replace(/(^|\s)[oO0xX]{3}(?=\s|$)/g, '$1 ').replace(/[◇◆◈❖•·♦♢❦☆★✦✧♪♫]+/gu, ' ')
+  t = t.replace(/([~=*#_<>+\-—–])\1{2,}/g, ' ').replace(/(^|\s)(?!XXX\b)[oO0xX]{3}(?=\s|$)/g, '$1 ').replace(/^\s*XXX\s*$/, '').replace(/[◇◆◈❖•·♦♢❦☆★✦✧♪♫]+/gu, ' ')
     .replace(/<3\b/g, '');
   if (!/[\p{L}\p{N}]/u.test(t)) return '';
   return romans(t.replace(/\s{2,}/g, ' ').trim())
-    // a run of one letter: "Noooooo" -> "Noo", "Hmmmm" -> "Hmm" (but not Roman numerals, and not
-    // a rank like "SSS")
-    .replace(/(\p{L})\1{2,}/gu, (m, c) => (/[IVXLCDM]/.test(c) || (m.length === 3 && c === c.toUpperCase()) ? m : c + c))
+    // a run of one letter: "Noooooo" -> "No", "Okaaay" -> "Okay", "Hmmmm" -> "Hmm" (but not Roman
+    // numerals, and not a rank like "SSS")
+    .replace(/\p{L}*(\p{L})\1{2,}\p{L}*/giu, stretched)
     .replace(/([!?])[!?]{2,}/g, (m) => (m.includes('?') && m.includes('!') ? '?!' : m[0]))
     .replace(/\.{4,}/g, '...')
     // the voice drops "..." altogether (no pause at all): a beat instead, or a full stop before a new sentence
@@ -504,7 +522,7 @@ function tidy(t) {
     .replace(/\ba\.k\.a\.?(?=\s)/gi, 'also known as').replace(/\bCh\s+(?=\d)/g, 'Chapter ')
     .replace(/\b([4-7])'(\d|1[01])(?![\d'"”])/g, '$1 foot $2')         // a 5'2 girl
     // sounds the voice would spell out ("Hmph" -> "H M P H"): the nearest word it says right
-    .replace(/(?<![\p{L}\d]\s?)\b([HhMmSsPpGgBbNnTt][a-z-]{0,6})\b(?![-'’]\p{L})/gu, (m) => {
+    .replace(/(?<![\p{L}\d]\s?)\b([HhMmSsPpGgBbNnTtUuEeAaOo][a-z-]{0,10})\b(?![-'’]\p{L})/gu, (m) => {
       const w = GRUNTS.find(([re]) => re.test(m));
       return w ? (m[0] === m[0].toUpperCase() ? w[1][0].toUpperCase() + w[1].slice(1) : w[1]) : m;
     });
