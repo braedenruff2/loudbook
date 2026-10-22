@@ -36,6 +36,17 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Run on the emulator
         id: emu
+        continue-on-error: true                 # the emulator sometimes fails to start: try once more
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash test/chapters/run.sh
+      - name: Run on the emulator again (the first try failed)
+        id: emu2
+        if: steps.emu.outcome == 'failure'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -50,7 +61,7 @@ jobs:
         run: |
           {
             echo '## Next chapter, in the background (Android 15)'; echo
-            echo "commit ${GITHUB_SHA::7}, run ${{ github.run_id }}, emulator step: ${{ steps.emu.outcome }}"; echo
+            echo "commit ${GITHUB_SHA::7}, run ${{ github.run_id }}, emulator step: ${{ steps.emu.outcome }}, retry: ${{ steps.emu2.outcome }}"; echo
             cat newchapter.txt jobs.txt 2>/dev/null; echo
             echo 'Pages served:'; echo '```'; grep -o 'GET [^ ]*' /tmp/http.log; echo '```'; echo
             echo '```'
