@@ -457,6 +457,8 @@ function tidy(t) {
   t = t.replace(/([~=*#_<>+\-—–])\1{2,}/g, ' ').replace(/(^|\s)(?!XXX\b)[oO0xX]{3}(?=\s|$)/g, '$1 ').replace(/^\s*XXX\s*$/, '').replace(/[◇◆◈❖•·♦♢❦☆★✦✧♪♫]+/gu, ' ')
     .replace(/<3\b/g, '');
   if (!/[\p{L}\p{N}]/u.test(t)) return '';
+  // links: just the site's name ("https://www.royalroad.com/fiction/1" -> "royalroad.com"; "www" became "ww")
+  t = t.replace(/\bhttps?:\/\/(?:www\.)?([^\s\/?#]+)\S*?(?=[.,!?;:)\]"'”’]*(?:\s|$))/gi, '$1').replace(/\bwww\.(?=\w)/gi, '');
   return romans(t.replace(/\s{2,}/g, ' ').trim())
     // a run of one letter: "Noooooo" -> "No", "Okaaay" -> "Okay", "Hmmmm" -> "Hmm" (but not Roman
     // numerals, and not a rank like "SSS")
@@ -532,6 +534,10 @@ function tidy(t) {
     .replace(/\b([SABCDEF]{1,3})\+(?![+\w])/g, '$1 plus')
     .replace(/\b((?:[Rr]ank|[Gg]rade|[Tt]ier|[Cc]lass)(?::\s*|\s+))([SABCDEF]{1,3})-(?=[\s.,!?)\]]|$)/g, '$1$2 minus')
     .replace(/\bvs\.?(?=\s)/gi, 'versus').replace(/\bi\.e\.(?=[\s,])/gi, 'that is')
+    .replace(/\bPh\.D\./g, (m, at, all) => 'PhD' + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))
+    // U.S., J.R.R., Ph.D.: letters with no dots (each dot was a full stop: "J R R. | Tolkien", "P H dot D dot")
+    .replace(/(?<![\p{L}.])(?:\p{Lu}\.){2,4}(?![\p{L}])/gu, (m, at, all) => m.replace(/\./g, '') + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))
+    .replace(/\b((?:\p{Lu}\.\s){2,3})(?=\p{Lu}\p{Ll})/gu, (m) => m.replace(/\./g, ''))   // J. K. Rowling
     // gamer words the voice gets wrong: "AoE" ("ow-ee"), "DoT" ("doo-tee"), "IRL" ("url"), "idk"
     .replace(/\bAoEs?\b/g, (m) => 'AOE' + m.slice(3)).replace(/\bDoT(s?)\b/g, 'dot$1')
     .replace(/\bIRL\b/g, 'I-R-L').replace(/\b(?:idk|IDK)\b/g, 'I-D-K')
@@ -542,7 +548,7 @@ function tidy(t) {
     .replace(/\bMt\.(?=\s+[A-Z])/g, 'Mount')                     // the voice says "M T." and stops
     .replace(/(^|\s)~\s?(?=\d)/g, '$1about ')                     // ~5 minutes (the voice says "tilde")
     .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)/g, '$1 Street')
-    .replace(/\b(Lt|Sgt|Capt|Cpl|Pvt|Cmdr)\.(?=\s+\p{Ll}|\s*$)/gu, (m, t) => TITLES[t])   // "the Lt. arrived"
+    .replace(/\b(Lt|Sgt|Capt|Cpl|Pvt|Cmdr|Jr|Sr)\.(?=\s+\p{Ll}|\s*$)/gu, (m, t) => TITLES[t])   // "the Lt. arrived"
     .replace(/\ba\.k\.a\.?(?=\s)/gi, 'also known as').replace(/\bCh\s+(?=\d)/g, 'Chapter ')
     .replace(/\b([4-7])'(\d|1[01])(?![\d'"”])/g, '$1 foot $2')         // a 5'2 girl
     // sounds the voice would spell out ("Hmph" -> "H M P H"): the nearest word it says right
