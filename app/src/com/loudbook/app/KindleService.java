@@ -663,8 +663,13 @@ public class KindleService extends AccessibilityService {
         int h = Math.max(1, screen.height());
         List<Bit> body = new ArrayList<>();
         List<Bit> edges = new ArrayList<>();
+        List<Bit> byTop = new ArrayList<>(bits);
+        byTop.sort((a, b) -> Integer.compare(a.r.top, b.r.top));
         for (Bit b : bits) {
             String t = b.text.trim();
+            // a line of the book itself, even if it's near the top or bottom: it carries on a
+            // sentence (starts lower case), or runs on into the line just below it
+            if (t.length() >= 12 && !CHROME.matcher(t).matches() && (startsLower(t) || runsOn(b, byTop))) { body.add(b); continue; }
             // a short line that was in the same place on the last page too is a running header or
             // footer (the book's title, say), not part of the text
             boolean nearEdge = b.r.top < screen.top + h * 0.2 || b.r.bottom > screen.bottom - h * 0.15;
@@ -706,6 +711,20 @@ public class KindleService extends AccessibilityService {
         for (Bit b : bits) sig.append(b.text.length() > 40 ? b.text.substring(0, 40) : b.text).append('|');
         p.signature = sig.toString();
         return p;
+    }
+
+    private static boolean startsLower(String t) { return !t.isEmpty() && Character.isLowerCase(t.codePointAt(0)); }
+    /** The line below b, close under it, carries on b's sentence (b doesn't end one; it starts lower case). */
+    private static boolean runsOn(Bit b, List<Bit> byTop) {
+        String t = b.text.trim();
+        if (t.isEmpty() || ".!?:…\"”’)]".indexOf(t.charAt(t.length() - 1)) >= 0) return false;
+        int lineH = Math.max(1, b.r.height());
+        for (Bit o : byTop) {
+            if (o == b || o.r.top < b.r.bottom - lineH / 2) continue;
+            if (o.r.top > b.r.bottom + lineH) return false;           // too far below to be the next line
+            return startsLower(o.text.trim());
+        }
+        return false;
     }
 
     /** Text-bearing nodes with no text below them (the finest pieces), skipping buttons. */
