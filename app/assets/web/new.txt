@@ -1,3 +1,4 @@
+Says "50%" as "fifty percent", "1.5M" as "one point five million", "1v1", "25 y/o" and "50/50" naturally, and "+2/sec" as "per second"; no more "ten o'clock o'clock".
 Says sounds like "Hmph", "Mhm", "Shh" and "Grr" as sounds instead of spelling them out; also "+5 STR", "~5", "Mt.", "a.k.a.".
 Kindle: no longer skips the first line of a page when Kindle shows the page line by line.
 Kindle: after a page turn the voice starts again sooner (the new page's first sentence begins with a short piece).

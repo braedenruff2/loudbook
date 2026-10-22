@@ -426,7 +426,7 @@ const TITLES = { Mr: 'Mister', Mrs: 'Missus', Ms: 'Miz', Dr: 'Doctor', Prof: 'Pr
 const UNITS = { km: ['kilometer', 'kilometers'], cm: ['centimeter', 'centimeters'], mm: ['millimeter', 'millimeters'],
   m: ['meter', 'meters'], kg: ['kilogram', 'kilograms'], g: ['gram', 'grams'], lb: ['pound', 'pounds'], lbs: ['pound', 'pounds'],
   ft: ['foot', 'feet'], mph: ['mile per hour', 'miles per hour'], 'km/h': ['kilometer per hour', 'kilometers per hour'],
-  kph: ['kilometer per hour', 'kilometers per hour'], mi: ['mile', 'miles'], min: ['minute', 'minutes'], hr: ['hour', 'hours'], hrs: ['hour', 'hours'] };
+  kph: ['kilometer per hour', 'kilometers per hour'], mi: ['mile', 'miles'], min: ['minute', 'minutes'], mins: ['minute', 'minutes'], sec: ['second', 'seconds'], secs: ['second', 'seconds'], hr: ['hour', 'hours'], hrs: ['hour', 'hours'] };
 
 const GRUNTS = [[/^[Hh](m+p+h|m+f)$/, 'humph'], [/^[Hh]m$/, 'hmm'], [/^([Mm]hm+|[Mm]m-?hm+)$/, 'mm-hmm'], [/^[Mm]m+$/, 'hmm'],
   [/^[Ss]hh+$/, 'shush'], [/^[Pp]f+t?$/, 'puh'], [/^[Gg]rr+$/, 'grur'], [/^[Bb]rr+$/, 'burr'], [/^[Nn]+g+h$|^[Nn]n+g$|^[Nn]+h$/, 'ungh'],
@@ -452,7 +452,7 @@ function tidy(t) {
     // *sigh*, **bold**: the voice would say "asterisk"
     .replace(/\*+([^*\n]{1,80}?)\*+/g, '$1').replace(/(^|\s)\*+(?=\s|$)/g, '$1')
     // stammers: "N-no" -> "no", "S-stop" -> "stop" (otherwise "en no", "ess stop")
-    .replace(/\b(\p{L})-(\1)/giu, (m, a, b) => (a === a.toUpperCase() ? b.toUpperCase() : b))
+    .replace(/\b(\p{L})(?:-\1)*-(\1)/giu, (m, a, b) => (a === a.toUpperCase() ? b.toUpperCase() : b))   // also "W-w-wait"
     // arrows in stat changes: "15 → 17"
     .replace(/\s*(?:→|->|⟶|=>)\s*/g, ' to ')
     .replace(/\b(?:Lv|Lvl|LVL|LV)\.?\s*(?=\d)/g, 'Level ')
@@ -464,9 +464,20 @@ function tidy(t) {
     .replace(/\b(\d+)x\b/g, '$1 times').replace(/\bx(\d+)\b/g, 'times $1')   // 2x damage, x3
     .replace(/\$(\d+(?:\.\d+)?)\s?(k|K|m|M|bn|b|B)\b/g, (m, n, u) => n + ' ' + { k: 'thousand', m: 'million', b: 'billion', bn: 'billion' }[u.toLowerCase()] + ' dollars')
     .replace(/\b(\d+(?:\.\d+)?)\s?k\b/g, '$1 thousand')            // 10k
+    // 1.5M credits, 10M gold, 2.5B people (not "room 12B is": B only with a decimal, M before a noun)
+    .replace(/\b(\d+(?:\.\d+)?)(M|bn)\b(?=\s+(?!(?:is|was|and|or|on|in|at|to|of|for|with|had|has)\b)\p{Ll})|\b(\d+\.\d+)(M|B|bn|K)\b/gu, (m, a, u, b, v) =>
+      (a || b) + ' ' + { m: 'million', b: 'billion', bn: 'billion', k: 'thousand' }[(u || v).toLowerCase()])
+    .replace(/\b(\d+)v(\d+)\b/g, '$1 versus $2')                  // a 1v1
+    .replace(/\b(\d+)\s?y\/o\b/g, (m, n) => n + (n === '1' ? ' year old' : ' years old'))   // 25 y/o
+    .replace(/\b50\s?\/\s?50\b/g, 'fifty-fifty')
     .replace(/\b(\d+)'\s?(\d+)(?:"|''|”)/g, '$1 foot $2')           // 6'2"
-    .replace(/\b(\d+)\s?(am|pm|AM|PM|a\.m\.|p\.m\.)(?![\w])/g, (m, n, ap) => n + ' ' + ap.replace(/\./g, '').toUpperCase())
-    .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|km|cm|mm|kg|lbs|lb|mph|kph|ft|mi|min|hrs|hr|m|g)\b(?!\/)/g,
+    .replace(/\b(\d+)\s?(am|pm|AM|PM|a\.m\.|p\.m\.)(?![\w])/g, (m, n, ap, at, all) =>
+      // "at 3 a.m." ending a sentence keeps its full stop (the dots used to be dropped with it)
+      n + ' ' + ap.replace(/\./g, '').toUpperCase() + (ap.endsWith('.') && /^["'”’)\]]*(\s*$|\s+\p{Lu})/u.test(all.slice(at + m.length)) ? '.' : ''))
+    // rates: "+2/sec", "5 MP/min" -> "per second", "per minute"
+    .replace(/(\d|\b[A-Z]{2,3})\s?\/\s?(sec|second|s|min|minute|hr|hour|h|day|turn)\b(?!\/)/g, (m, a, u) =>
+      a + ' per ' + ({ sec: 'second', s: 'second', min: 'minute', hr: 'hour', h: 'hour' }[u] || u))
+    .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|km|cm|mm|kg|lbs|lb|mph|kph|ft|mi|mins|min|secs|sec|hrs|hr|m|g)\b(?!\/)/g,
       (m, pre, n, u) => pre + n + ' ' + UNITS[u][n === '1' ? 0 : 1])
     .replace(/\b1\/2(?=\s+(?:of|a|an|the)\b)/g, 'half').replace(/\b1\/3(?=\s+(?:of|a|an|the)\b)/g, 'a third')
     .replace(/\b1\/4(?=\s+(?:of|a|an|the)\b)/g, 'a quarter')
@@ -474,7 +485,7 @@ function tidy(t) {
     .replace(/\b(\d+)\s?[-–]\s?(\d+)\b(?![-–/]\d)/g, '$1 to $2')     // 2-3 hours
     .replace(/\b(\d+):(\d)\b(?!\d)/g, '$1 to $2')                  // a 3:1 ratio (times have two digits)
     .replace(/\bCh\.\s*(?=\d)/g, 'Chapter ').replace(/\bVol\.\s*(?=\d)/g, 'Volume ').replace(/\bNo\.\s*(?=\d)/g, 'Number ')
-    .replace(/\bapprox\.(?=\s)/gi, 'approximately').replace(/(^|\s)w\/(?=\s)/g, '$1with').replace(/\bb\/c\b/g, 'because')
+    .replace(/\b([Aa])pprox\.(?=\s)/g, '$1pproximately').replace(/(^|\s)w\/(?=\s)/g, '$1with').replace(/\bb\/c\b/g, 'because')
     .replace(/([£€])(\d+)(?:\.(\d\d))?\b/g, (m, c, n, p) => {
       const [one, many] = c === '£' ? ['pound', 'pounds'] : ['euro', 'euros'];
       return n + ' ' + (n === '1' ? one : many) + (p && +p ? ' ' + (+p) : '');
@@ -559,15 +570,16 @@ return { parseFixes, makeSayer, tidy };
   }
   function speakNumbers(t) {
     return t
+      .replace(/(\d)\s?%/g, '$1 percent')                     // before the digits become words
       .replace(/\$(\d[\d,]*)(?:\.(\d{2}))?\b/g, (_, d, c) => { const n = +d.replace(/,/g, ''); return words(n) + (n === 1 ? ' dollar' : ' dollars') + (c && +c ? ' and ' + words(+c) + ' cents' : ''); })
-      .replace(/\b(\d{1,2}):(\d{2})\b/g, (_, h, m) => words(+h) + (+m === 0 ? " o'clock" : +m < 10 ? ' oh ' + words(+m) : ' ' + words(+m)))
+      // 9:00 -> nine o'clock, but "10:00 o'clock" and "3:00 AM" don't get a second o'clock
+      .replace(/\b(\d{1,2}):(\d{2})\b/g, (_, h, m, at, all) => words(+h) + (+m === 0 ? (/^\s*(o'clock|o’clock|[ap]\.?m\b|[AP]M\b)/i.test(all.slice(at + 3 + h.length)) ? '' : " o'clock") : +m < 10 ? ' oh ' + words(+m) : ' ' + words(+m)))
       .replace(/\b(\d+)(st|nd|rd|th)\b/gi, (_, d) => ordinal(+d))
       .replace(/\b(1[1-9]\d\d|20\d\d)s?\b/g, (m, y) => { const w = yearWords(+y); return m.endsWith('s') ? (w.endsWith('y') ? w.slice(0, -1) + 'ies' : w + 's') : w; })
       .replace(/\b(\d)0s\b/g, (m, d) => TENS[+d].replace(/y$/, 'ies'))         // the 80s -> the eighties
       .replace(/\b\d{1,3}(,\d{3})+\b/g, (m) => words(+m.replace(/,/g, '')))
       .replace(/\b(\d+)\.(\d+)\b/g, (_, a, b) => words(+a) + ' point ' + b.split('').map(x => ONES[+x]).join(' '))
-      .replace(/\b\d+\b/g, (m) => (m.length > 15 ? m.split('').map(x => ONES[+x]).join(' ') : words(+m)))
-      .replace(/(\d)%/g, '$1 percent');
+      .replace(/\b\d+\b/g, (m) => (m.length > 15 ? m.split('').map(x => ONES[+x]).join(' ') : words(+m)));
   }
 
   // ---------- extracting ----------
