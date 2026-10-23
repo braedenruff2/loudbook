@@ -453,6 +453,8 @@ const ord = (n) => (n % 100 >= 11 && n % 100 <= 13) ? 'th' : ['th', 'st', 'nd', 
 const STATS = { STR: 'Strength', AGI: 'Agility', DEX: 'Dexterity', INT: 'Intelligence', VIT: 'Vitality', END: 'Endurance',
   WIS: 'Wisdom', CHA: 'Charisma', LUK: 'Luck', LCK: 'Luck', PER: 'Perception', CON: 'Constitution', SPD: 'Speed',
   DEF: 'Defense', ATK: 'Attack', MAG: 'Magic', RES: 'Resistance', SPI: 'Spirit', FOC: 'Focus', WIL: 'Willpower' };
+// "1920" -> "19 20", "1600" -> "16 hundred", "720" -> "7 20", "1080" -> "10 80" (the way screen sizes are said)
+const pairs = (n) => { const a = n.slice(0, n.length - 2), b = n.slice(-2); return b === '00' ? a + ' hundred' : b[0] === '0' ? a + ' oh ' + b[1] : a + ' ' + b; };
 const TITLES = { Mr: 'Mister', Mrs: 'Missus', Ms: 'Miz', Dr: 'Doctor', Prof: 'Professor', Capt: 'Captain', Sgt: 'Sergeant',
   Lt: 'Lieutenant', Gen: 'General', Col: 'Colonel', Rev: 'Reverend', Fr: 'Father', Sr: 'Senior', Jr: 'Junior', Gov: 'Governor',
   Sen: 'Senator', Rep: 'Representative', Pres: 'President', Insp: 'Inspector', Det: 'Detective', Cpl: 'Corporal', Pvt: 'Private',
@@ -511,6 +513,7 @@ function tidy(t) {
     // titles: "Mr. Smith" (the period made the voice stop as if the sentence had ended)
     .replace(/\b(Mr|Mrs|Ms|Dr|Prof|Capt|Sgt|Lt|Gen|Col|Rev|Fr|Sr|Jr|Gov|Sen|Rep|Pres|Insp|Det|Cpl|Pvt|Adm|Cmdr|Maj|Hon)\.(?=\s+\p{Lu})/gu,
       (m, t) => TITLES[t])
+    .replace(/\b(Mr|Mrs|Ms|Dr)\.(?=\p{Lu}\p{Ll})/gu, (m, t) => TITLES[t] + ' ')   // Mr.Smith (no space)
     // *sigh*, **bold**: the voice would say "asterisk"
     .replace(/\*+([^*\n]{1,80}?)\*+/g, '$1').replace(/(^|\s)\*+(?=\s|$)/g, '$1')
     // stammers: "N-no" -> "no", "S-stop" -> "stop" (otherwise "en no", "ess stop")
@@ -525,10 +528,15 @@ function tidy(t) {
     .replace(/(^|[\s(\[])[-−](?=\d)/g, '$1minus ')
     .replace(/\b(\d*)d(4|6|8|10|12|20|100)\b/g, (m, n, s) => (n ? n + ' ' : '') + 'D ' + s)   // 5d6, a d20
     .replace(/(\d)\s?\+\s?(?=\d)|(\d)\+(?=[\s.,!?)\]]|$)/g, (m, a, b) => (a ? a + ' plus ' : b + ' plus'))   // 1d20+5, 2+2, 18+                  // -5 degrees
+    .replace(/\b(\d{3,4})x(\d{3,4})\b/g, (m, a, b) => [a, b].map(pairs).join(' by '))   // 1920x1080 -> "19 20 by 10 80"
+    .replace(/\b(\d+)\s?fps\b/gi, '$1 frames per second')
     .replace(/\b(\d+)x(\d+)\b/g, '$1 by $2')                       // a 2x2 grid, 1920x1080
     .replace(/#(?=\d)/g, 'number ')                                // Rank #1
     .replace(/\b(\d+)\s?×(?=\s|$)/g, '$1 times').replace(/(^|\s)×\s?(?=\d)/g, '$1times ')   // 3× damage, ×3
     .replace(/\b(\d+)x\b/g, '$1 times').replace(/\bx(\d+)\b/g, 'times $1')   // 2x damage, x3
+    .replace(/(\b(?:[Aa]n?|[Tt]he)\s)?\$(\d+(?:\.\d+)?)\s(thousand|million|billion|trillion)\b(\s+(?!(?:and|or|to|of|for|in|on|at|from|per|each|a|an|the|is|was|were|more|less|worth|plus|minus|dollars?)\b)\p{Ll})?/gu,
+      (m, a, n, u, next) => (a || '') + n + ' ' + u + (a && next ? '-dollar' + next : ' dollars' + (next || '')))   // $1.2 million (was "one dollar.two million"), a $5 million deal
+    .replace(/\b(million|billion|thousand|trillion) dollars(\s+dollars)\b/g, '$1$2')   // "$2 million dollars"
     .replace(/\$(\d+(?:\.\d+)?)\s?(k|K|m|M|bn|b|B)\b/g, (m, n, u) => n + ' ' + { k: 'thousand', m: 'million', b: 'billion', bn: 'billion' }[u.toLowerCase()] + ' dollars')
     .replace(/\b(\d+(?:\.\d+)?)\s?k\b/g, '$1 thousand')            // 10k
     // 1.5M credits, 10M gold, 2.5B people (not "room 12B is": B only with a decimal, M before a noun)
@@ -567,22 +575,23 @@ function tidy(t) {
     // room and error numbers the way people say them: "Room 404" -> "four oh four", "Room 212" -> "two twelve"
     .replace(/\b((?:[Rr]oom|[Ee]rror|[Ss]uite|[Aa]pt\.?|[Aa]partment|[Ff]light|[Cc]ell|[Ll]ocker|[Gg]ate|[Pp]latform)\s+#?)([1-9])(\d)(\d)\b(?![\d/:-]|[.,]\d)/g,
       (m, pre, a, b, c) => pre.replace(/^([Aa])pt\.?/, '$1partment') + (b === '0' && c === '0' ? a + b + c : b === '0' ? a + ' oh ' + c : a + ' ' + b + c))
-    .replace(/\b(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})\b/g, '$1 $2 $3')            // 10/12/2025 (not "ten of twelve of")
+    .replace(/\b(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})\b/g, '$1 $2 $3')
+    .replace(/(?<![\d.])\b(\d{1,2})\.(\d{1,2})\.((?:19|20)\d\d)\b(?!\.?\d)/g, '$1 $2 $3')   // 1.5.2024 (was "one point five.twenty twenty-four")            // 10/12/2025 (not "ten of twelve of")
     .replace(/\b1\s?\/\s?(\d+)(?=\s+(?:chance|odds|shot)\b)/g, '1 in $1')                 // a 1/10 chance
     .replace(/\b(\d+)\s?\/\s?(\d+)(?=\s+times\b)/g, '$1 out of $2')                      // 9/10 times
     .replace(/(\d|\bthousand|\bmillion|\bbillion)\s*\/\s*(\d)/g, '$1 of $2')   // 120/150 -> 120 of 150, 1.2k/3k
     // phone numbers digit by digit: "555-1234", "(555) 123-4567" (not "five hundred and fifty-five to...")
     .replace(/(?:\((\d{3})\)\s?|\b(\d{3})[-.])(\d{3})-(\d{4})\b(?![-–/]\d)|\b([2-9]\d\d)-(\d{4})\b(?![-–/]\d)/g, (m, ...g) =>
       g.slice(0, 6).filter(Boolean).map((x) => x.split('').join(' ')).join(', '))
-    .replace(/\b(\d+)\s?[-–]\s?(\d+)\b(?![-–/]\d)/g, '$1 to $2')     // 2-3 hours
+    .replace(/(?<!\d[-–])\b(\d+)\s?[-–]\s?(\d+)\b(?![-–/]\d)/g, '$1 to $2')   // (not the 4-3-3 formation)     // 2-3 hours
     .replace(/\b(\d+):(\d)\b(?!\d)/g, '$1 to $2')                  // a 3:1 ratio (times have two digits)
-    .replace(/\bCh\.\s*(?=\d)/g, 'Chapter ').replace(/\bVol\.\s*(?=\d)/g, 'Volume ').replace(/\bNo\.\s*(?=\d)/g, 'Number ')
+    .replace(/\b[Cc]h\.\s*(?=\d)/g, 'Chapter ').replace(/\bVol\.\s*(?=\d)/g, 'Volume ').replace(/\bNo\.\s*(?=\d)/g, 'Number ')
     .replace(/\bEp\.\s*(?=\d)/g, 'Episode ').replace(/\bpg\.\s*(?=\d)/gi, 'page ').replace(/\bpp\.\s*(?=\d)/g, 'pages ')     // "pg. 45" (the voice said "P G")
     .replace(/\b([CF])#(?![\w#])/g, '$1 sharp')                     // C#, F# (languages, notes)
     .replace(/\b([Aa])pprox\.(?=\s)|\b([Aa])pprox\b(?=\s+[~\d])/g, (m, a, b) => (a || b) + 'pproximately')
     .replace(/(^|\s)w\/o(?=[\s,.!?]|$)/g, '$1without').replace(/(^|\s)w\/(?=\s)/g, '$1with').replace(/\bb\/c\b/g, 'because')
-    .replace(/([£€¥])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d\d))?\b/g, (m, c, n, p) => {   // £1,000, ¥10,000
-      const [one, many] = c === '£' ? ['pound', 'pounds'] : c === '¥' ? ['yen', 'yen'] : ['euro', 'euros'];
+    .replace(/([£€¥₹₩])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d\d))?\b/g, (m, c, n, p) => {   // £1,000, ¥10,000, ₹500, ₩10,000
+      const [one, many] = { '£': ['pound', 'pounds'], '¥': ['yen', 'yen'], '₹': ['rupee', 'rupees'], '₩': ['won', 'won'] }[c] || ['euro', 'euros'];
       return n + ' ' + (n === '1' ? one : many) + (p && +p ? ' ' + (+p) : '');
     })
     .replace(/\b([AT])\/N\b/g, (m, k) => (k === 'A' ? "Author's note" : "Translator's note"))   // A/N, T/N
@@ -608,6 +617,10 @@ function tidy(t) {
     .replace(/\b([A-Z]{1,2})&([A-Z]{1,2})\b/g, (m, a, b) => [a, b].map((x) => (x === 'A' ? 'eh' : x.split('').join('-'))).join(' and '))
     .replace(/\bQ([1-4])\b/g, 'Q $1').replace(/\bFY\s?(?=\d{2,4}\b)/g, 'F-Y ')   // Q1, FY2024
     .replace(/(\d)\s?¢/g, '$1 cents')
+    .replace(/(\d)ish\b/g, '$1-ish')                              // around 8ish
+    // "a $20 bill", "a $100,000 prize": twenty-dollar bill (was "twenty dollars bill")
+    .replace(/\$(\d{1,3}(?:,\d{3})+|\d+)(?:\.00)?(?=\s+(?:bill|note|coin|tip|fee|fine|bet|bounty|reward|prize|gift card|check|cheque|budget|loan|bribe|ticket|item|meal|bottle|watch|suit)s?\b)/g, '$1-dollar')
+    .replace(/(\b(?:[Aa]n?|[Tt]he)\s)\$(\d{1,3}(?:,\d{3})+|\d+)(?:\.00)?(?=\s+(?!(?:and|or|to|of|for|in|on|at|from|per|each|a|an|the|is|was|more|less|worth|plus|minus|million|billion|thousand|trillion)\b)\p{Ll})/gu, '$1$2-dollar')
     .replace(/\bWW(?:II|2)\b/g, 'World War Two').replace(/\bWW(?:I|1)\b/g, 'World War One')
     // born '98, the '90s (not an opening quote: "'10 more,' she said")
     .replace(/(\b\p{L}+\s)['’](\d\d)(s?)\b(?![\d'’%])(?![^'’\n]*['’](?:[\s,.!?;:]|$))/gu, '$1$2$3')
