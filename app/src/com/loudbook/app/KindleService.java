@@ -438,13 +438,13 @@ public class KindleService extends AccessibilityService {
     /** Kindle's page is drawn by its own renderer (KRFView), not text views. */
     private boolean krf() {
         AccessibilityNodeInfo r = kindleRoot();
-        return r != null && hasClass(r, "KRFView", 0);
+        return r != null && findClass(r, "KRFView", 0) != null;
     }
-    private static boolean hasClass(AccessibilityNodeInfo n, String name, int depth) {
-        if (n == null || depth > 30) return false;
-        if (n.getClassName() != null && n.getClassName().toString().endsWith(name)) return true;
-        for (int i = 0; i < n.getChildCount(); i++) if (hasClass(n.getChild(i), name, depth + 1)) return true;
-        return false;
+    static AccessibilityNodeInfo findClass(AccessibilityNodeInfo n, String name, int depth) {
+        if (n == null || depth > 30) return null;
+        if (n.getClassName() != null && n.getClassName().toString().endsWith(name)) return n;
+        for (int i = 0; i < n.getChildCount(); i++) { AccessibilityNodeInfo f = findClass(n.getChild(i), name, depth + 1); if (f != null) return f; }
+        return null;
     }
 
     /** Nothing to read: what Loudbook sees is copied, ready to paste, so the reader can be fixed for this Kindle. */
@@ -496,11 +496,17 @@ public class KindleService extends AccessibilityService {
 
     private AccessibilityNodeInfo kindleRoot() {
         try {
+            // the book's window (the one with Kindle's page renderer), not a pop-up of Kindle's over it
+            AccessibilityNodeInfo any = null;
             for (AccessibilityWindowInfo w : getWindows()) {
                 AccessibilityNodeInfo r = w.getRoot();
                 if (r != null && r.getPackageName() != null && KINDLE.contentEquals(r.getPackageName())
-                    && w.getType() == AccessibilityWindowInfo.TYPE_APPLICATION) return r;
+                    && w.getType() == AccessibilityWindowInfo.TYPE_APPLICATION) {
+                    if (findClass(r, "KRFView", 0) != null) return r;
+                    if (any == null) any = r;
+                }
             }
+            if (any != null) return any;
             AccessibilityNodeInfo r = getRootInActiveWindow();
             if (r != null && r.getPackageName() != null && KINDLE.contentEquals(r.getPackageName())) return r;
         } catch (Exception ignored) { }
@@ -718,7 +724,11 @@ public class KindleService extends AccessibilityService {
         Rect screen = new Rect();
         root.getBoundsInScreen(screen);
         List<Bit> bits = new ArrayList<>();
-        collect(root, bits, 0);
+        // the book's text is in Kindle's page renderer: only what's in it (not tips, menus or the dictionary)
+        AccessibilityNodeInfo page = findClass(root, "KRFView", 0);
+        List<Bit> inPage = new ArrayList<>();
+        if (page != null) collect(page, inPage, 0);
+        if (!inPage.isEmpty()) bits = inPage; else collect(root, bits, 0);
         // Kindle may lay out the pages either side of this one too (off to the left or right, or below): only what's on screen
         for (java.util.Iterator<Bit> it = bits.iterator(); it.hasNext(); ) {
             Rect r = it.next().r;
@@ -773,7 +783,7 @@ public class KindleService extends AccessibilityService {
         p.edges = edges;
         p.lines = body;
         if (!body.isEmpty()) {
-            p.nextStart = hiddenAfter(root, body.get(body.size() - 1).text);
+            p.nextStart = hiddenAfter(page != null ? page : root, body.get(body.size() - 1).text);
             if (p.nextStart != null) Log.i("LoudbookTest", "kindle: next page starts \"" + (p.nextStart.length() > 50 ? p.nextStart.substring(0, 50) + "…" : p.nextStart) + "\"");
         }
         // what's on screen, unfiltered: tells whether the page really changed
