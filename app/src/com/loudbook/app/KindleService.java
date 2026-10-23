@@ -574,14 +574,14 @@ public class KindleService extends AccessibilityService {
             for (int i = 0; i < k.lines.size(); i++) {
                 org.json.JSONObject o = new org.json.JSONObject().put("text", k.lines.get(i));
                 float[] b = k.boxes.get(i);
-                o.put("box", new org.json.JSONArray().put(b[0]).put(b[1]).put(b[2]).put(b[3]));
+                o.put("box", new org.json.JSONArray().put(Math.round(b[0])).put(Math.round(b[1])).put(Math.round(b[2])).put(Math.round(b[3])));
                 float[][] c = i < k.chars.size() ? k.chars.get(i) : null;
                 if (c != null) { org.json.JSONArray ca = new org.json.JSONArray(); for (float[] x : c) ca.put(x == null ? org.json.JSONObject.NULL : new org.json.JSONArray().put(Math.round(x[0])).put(Math.round(x[1])).put(Math.round(x[2])).put(Math.round(x[3]))); o.put("chars", ca); }
                 ls.put(o);
             }
             String j = new org.json.JSONObject().put("how", how).put("exact", k.exactLines).put("at", System.currentTimeMillis()).put("lines", ls).toString();
             java.nio.file.Files.write(new java.io.File(getExternalFilesDir(null), "kindle-layout-" + how + ".json").toPath(), j.getBytes("UTF-8"));
-        } catch (Throwable t) { Log.w(TAG, "layout", t); }
+        } catch (Throwable t) { Log.w("LoudbookTest", "layout not saved", t); }
     }
 
     /**
@@ -862,19 +862,23 @@ public class KindleService extends AccessibilityService {
         String key = last.trim();
         if (key.length() > 40) key = key.substring(0, 40);
         int at = -1;
-        Rect r = new Rect();
+        Rect r = new Rect(), scr = new Rect();
+        root.getBoundsInScreen(scr);
         for (int i = 0; i < all.size(); i++) {
             CharSequence t = all.get(i).getText();
             all.get(i).getBoundsInScreen(r);
-            if (t != null && t.toString().trim().startsWith(key) && r.width() > 0 && r.height() > 0) at = i;
+            if (t != null && t.toString().trim().startsWith(key) && r.width() > 0 && r.height() > 0 && r.centerX() >= scr.left && r.centerX() < scr.right) at = i;
         }
         if (at < 0) return null;
+        Rect screen = new Rect();
+        root.getBoundsInScreen(screen);
         for (int i = at + 1; i < all.size() && i < at + 4; i++) {
             AccessibilityNodeInfo n = all.get(i);
             n.getBoundsInScreen(r);
             CharSequence t = n.getText();
             if (t == null || t.toString().trim().isEmpty()) continue;
-            if (r.width() > 0 && r.height() > 0 && n.isVisibleToUser()) return null;     // (something else on this page)
+            boolean offPage = r.width() <= 0 || r.height() <= 0 || !n.isVisibleToUser() || r.centerX() < screen.left || r.centerX() >= screen.right;
+            if (!offPage) return null;                                                   // (something else on this page)
             String s = t.toString().trim();
             return HINT.matcher(s).matches() ? null : s;
         }
@@ -972,11 +976,26 @@ public class KindleService extends AccessibilityService {
         return new Page();
     }
 
-    private static boolean scrollForward(AccessibilityNodeInfo n) {
-        if (n == null) return false;
-        if (n.isScrollable() && n.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) return true;
-        for (int i = 0; i < n.getChildCount(); i++) if (scrollForward(n.getChild(i))) return true;
+    private static boolean scrollForward(AccessibilityNodeInfo root) {
+        if (root == null) return false;
+        Rect screen = new Rect(), r = new Rect();
+        root.getBoundsInScreen(screen);
+        List<AccessibilityNodeInfo> all = new ArrayList<>();
+        scrollables(root, all, 0);
+        // a piece of the page on screen first (the pages either side can be listed too, off screen), then anything
+        for (int pass = 0; pass < 2; pass++)
+            for (AccessibilityNodeInfo n : all) {
+                n.getBoundsInScreen(r);
+                boolean onScreen = r.width() > 0 && r.centerX() >= screen.left && r.centerX() < screen.right;
+                if ((pass == 0) != onScreen) continue;
+                if (n.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) return true;
+            }
         return false;
+    }
+    private static void scrollables(AccessibilityNodeInfo n, List<AccessibilityNodeInfo> out, int depth) {
+        if (n == null || depth > 40) return;
+        if (n.isScrollable()) out.add(n);
+        for (int i = 0; i < n.getChildCount(); i++) scrollables(n.getChild(i), out, depth + 1);
     }
 
     private boolean gesture(boolean swipe) {
