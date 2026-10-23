@@ -67,11 +67,13 @@ public class KindleService extends AccessibilityService {
             android.content.IntentFilter f = new android.content.IntentFilter("com.loudbook.app.KINDLE_READ");
             f.addAction("com.loudbook.app.KINDLE_DUMP");
             f.addAction("com.loudbook.app.KINDLE_TURN");
+            f.addAction("com.loudbook.app.KINDLE_TRY");
             testReceiver = new android.content.BroadcastReceiver() {
                 @Override public void onReceive(Context c, Intent i) {
                     String a = String.valueOf(i.getAction());
                     Log.i("LoudbookTest", "kindle test: " + a);
                     if (a.endsWith("READ")) readFresh();
+                    else if (a.endsWith("TRY")) { String how = i.getStringExtra("how"); new Thread(() -> tryTurn(how), "lb-kindle-try").start(); }
                     else if (a.endsWith("DUMP")) new Thread(() -> { report(readPage()); Log.i("LoudbookTest", "kindle test: dumped"); }, "lb-kindle-dump").start();
                     else new Thread(() -> { Page p = readPage(); Page q = nextPage(p.signature); Log.i("LoudbookTest", "kindle test: turned " + (q.paragraphs.isEmpty() ? "no" : "yes")); }, "lb-kindle-turn").start();
                 }
@@ -82,6 +84,69 @@ public class KindleService extends AccessibilityService {
     private android.content.BroadcastReceiver testReceiver;
     /** The emulator tests' and the Kindle lab's builds. */
     static boolean testBuild() { return BuildInfo.CODE == 1 || BuildInfo.VERSION.startsWith("lab-"); }
+    /** Test builds: one way of turning Kindle's page, to find which works ("adb shell am broadcast -a com.loudbook.app.KINDLE_TRY --es how X"). */
+    private void tryTurn(String how) {
+        Page before = readPage();
+        AccessibilityNodeInfo root = kindleRoot();
+        if (root == null) { Log.i("LoudbookTest", "try " + how + ": no Kindle"); return; }
+        Rect screen = new Rect(), r = new Rect();
+        root.getBoundsInScreen(screen);
+        List<AccessibilityNodeInfo> sc = new ArrayList<>();
+        scrollables(root, sc, 0);
+        AccessibilityNodeInfo onPage = null, lastOnPage = null;
+        for (AccessibilityNodeInfo n : sc) { n.getBoundsInScreen(r); if (r.width() > 0 && r.centerX() >= screen.left && r.centerX() < screen.right) { if (onPage == null) onPage = n; lastOnPage = n; } }
+        AccessibilityNodeInfo krf = findClass(root, "KRFView", 0), web = findClass(root, "WebView", 0);
+        boolean sent = false;
+        try {
+            switch (String.valueOf(how)) {
+                case "scroll": sent = onPage != null && onPage.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD); break;
+                case "focusscroll":
+                    if (onPage != null) { onPage.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS); pause(300); onPage.refresh(); sent = onPage.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD); }
+                    break;
+                case "lastscroll":
+                    if (lastOnPage != null) { lastOnPage.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS); pause(300); lastOnPage.refresh(); sent = lastOnPage.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD); }
+                    break;
+                case "pagegran": {
+                    if (lastOnPage != null) {
+                        lastOnPage.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS); pause(200);
+                        android.os.Bundle b = new android.os.Bundle();
+                        b.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_MOVEMENT_GRANULARITY_INT, AccessibilityNodeInfo.MOVEMENT_GRANULARITY_PAGE);
+                        sent = lastOnPage.performAction(AccessibilityNodeInfo.ACTION_NEXT_AT_MOVEMENT_GRANULARITY, b);
+                    }
+                    break;
+                }
+                case "web": sent = web != null && web.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD); break;
+                case "krf": sent = krf != null && krf.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD); break;
+                case "webnext": sent = web != null && web.performAction(AccessibilityNodeInfo.ACTION_NEXT_HTML_ELEMENT); break;
+                case "swipe": sent = gesture(true); break;
+                case "tap": sent = gesture(false); break;
+                case "swipe2": {
+                    DisplayMetrics dm = getResources().getDisplayMetrics();
+                    int w = dm.widthPixels, h = dm.heightPixels;
+                    Path a = new Path(), b = new Path();
+                    a.moveTo(w * 0.8f, h * 0.45f); a.lineTo(w * 0.2f, h * 0.45f);
+                    b.moveTo(w * 0.8f, h * 0.55f); b.lineTo(w * 0.2f, h * 0.55f);
+                    GestureDescription g = new GestureDescription.Builder()
+                        .addStroke(new GestureDescription.StrokeDescription(a, 0, 250)).addStroke(new GestureDescription.StrokeDescription(b, 0, 250)).build();
+                    sent = dispatchGesture(g, null, null);
+                    break;
+                }
+                case "swipe3": {
+                    DisplayMetrics dm = getResources().getDisplayMetrics();
+                    int w = dm.widthPixels, h = dm.heightPixels;
+                    GestureDescription.Builder gb = new GestureDescription.Builder();
+                    for (int k = 0; k < 3; k++) { Path a = new Path(); a.moveTo(w * 0.8f, h * (0.4f + 0.1f * k)); a.lineTo(w * 0.2f, h * (0.4f + 0.1f * k)); gb.addStroke(new GestureDescription.StrokeDescription(a, 0, 250)); }
+                    sent = dispatchGesture(gb.build(), null, null);
+                    break;
+                }
+            }
+        } catch (Throwable t) { Log.w("LoudbookTest", "try " + how, t); }
+        pause(2500);
+        Page after = readPage();
+        Log.i("LoudbookTest", "try " + how + ": sent " + sent + ", page changed " + !after.signature.equals(before.signature)
+            + (after.paragraphs.isEmpty() ? "" : " (now starts \"" + after.paragraphs.get(0).substring(0, Math.min(40, after.paragraphs.get(0).length())) + "\")"));
+    }
+
     /** Reads the page on screen from its top (for the tests). */
     private void readFresh() {
         if (svc == null || busy) return;
