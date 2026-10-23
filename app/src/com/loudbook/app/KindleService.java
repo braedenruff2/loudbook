@@ -63,15 +63,25 @@ public class KindleService extends AccessibilityService {
         main.post(tick);
         // test builds (the emulator tests and the Kindle lab): "adb shell am broadcast -a com.loudbook.app.KINDLE_READ"
         // reads the page on screen from the top, without a tap (a tap would also change the screen-reader mode)
-        if (BuildInfo.CODE == 1 || BuildInfo.VERSION.startsWith("lab-")) {
+        if (testBuild()) {
             android.content.IntentFilter f = new android.content.IntentFilter("com.loudbook.app.KINDLE_READ");
+            f.addAction("com.loudbook.app.KINDLE_DUMP");
+            f.addAction("com.loudbook.app.KINDLE_TURN");
             testReceiver = new android.content.BroadcastReceiver() {
-                @Override public void onReceive(Context c, Intent i) { Log.i("LoudbookTest", "kindle: read the page (test)"); readFresh(); }
+                @Override public void onReceive(Context c, Intent i) {
+                    String a = String.valueOf(i.getAction());
+                    Log.i("LoudbookTest", "kindle test: " + a);
+                    if (a.endsWith("READ")) readFresh();
+                    else if (a.endsWith("DUMP")) new Thread(() -> { report(readPage()); Log.i("LoudbookTest", "kindle test: dumped"); }, "lb-kindle-dump").start();
+                    else new Thread(() -> { Page p = readPage(); Page q = nextPage(p.signature); Log.i("LoudbookTest", "kindle test: turned " + (q.paragraphs.isEmpty() ? "no" : "yes")); }, "lb-kindle-turn").start();
+                }
             };
             if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(testReceiver, f, Context.RECEIVER_EXPORTED); else registerReceiver(testReceiver, f);
         }
     }
     private android.content.BroadcastReceiver testReceiver;
+    /** The emulator tests' and the Kindle lab's builds. */
+    static boolean testBuild() { return BuildInfo.CODE == 1 || BuildInfo.VERSION.startsWith("lab-"); }
     /** Reads the page on screen from its top (for the tests). */
     private void readFresh() {
         if (svc == null || busy) return;
@@ -374,6 +384,7 @@ public class KindleService extends AccessibilityService {
         String d = "Loudbook " + BuildInfo.VERSION + " Kindle view, Android " + android.os.Build.VERSION.SDK_INT
             + (exploreOn ? ", explore-by-touch on" : "") + "\n" + dump();
         try { java.nio.file.Files.write(new java.io.File(getFilesDir(), "kindle-last.txt").toPath(), d.getBytes("UTF-8")); } catch (Exception ignored) { }
+        if (testBuild()) try { java.nio.file.Files.write(new java.io.File(getExternalFilesDir(null), "kindle-last.txt").toPath(), d.getBytes("UTF-8")); } catch (Exception ignored) { }
         return d;
     }
     static String lastReport(Context c) {
@@ -549,10 +560,29 @@ public class KindleService extends AccessibilityService {
         new Thread(() -> {
             KindleLayout k = p.layout(true);
             shown = k; shownPage = p; spansFor = -1;
+            saveLayout(k, "first");
             if (k.exactLines < p.lines.size()) main.post(() -> fromScreen(p));
         }, "lb-kindle-layout").start();
     }
     private volatile Page shownPage;
+
+    /** Test builds: where the page's lines and letters were placed (kindle-layout.json, for checking the highlight). */
+    private void saveLayout(KindleLayout k, String how) {
+        if (!testBuild() || k == null) return;
+        try {
+            org.json.JSONArray ls = new org.json.JSONArray();
+            for (int i = 0; i < k.lines.size(); i++) {
+                org.json.JSONObject o = new org.json.JSONObject().put("text", k.lines.get(i));
+                float[] b = k.boxes.get(i);
+                o.put("box", new org.json.JSONArray().put(b[0]).put(b[1]).put(b[2]).put(b[3]));
+                float[][] c = i < k.chars.size() ? k.chars.get(i) : null;
+                if (c != null) { org.json.JSONArray ca = new org.json.JSONArray(); for (float[] x : c) ca.put(x == null ? org.json.JSONObject.NULL : new org.json.JSONArray().put(Math.round(x[0])).put(Math.round(x[1])).put(Math.round(x[2])).put(Math.round(x[3]))); o.put("chars", ca); }
+                ls.put(o);
+            }
+            String j = new org.json.JSONObject().put("how", how).put("exact", k.exactLines).put("at", System.currentTimeMillis()).put("lines", ls).toString();
+            java.nio.file.Files.write(new java.io.File(getExternalFilesDir(null), "kindle-layout-" + how + ".json").toPath(), j.getBytes("UTF-8"));
+        } catch (Throwable t) { Log.w(TAG, "layout", t); }
+    }
 
     /**
      * Kindle didn't say where its words are: find them on a picture of the screen instead (each
@@ -622,6 +652,7 @@ public class KindleService extends AccessibilityService {
             KindleLayout k = new KindleLayout(texts, boxes, chars);
             k.exactLines = found;
             if (p == shownPage) { shown = k; spansFor = -1; }
+            saveLayout(k, "ink");
             Log.i("LoudbookTest", "kindle: words placed from the screen on " + found + " of " + p.lines.size() + " pieces (" + ink.size() + " ink words)");
         } catch (Throwable t) { Log.w(TAG, "kindle ink", t); }
         finally {
@@ -920,6 +951,7 @@ public class KindleService extends AccessibilityService {
             boolean sent;
             if (attempt == 0) sent = scrollForward(root);
             else sent = gesture(attempt == 1);
+            Log.i("LoudbookTest", "kindle turn: " + (attempt == 0 ? "scroll forward" : attempt == 1 ? "swipe" : "tap at the right edge") + (sent ? " sent" : " not possible"));
             if (!sent) continue;
             long end = System.currentTimeMillis() + 2500;
             while (System.currentTimeMillis() < end) {
@@ -933,6 +965,7 @@ public class KindleService extends AccessibilityService {
                     return got;
                 }
             }
+            Log.i("LoudbookTest", "kindle turn: the page didn't change");
             root = kindleRoot();
             if (root == null) break;
         }
@@ -985,6 +1018,15 @@ public class KindleService extends AccessibilityService {
         sb.append(n.getClassName()).append(n.getViewIdResourceName() != null ? " #" + n.getViewIdResourceName().replace(KINDLE + ":id/", "") : "")
           .append(' ').append(r.toShortString())
           .append(n.isScrollable() ? " scroll" : "").append(n.isClickable() ? " click" : "").append(n.isVisibleToUser() ? "" : " hidden");
+        StringBuilder acts = new StringBuilder();
+        for (AccessibilityNodeInfo.AccessibilityAction a : n.getActionList()) {
+            int id = a.getId();
+            if (id == AccessibilityNodeInfo.ACTION_FOCUS || id == AccessibilityNodeInfo.ACTION_CLEAR_FOCUS || id == AccessibilityNodeInfo.ACTION_SELECT
+                || id == AccessibilityNodeInfo.ACTION_CLEAR_SELECTION || id == AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS
+                || id == AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS || id == AccessibilityNodeInfo.ACTION_CLICK) continue;
+            acts.append(acts.length() > 0 ? "," : "").append(a.getLabel() != null ? a.getLabel() : Integer.toHexString(id));
+        }
+        if (acts.length() > 0) sb.append(" acts=").append(acts);
         if (t != null && t.length() > 0) sb.append(" text[").append(t.length()).append("]=\"").append(t.length() > 50 ? t.subSequence(0, 50) + "…" : t).append('"');
         if (d != null && d.length() > 0) sb.append(" desc[").append(d.length()).append("]=\"").append(d.length() > 50 ? d.subSequence(0, 50) + "…" : d).append('"');
         // what the reader could use for exact placement (line by line, character boxes)
