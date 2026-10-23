@@ -302,7 +302,7 @@ public class KindleService extends AccessibilityService {
         KindleLayout lay = shown;
         float[] now = svc.kindleNow();
         Chapter ch = svc.chapter();
-        if (lay == null || now == null || ch == null) { main.postDelayed(paint, 200); return; }
+        if (lay == null || now == null || ch == null) { if (hl != null) hl.set(new ArrayList<>(), null); main.postDelayed(paint, 200); return; }
         int idx = (int) now[0], from = (int) now[2], to = Math.min((int) now[3], ch.size());
         int key = from * 100_000 + to;
         if (spansFor != key || spans == null) {
@@ -697,6 +697,7 @@ public class KindleService extends AccessibilityService {
     /** This page is the one being read now: its header and footer are known from here on. */
     void accept(Page p) {
         lastEdges = p.edges;
+        shown = null; spansFor = -1;          // (the last page's places are no good now: no highlight until this page's are known)
         // where this page's lines are, for the highlight (exact character boxes take a moment: off the main thread)
         new Thread(() -> {
             KindleLayout k = p.layout(true);
