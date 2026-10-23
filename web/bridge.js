@@ -62,10 +62,14 @@
   function speakNumbers(t) {
     return t
       .replace(/(\d)\s?%/g, '$1 percent')                     // before the digits become words
-      .replace(/\$(\d[\d,]*)(?:\.(\d{2}))?\b/g, (_, d, c) => { const n = +d.replace(/,/g, ''); return words(n) + (n === 1 ? ' dollar' : ' dollars') + (c && +c ? ' and ' + words(+c) + ' cents' : ''); })
+      .replace(/\$(\d[\d,]*)(?:\.(\d{2}))?\b/g, (_, d, c) => { const n = +d.replace(/,/g, ''); if (n === 0 && c && +c) return words(+c) + (+c === 1 ? ' cent' : ' cents');   // $0.99 -> ninety-nine cents
+        return words(n) + (n === 1 ? ' dollar' : ' dollars') + (c && +c ? ' and ' + words(+c) + ' cents' : ''); })
       // 9:00 -> nine o'clock, but "10:00 o'clock" and "3:00 AM" don't get a second o'clock
       .replace(/\b(\d{1,2}):(\d{2})\b/g, (_, h, m, at, all) => words(+h) + (+m === 0 ? (/^\s*(o'clock|o’clock|[ap]\.?m\b|[AP]M\b)/i.test(all.slice(at + 3 + h.length)) ? '' : " o'clock") : +m < 10 ? ' oh ' + words(+m) : ' ' + words(+m)))
       .replace(/\b(\d+)(st|nd|rd|th)\b/gi, (_, d) => ordinal(+d))
+      // years before 1100, where it's clearly a year: "the year 1066", "in 1066.", "800 AD" -> ten sixty-six, eight hundred AD
+      .replace(/\b([Yy]ear\s+)(10\d\d)\b(?![.,]?\d)|\b((?:[Ii]n|[Ss]ince|[Uu]ntil|[Cc]irca|[Bb]y)\s+)(10\d\d)(?=\s*(?:[,;:!?)]|\.(?!\d)|$))|\b(\d{3,4})(?=\s?(?:AD|BC|BCE|CE|A\.D\.|B\.C\.)(?!\w))/g,
+        (m, p1, y1, p2, y2, y3) => { const y = +(y1 || y2 || y3); return (p1 || p2 || '') + (y % 1000 === 0 || (y < 1000 && y % 100 === 0) ? words(y) : yearWords(y)); })
       .replace(/\b(1[1-9]\d\d|20\d\d)s?\b/g, (m, y) => { const w = yearWords(+y); return m.endsWith('s') ? (w.endsWith('y') ? w.slice(0, -1) + 'ies' : w + 's') : w; })
       .replace(/\b(\d)0['’]?s\b/g, (m, d) => (TENS[+d] || 'ten').replace(/y$/, 'ies') + (d === '1' ? 's' : ''))   // the 80s, the 70's
       .replace(/\b([1-9])s\b/g, (m, d) => ONES[+d] + (d === '6' ? 'es' : 's'))   // two 6s -> two sixes         // the 80s -> the eighties
