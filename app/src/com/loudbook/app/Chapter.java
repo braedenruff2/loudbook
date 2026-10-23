@@ -24,13 +24,27 @@ final class Chapter {
         this.chunks.addAll(chunks);
     }
 
+    /** The same page, give or take a #part or a trailing slash. */
+    static boolean samePage(String a, String b) {
+        if (a == null || b == null || a.isEmpty()) return false;
+        return bare(a).equals(bare(b));
+    }
+    private static String bare(String u) {
+        int h = u.indexOf('#');
+        if (h >= 0) u = u.substring(0, h);
+        while (u.endsWith("/")) u = u.substring(0, u.length() - 1);
+        return u;
+    }
+
     Chapter(JSONObject o) throws Exception {
         url = o.optString("url");
         site = o.optString("site");
         title = o.optString("title");
         fiction = o.optString("fiction");
-        nextUrl = o.isNull("nextUrl") ? null : o.optString("nextUrl", null);
-        prevUrl = o.isNull("prevUrl") ? null : o.optString("prevUrl", null);
+        // a "next" link back to this same page (some sites, on the latest chapter) would read it again and again
+        String n = o.isNull("nextUrl") ? null : o.optString("nextUrl", null), p = o.isNull("prevUrl") ? null : o.optString("prevUrl", null);
+        nextUrl = samePage(n, url) ? null : n;
+        prevUrl = samePage(p, url) ? null : p;
         JSONArray a = o.getJSONArray("chunks");
         for (int i = 0; i < a.length(); i++) {
             JSONObject c = a.getJSONObject(i);

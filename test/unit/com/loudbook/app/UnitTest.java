@@ -15,6 +15,10 @@ public class UnitTest {
     static String str(java.util.List<String[]> parts) { StringBuilder b = new StringBuilder(); for (String[] p : parts) b.append('[').append(p[1]).append(':').append(p[0]).append(']'); return b.toString(); }
 
     public static void main(String[] a) {
+        // a "next" link back to the same page isn't a next chapter
+        check("next link to itself", Chapter.samePage("https://x.com/s/ch4/#comments", "https://x.com/s/ch4"), true);
+        check("next link to the next page", Chapter.samePage("https://x.com/s/ch5", "https://x.com/s/ch4"), false);
+        check("no next link", Chapter.samePage(null, "https://x.com/s/ch4"), false);
         // Kindle sentences: titles and initials don't end a sentence
         check("Mr. stays in its sentence", KindleText.sentences("Then Mr. Hale arrived at the gate. It was very late by then, and cold."),
             "[Then Mr. Hale arrived at the gate., It was very late by then, and cold.]");
