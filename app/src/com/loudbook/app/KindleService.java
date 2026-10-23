@@ -61,10 +61,36 @@ public class KindleService extends AccessibilityService {
         wm = (WindowManager) getSystemService(WINDOW_SERVICE);
         bound = bindService(new Intent(this, ReaderService.class), conn, Context.BIND_AUTO_CREATE);
         main.post(tick);
+        // test builds (the emulator tests and the Kindle lab): "adb shell am broadcast -a com.loudbook.app.KINDLE_READ"
+        // reads the page on screen from the top, without a tap (a tap would also change the screen-reader mode)
+        if (BuildInfo.CODE == 1 || BuildInfo.VERSION.startsWith("lab-")) {
+            android.content.IntentFilter f = new android.content.IntentFilter("com.loudbook.app.KINDLE_READ");
+            testReceiver = new android.content.BroadcastReceiver() {
+                @Override public void onReceive(Context c, Intent i) { Log.i("LoudbookTest", "kindle: read the page (test)"); readFresh(); }
+            };
+            if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(testReceiver, f, Context.RECEIVER_EXPORTED); else registerReceiver(testReceiver, f);
+        }
+    }
+    private android.content.BroadcastReceiver testReceiver;
+    /** Reads the page on screen from its top (for the tests). */
+    private void readFresh() {
+        if (svc == null || busy) return;
+        busy = true;
+        new Thread(() -> {
+            boolean[] ex = {needExplore || exploreOn, false};
+            Page p = exploreOn ? readPage() : readOrExplore(ex);
+            final String why = report(p);
+            main.post(() -> {
+                busy = false;
+                if (p.paragraphs.isEmpty()) { noText(why); return; }
+                begin(p, ex, 0);
+            });
+        }, "lb-kindle-test").start();
     }
 
     @Override public void onDestroy() {
         me = null;
+        if (testReceiver != null) { try { unregisterReceiver(testReceiver); } catch (Exception ignored) { } }
         hideHighlight(); hidePicker();
         if (exploreOn) setExplore(false);
         hideBubble();
@@ -380,11 +406,13 @@ public class KindleService extends AccessibilityService {
             final Page was = shownPage;
             new Thread(() -> {
                 pause(needExplore ? 500 : 0);
-                Page p = readPage();
+                Page p;
+                try { p = readPage(); } catch (Throwable t) { Log.w(TAG, "kindle resume", t); p = new Page(); }
                 boolean moved = was != null && !p.paragraphs.isEmpty() && !p.paragraphs.equals(was.paragraphs);
+                final Page fp = p;
                 main.post(() -> {
                     busy = false;
-                    if (moved) { Log.i("LoudbookTest", "kindle: a different page since the pause: reading it"); begin(p, new boolean[]{needExplore, false}, 0); }
+                    if (moved) { Log.i("LoudbookTest", "kindle: a different page since the pause: reading it"); begin(fp, new boolean[]{needExplore, false}, 0); }
                     else svc.play();
                     watch();
                 });
