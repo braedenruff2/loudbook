@@ -372,9 +372,23 @@ public class KindleService extends AccessibilityService {
             return;
         }
         if (svc.readingKindle() && !svc.kindleDone()) {
-            if (svc.isPlaying() && !svc.isPaused()) svc.pause();
-            else { if (needExplore) setExplore(true); svc.play(); }
-            watch();
+            if (svc.isPlaying() && !svc.isPaused()) { svc.pause(); watch(); return; }
+            if (needExplore) setExplore(true);
+            if (busy) return;
+            busy = true;
+            // the page may have been turned by hand while paused: if it's not the one being read, read this one
+            final Page was = shownPage;
+            new Thread(() -> {
+                pause(needExplore ? 500 : 0);
+                Page p = readPage();
+                boolean moved = was != null && !p.paragraphs.isEmpty() && !p.paragraphs.equals(was.paragraphs);
+                main.post(() -> {
+                    busy = false;
+                    if (moved) { Log.i("LoudbookTest", "kindle: a different page since the pause: reading it"); begin(p, new boolean[]{needExplore, false}, 0); }
+                    else svc.play();
+                    watch();
+                });
+            }, "lb-kindle-resume").start();
             return;
         }
         if (busy) return;
@@ -395,6 +409,23 @@ public class KindleService extends AccessibilityService {
      *  (as TalkBack does): if there's none, that's turned on and the page read again. explored: {needs it, just turned on}. */
     private Page readOrExplore(boolean[] explored) {
         Page p = readPage();
+        // Kindle's own renderer keeps the page's text up to date only for a screen reader that
+        // explores by touch; without one, what it shares can be an old page (the one before, say)
+        if (!p.paragraphs.isEmpty() && !exploreOn && krf()) {
+            Log.i("LoudbookTest", "kindle draws its own pages: reading them the screen-reader way");
+            main.post(() -> setExplore(true));
+            Page before = p;
+            pause(400);
+            Page q = readPage();
+            for (int i = 0; i < 12 && q.paragraphs.isEmpty(); i++) { pause(250); q = readPage(); }
+            if (!q.paragraphs.isEmpty()) {
+                if (!q.paragraphs.equals(before.paragraphs)) Log.i("LoudbookTest", "kindle: the text without a screen reader was an old page");
+                explored[0] = explored[1] = true;
+                return q;
+            }
+            main.post(() -> setExplore(false));
+            return p;
+        }
         if (p.paragraphs.isEmpty() && !exploreOn && kindleRoot() != null) {
             Log.i("LoudbookTest", "no text; trying explore-by-touch");
             main.post(() -> setExplore(true));
@@ -404,6 +435,18 @@ public class KindleService extends AccessibilityService {
         } else if (!p.paragraphs.isEmpty() && exploreOn) explored[0] = needExplore;
         return p;
     }
+    /** Kindle's page is drawn by its own renderer (KRFView), not text views. */
+    private boolean krf() {
+        AccessibilityNodeInfo r = kindleRoot();
+        return r != null && hasClass(r, "KRFView", 0);
+    }
+    private static boolean hasClass(AccessibilityNodeInfo n, String name, int depth) {
+        if (n == null || depth > 30) return false;
+        if (n.getClassName() != null && n.getClassName().toString().endsWith(name)) return true;
+        for (int i = 0; i < n.getChildCount(); i++) if (hasClass(n.getChild(i), name, depth + 1)) return true;
+        return false;
+    }
+
     /** Nothing to read: what Loudbook sees is copied, ready to paste, so the reader can be fixed for this Kindle. */
     private void noText(String why) {
         copy(why);
