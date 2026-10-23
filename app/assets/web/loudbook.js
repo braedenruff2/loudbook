@@ -531,8 +531,9 @@ function tidy(t) {
     .replace(/\b(\d{3,4})x(\d{3,4})\b/g, (m, a, b) => [a, b].map(pairs).join(' by '))   // 1920x1080 -> "19 20 by 10 80"
     .replace(/\b(\d+)\s?fps\b/gi, '$1 frames per second')
     .replace(/\b(\d+)x(\d+)\b/g, '$1 by $2')                       // a 2x2 grid, 1920x1080
-    .replace(/#(?=\d)/g, 'number ')                                // Rank #1
+    .replace(/#(?=\d)/g, 'number ').replace(/(^|\s)#(?=\p{L})/gu, '$1')   // #hashtag (was "hash hashtag")                                // Rank #1
     .replace(/\b(\d+)\s?×(?=\s|$)/g, '$1 times').replace(/(^|\s)×\s?(?=\d)/g, '$1times ')   // 3× damage, ×3
+    .replace(/(^|[:,;(\[•\-–]\s*|\s[-–]\s)(\d+)\s?x\s(?=\p{Lu}\p{Ll})/gu, '$1$2 ')   // Reward: 1x Potion, 3x Mana Crystal (not "one times")
     .replace(/\b(\d+)x\b/g, '$1 times').replace(/\bx(\d+)\b/g, 'times $1')   // 2x damage, x3
     .replace(/(\b(?:[Aa]n?|[Tt]he)\s)?\$(\d+(?:\.\d+)?)\s(thousand|million|billion|trillion)\b(\s+(?!(?:and|or|to|of|for|in|on|at|from|per|each|a|an|the|is|was|were|more|less|worth|plus|minus|dollars?)\b)\p{Ll})?/gu,
       (m, a, n, u, next) => (a || '') + n + ' ' + u + (a && next ? '-dollar' + next : ' dollars' + (next || '')))   // $1.2 million (was "one dollar.two million"), a $5 million deal
@@ -553,6 +554,13 @@ function tidy(t) {
     .replace(/(\d|\b[A-Z]{2,3})\s?\/\s?(sec|second|s|min|minute|hr|hour|h|day|turn)\b(?!\/)/g, (m, a, u) =>
       a + ' per ' + ({ sec: 'second', s: 'second', min: 'minute', hr: 'hour', h: 'hour' }[u] || u))
     .replace(/(?<!\b[A-Za-z]{2,}:\s?)(?<![\d.,])\b(100|1,?000)s(?![\w'’])/g, (m, n) => (n === '100' ? 'hundreds' : 'thousands'))   // 1000s of people (not "Cooldown: 100s")
+    // timers "00:05:30" -> "5 minutes 30 seconds" (was "zero oh five:thirty")
+    .replace(/\b(\d{1,2}):([0-5]\d):([0-5]\d)\b/g, (m, h, n, sec) => [[+h, 'hour'], [+n, 'minute'], [+sec, 'second']]
+      .filter(([v]) => v).map(([v, u]) => v + ' ' + u + (v === 1 ? '' : 's')).join(' ') || '0 seconds')
+    .replace(/\b(\d+)d\s(\d+)h(?:\s(\d+)m)?\b(?!\/)/g, (m, d, h, n) => d + (d === '1' ? ' day ' : ' days ') + h + (h === '1' ? ' hour' : ' hours') + (n ? ' ' + n + (n === '1' ? ' minute' : ' minutes') : ''))   // 2d 3h left
+    // coins: "50g 20s 5c" -> gold, silver, copper (not grams and seconds)
+    .replace(/\b(\d+)\s?g\s(\d+)\s?s\b(?:\s(\d+)\s?c\b)?/g, (m, g, sv, c) => g + ' gold ' + sv + ' silver' + (c ? ' ' + c + ' copper' : ''))
+    .replace(/\b(\d+)\s?s\s(\d+)\s?c\b/g, '$1 silver $2 copper')
     // durations: "5m 30s", "2h 30m", "Cooldown: 30s", "1.5s" (not "in his 30s", "the 80s", "two 6s")
     .replace(/\b(\d+)\s?h\s(\d+)\s?m\b(?!\/)/g, (m, h, n) => h + (h === '1' ? ' hour ' : ' hours ') + n + (n === '1' ? ' minute' : ' minutes'))
     .replace(/\b(\d+)\s?m\s(\d+(?:\.\d+)?)\s?s\b(?!\/)/g, (m, a, b) => a + (a === '1' ? ' minute ' : ' minutes ') + b + (b === '1' ? ' second' : ' seconds'))

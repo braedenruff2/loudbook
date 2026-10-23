@@ -1,3 +1,4 @@
+Loot lists read "1x Potion" as "one Potion", timers like "00:05:30" as "five minutes thirty seconds", "2d 3h left" as days and hours, and "50g 20s 5c" as gold, silver and copper. "#hashtag" no longer starts with "hash".
 Says "$1.2 million" (was "one dollar, two million"), "a $20 bill", "a $5 million deal", "1920x1080", "60fps", dates like "1.5.2024", "Mr.Smith", "ch. 45", "₹500" and "8ish" the way you would; "the 4-3-3 formation" is no longer "four-three to three".
 Skips emoji and hearts (the voice used to read out "red heart"), drops the "~" in "Hello~", and says "21yo" as "twenty-one years old".
 "What...?" now sounds like a question instead of running into the next words. Also says "lvl.5", "HP/MP", "a 1/10 chance", "9/10 times", "×3" and "Approx 5 mins" the way you would.
