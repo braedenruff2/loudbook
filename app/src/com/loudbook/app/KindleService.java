@@ -630,6 +630,7 @@ public class KindleService extends AccessibilityService {
         }, "lb-kindle-layout").start();
     }
     private volatile Page shownPage;
+    private static int loggedNext;   // (say how the next page starts once, not on every look)
 
     /** Test builds: where the page's lines and letters were placed (kindle-layout.json, for checking the highlight). */
     private void saveLayout(KindleLayout k, String how) {
@@ -863,8 +864,10 @@ public class KindleService extends AccessibilityService {
         List<Bit> edges = new ArrayList<>();
         List<Bit> byTop = new ArrayList<>(bits);
         byTop.sort((a, b) -> Integer.compare(a.r.top, b.r.top));
+        boolean bookOnly = page != null && bits == inPage;          // (Kindle's page renderer holds only the book's text)
         for (Bit b : bits) {
             String t = b.text.trim();
+            if (bookOnly) { body.add(b); continue; }
             // a line of the book itself, even if it's near the top or bottom: it carries on a
             // sentence (starts lower case), or runs on into the line just below it
             boolean seenBefore = false;                               // the same text in the same place last page: a header
@@ -908,7 +911,7 @@ public class KindleService extends AccessibilityService {
         p.lines = body;
         if (!body.isEmpty()) {
             p.nextStart = hiddenAfter(page != null ? page : root, body.get(body.size() - 1).text);
-            if (p.nextStart != null) Log.i("LoudbookTest", "kindle: next page starts \"" + (p.nextStart.length() > 50 ? p.nextStart.substring(0, 50) + "…" : p.nextStart) + "\"");
+            if (p.nextStart != null && p.nextStart.hashCode() != loggedNext) { loggedNext = p.nextStart.hashCode(); Log.i("LoudbookTest", "kindle: next page starts \"" + (p.nextStart.length() > 50 ? p.nextStart.substring(0, 50) + "…" : p.nextStart) + "\""); }
         }
         // what's on screen, unfiltered: tells whether the page really changed
         StringBuilder sig = new StringBuilder();
