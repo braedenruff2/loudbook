@@ -489,7 +489,9 @@ function stretched(w) {
 function tidy(t) {
   // scene breaks and decorations ("***", "~~~", "=== Chapter 5 ===", "---o0o---", "◇◇◇"): silent
   t = t.replace(/([~=*#_<>+\-—–])\1{2,}/g, ' ').replace(/(^|\s)(?!XXX\b)[oO0xX]{3}(?=\s|$)/g, '$1 ').replace(/^\s*XXX\s*$/, '').replace(/[◇◆◈❖•·♦♢❦☆★✦✧♪♫]+/gu, ' ')
-    .replace(/<3\b/g, '');
+    .replace(/(\p{L})\s+<3\s+(?=\p{L})/gu, '$1 heart ').replace(/<3\b/g, '')
+    // emoticons: ":)", ";)", ":D", "xD", "^_^", "T_T" (the voice says "colon", "ex dee")
+    .replace(/(^|\s)(?:[:;=]-?[)(DPpO3\]\[|\/]|xD+|XD+(?=[\s.!?]*$)|\^_*\^|T_T|>_<|-_-|o_O|O_o|:'\()(?=[\s.,!?"'”’)]|$)/g, '$1');
   if (!/[\p{L}\p{N}]/u.test(t)) return '';
   // links: just the site's name ("https://www.royalroad.com/fiction/1" -> "royalroad.com"; "www" became "ww")
   t = t.replace(/\bhttps?:\/\/(?:www\.)?([^\s\/?#]+)\S*?(?=[.,!?;:)\]"'”’]*(?:\s|$))/gi, '$1').replace(/\bwww\.(?=\w)/gi, '');
@@ -518,6 +520,7 @@ function tidy(t) {
     .replace(/(^|[\s(\[])[-−](?=\d)/g, '$1minus ')
     .replace(/\b(\d*)d(4|6|8|10|12|20|100)\b/g, (m, n, s) => (n ? n + ' ' : '') + 'D ' + s)   // 5d6, a d20
     .replace(/(\d)\s?\+\s?(?=\d)|(\d)\+(?=[\s.,!?)\]]|$)/g, (m, a, b) => (a ? a + ' plus ' : b + ' plus'))   // 1d20+5, 2+2, 18+                  // -5 degrees
+    .replace(/\b(\d+)x(\d+)\b/g, '$1 by $2')                       // a 2x2 grid, 1920x1080
     .replace(/#(?=\d)/g, 'number ')                                // Rank #1
     .replace(/\b(\d+)x\b/g, '$1 times').replace(/\bx(\d+)\b/g, 'times $1')   // 2x damage, x3
     .replace(/\$(\d+(?:\.\d+)?)\s?(k|K|m|M|bn|b|B)\b/g, (m, n, u) => n + ' ' + { k: 'thousand', m: 'million', b: 'billion', bn: 'billion' }[u.toLowerCase()] + ' dollars')
@@ -589,8 +592,16 @@ function tidy(t) {
     .replace(/\bIRL\b/g, 'I-R-L').replace(/\b(?:idk|IDK)\b/g, 'I-D-K')
     .replace(/\bMk\.?\s*(?=\d)/g, 'Mark ')                          // Mk. II (already "Mk. 2")
     .replace(/\bv(\d+)\.(\d+)\b/g, 'version $1 point $2')            // v2.0
+    .replace(/\bv(\d+)\b(?![.,]\d)/g, 'version $1')                   // v3
+    .replace(/(?<![\d.])\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b(?![.\d])/g, (m) => m.split('.').map((x) => x.split('').join(' ')).join(' dot '))   // 192.168.1.1
+    .replace(/(?<![\d.])\b(\d+)\.(\d+)\.(\d{1,3})\b(?![.\d])/g, '$1 point $2 point $3')   // version 2.0.1 (not 10.12.2025)
+    // "&" inside letters: Q&A, R&D, AT&T ("AT&T" ran together; a lone "A" became "uh", so it's "eh")
+    .replace(/\b([A-Z]{1,2})&([A-Z]{1,2})\b/g, (m, a, b) => [a, b].map((x) => (x === 'A' ? 'eh' : x.split('').join('-'))).join(' and '))
+    .replace(/\bQ([1-4])\b/g, 'Q $1').replace(/\bFY\s?(?=\d{2,4}\b)/g, 'F-Y ')   // Q1, FY2024
+    .replace(/(\d)\s?¢/g, '$1 cents')
+    .replace(/\bWW(?:II|2)\b/g, 'World War Two').replace(/\bWW(?:I|1)\b/g, 'World War One')
     // born '98, the '90s (not an opening quote: "'10 more,' she said")
-    .replace(/(\b\p{Ll}+\s)['’](\d\d)(s?)\b(?![\d'’%])(?![^'’\n]*['’](?:[\s,.!?;:]|$))/gu, '$1$2$3')
+    .replace(/(\b\p{L}+\s)['’](\d\d)(s?)\b(?![\d'’%])(?![^'’\n]*['’](?:[\s,.!?;:]|$))/gu, '$1$2$3')
     .replace(/\bMt\.(?=\s+[A-Z])/g, 'Mount')                     // the voice says "M T." and stops
     .replace(/(^|\s)~\s?(?=\d)/g, '$1about ')                     // ~5 minutes (the voice says "tilde")
     .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)/g, '$1 Street')
