@@ -590,7 +590,9 @@ public class KindleService extends AccessibilityService {
         try {
             AccessibilityServiceInfo i = getServiceInfo();
             if (i == null) return;
-            boolean bookOpen = krf();
+            // (Kindle on screen with the book, or back on screen with the book closed while it was away)
+            AccessibilityNodeInfo kr = kindleRoot();
+            boolean bookOpen = kr != null && (findClass(kr, "KRFView", 0) != null || (on && svc != null && svc.readingKindle() && findDesc(kr, "Most recent book", 0) != null));
             if (on) i.flags |= AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE;
             else i.flags &= ~AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE;
             setServiceInfo(i);
