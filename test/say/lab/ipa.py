@@ -8,7 +8,7 @@ for l in open(K+'/tokens.txt', encoding='utf-8'):
     tok[int(i)] = sym if sym else ' '
 lines = sys.stdin.read().splitlines()
 LIB='/tmp/bench/jni/sherpa-onnx-v1.13.8-linux-x64-jni/lib'
-p = subprocess.run(['java','-Djava.library.path='+LIB,'-cp','/tmp/bench/out','b.Ipa',K], input='\n'.join(lines)+'\n', capture_output=True, text=True, env={'LD_LIBRARY_PATH':LIB,'PATH':'/usr/bin:/bin:/usr/local/bin'})
+p = subprocess.run(['java','-Djava.library.path='+LIB,'-cp','/tmp/bench/out','b.Ipa',K], input='\n'.join(lines)+'\n', capture_output=True, text=True, errors='replace', env={'LD_LIBRARY_PATH':LIB,'PATH':'/usr/bin:/bin:/usr/local/bin'})
 cur=None; out=[]
 for l in p.stderr.splitlines():
     if l.startswith('@@CASE '): cur=l[7:]; ph=[]; continue
