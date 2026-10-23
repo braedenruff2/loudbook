@@ -620,13 +620,20 @@ public class KindleService extends AccessibilityService {
                 else if (w == 1) sent = recent.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                 else if (w == 2) { AccessibilityNodeInfo c = recent.getParent(); for (int up = 0; up < 3 && c != null && !sent; up++, c = c.getParent()) sent = c.performAction(AccessibilityNodeInfo.ACTION_CLICK); }
                 else { recent.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS); pause(150); sent = taps(at.centerX(), at.centerY(), 2); }
-                long until = System.currentTimeMillis() + 3000;
-                boolean open = false;
-                while (sent && System.currentTimeMillis() < until) { pause(250); AccessibilityNodeInfo r = kindleRoot(); if (r != null && findClass(r, "KRFView", 0) != null) { open = true; break; } }
-                Log.i("LoudbookTest", "kindle reopen by " + ways[w] + ": " + (!sent ? "not possible" : open ? "open" : "didn't open"));
-                if (open) return;
+                // (the book takes a few seconds to open: wait while Kindle's home screen is gone or going)
+                long until = System.currentTimeMillis() + 9000;
+                boolean open = false, home = true;
+                while (sent && System.currentTimeMillis() < until) {
+                    pause(250);
+                    AccessibilityNodeInfo r = kindleRoot();
+                    if (r != null && findClass(r, "KRFView", 0) != null) { open = true; break; }
+                    home = r != null && findDesc(r, "Most recent book", 0) != null;
+                    if (home && System.currentTimeMillis() > until - 6000) break;     // (still on the home screen after 3 s: it didn't take)
+                }
+                Log.i("LoudbookTest", "kindle reopen by " + ways[w] + ": " + (!sent ? "not possible" : open ? "open" : home ? "didn't open" : "still opening"));
+                if (open || (sent && !home)) return;
                 AccessibilityNodeInfo r = kindleRoot();
-                if (r != null) { AccessibilityNodeInfo again = findDesc(r, "Most recent book", 0); if (again != null) recent = again; }
+                if (r != null) { AccessibilityNodeInfo again = findDesc(r, "Most recent book", 0); if (again != null) recent = again; else return; }
             }
             return;
         }
