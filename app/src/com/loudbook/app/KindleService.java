@@ -610,6 +610,8 @@ public class KindleService extends AccessibilityService {
             if (recent == null) continue;
             Log.i("LoudbookTest", "kindle closed the book: opening it again");
             reopenedAt = System.currentTimeMillis();
+            pause(700);                                                       // (let its home screen settle, or the tap is lost)
+            { AccessibilityNodeInfo r2 = kindleRoot(); AccessibilityNodeInfo again = r2 == null ? null : findDesc(r2, "Most recent book", 0); if (again != null) recent = again; }
             Rect at = new Rect();
             recent.getBoundsInScreen(at);
             // a tap on it works (in the lab); then a screen reader's ways
@@ -628,7 +630,7 @@ public class KindleService extends AccessibilityService {
                     AccessibilityNodeInfo r = kindleRoot();
                     if (r != null && findClass(r, "KRFView", 0) != null) { open = true; break; }
                     home = r != null && findDesc(r, "Most recent book", 0) != null;
-                    if (home && System.currentTimeMillis() > until - 6000) break;     // (still on the home screen after 3 s: it didn't take)
+                    if (home && System.currentTimeMillis() > until - 5000) break;     // (still on the home screen after 4 s: it didn't take)
                 }
                 Log.i("LoudbookTest", "kindle reopen by " + ways[w] + ": " + (!sent ? "not possible" : open ? "open" : home ? "didn't open" : "still opening"));
                 if (open || (sent && !home)) return;
@@ -1156,7 +1158,9 @@ public class KindleService extends AccessibilityService {
                 n.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS);
                 try { Thread.sleep(120); } catch (InterruptedException ignored) { }
                 n.refresh();
-                if (n.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) return true;
+                boolean ok = n.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
+                n.performAction(AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS);   // (no focus box left on the page)
+                if (ok) return true;
             }
         return false;
     }
