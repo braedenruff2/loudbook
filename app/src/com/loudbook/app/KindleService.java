@@ -194,11 +194,12 @@ public class KindleService extends AccessibilityService {
         // only while Loudbook is open (in recent apps) or reading: swipe Loudbook away and the
         // button stays out of Kindle
         if ((kindle && loudbookOpen()) || speaking) showBubble(); else hideBubble();
-        // explore-by-touch only while actually reading (so the phone works normally the rest of the time)
+        // explore-by-touch only while reading Kindle (so the phone works normally the rest of the time)
         // (reading takes a moment to start: leave things as they are meanwhile)
         boolean settling = busy || System.currentTimeMillis() - startedAt < 6000;
         if (!reading && !settling) needExplore = false;
-        boolean explore = needExplore && reading && svc.isPlaying() && !svc.isPaused();
+        // (kept on while paused too, as long as Kindle is on screen: Kindle closes the book each time it switches)
+        boolean explore = needExplore && reading && kindle;
         if (explore != exploreOn && !settling) setExplore(explore);
         if (bubble != null) {
             boolean on = reading && svc.isPlaying() && !svc.isPaused();
@@ -479,7 +480,7 @@ public class KindleService extends AccessibilityService {
         }
         if (svc.readingKindle() && !svc.kindleDone()) {
             if (svc.isPlaying() && !svc.isPaused()) { svc.pause(); watch(); return; }
-            if (needExplore) setExplore(true);
+            if (needExplore && !exploreOn) setExplore(true);
             if (busy) return;
             busy = true;
             // the page may have been turned by hand while paused: if it's not the one being read, read this one
@@ -519,6 +520,8 @@ public class KindleService extends AccessibilityService {
     /** The page's text. Kindle may share a book's text only with a screen reader that explores by touch
      *  (as TalkBack does): if there's none, that's turned on and the page read again. explored: {needs it, just turned on}. */
     private Page readOrExplore(boolean[] explored) {
+        // Kindle closed the book (screen-reader mode switched while Loudbook wasn't looking): open it again first
+        { AccessibilityNodeInfo r = kindleRoot(); if (r != null && findClass(r, "KRFView", 0) == null && findDesc(r, "Most recent book", 0) != null) reopenBook(); }
         Page p = readPage();
         // Kindle's own renderer keeps the page's text up to date only for a screen reader that
         // explores by touch; without one, what it shares can be an old page (the one before, say)
@@ -570,7 +573,7 @@ public class KindleService extends AccessibilityService {
         startedAt = System.currentTimeMillis();
         if (explored[1] && !Voice.prefs(this).getBoolean("exploreToldOnce", false)) {
             Voice.prefs(this).edit().putBoolean("exploreToldOnce", true).apply();
-            toast("Kindle shares this book's text only with screen readers, so while Loudbook reads, the screen works like one. Tap the gold button to pause and get your screen back.");
+            toast("Kindle shares this book's text only with screen readers, so while Loudbook reads Kindle (also when paused) the screen works like one: double-tap to press things, two fingers to turn pages. Leave Kindle to get your screen back.");
         }
         accept(p);
         svc.startKindle(p, letter);

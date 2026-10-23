@@ -1,3 +1,4 @@
+Kindle: pause and play are instant again (no more closing and reopening the book). While you're in Kindle the screen stays in screen-reader mode, also when paused; leave Kindle to get your normal screen back.
 Kindle: if Kindle closes the book when you press play or pause (it does when screen-reader mode switches), Loudbook opens it again where you were.
 Kindle: the highlight now follows the words on pages that start a chapter too, and on any part of the page near the gold button.
 Kindle: reads the page that's on screen (never an old page, Kindle's tips or the dictionary), turns the page when the voice gets to the next page's first word, and the highlight lines up with the words again.
