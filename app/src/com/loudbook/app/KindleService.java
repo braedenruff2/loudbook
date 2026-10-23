@@ -612,14 +612,14 @@ public class KindleService extends AccessibilityService {
             reopenedAt = System.currentTimeMillis();
             Rect at = new Rect();
             recent.getBoundsInScreen(at);
-            // the item itself or what holds it; then, as a screen reader would, a double tap on it
-            String[] ways = {"click", "click on what holds it", "double tap", "tap"};
+            // a tap on it works (in the lab); then a screen reader's ways
+            String[] ways = {"tap", "click", "click on what holds it", "double tap"};
             for (int w = 0; w < ways.length; w++) {
                 boolean sent = false;
-                if (w == 0) sent = recent.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                else if (w == 1) { AccessibilityNodeInfo c = recent.getParent(); for (int up = 0; up < 3 && c != null && !sent; up++, c = c.getParent()) sent = c.performAction(AccessibilityNodeInfo.ACTION_CLICK); }
-                else if (w == 2) { recent.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS); pause(150); sent = taps(at.centerX(), at.centerY(), 2); }
-                else sent = taps(at.centerX(), at.centerY(), 1);
+                if (w == 0) sent = taps(at.centerX(), at.centerY(), 1);
+                else if (w == 1) sent = recent.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                else if (w == 2) { AccessibilityNodeInfo c = recent.getParent(); for (int up = 0; up < 3 && c != null && !sent; up++, c = c.getParent()) sent = c.performAction(AccessibilityNodeInfo.ACTION_CLICK); }
+                else { recent.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS); pause(150); sent = taps(at.centerX(), at.centerY(), 2); }
                 long until = System.currentTimeMillis() + 3000;
                 boolean open = false;
                 while (sent && System.currentTimeMillis() < until) { pause(250); AccessibilityNodeInfo r = kindleRoot(); if (r != null && findClass(r, "KRFView", 0) != null) { open = true; break; } }
