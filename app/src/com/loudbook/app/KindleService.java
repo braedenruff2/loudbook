@@ -674,6 +674,11 @@ public class KindleService extends AccessibilityService {
         root.getBoundsInScreen(screen);
         List<Bit> bits = new ArrayList<>();
         collect(root, bits, 0);
+        // Kindle may lay out the pages either side of this one too (off to the left or right, or below): only what's on screen
+        for (java.util.Iterator<Bit> it = bits.iterator(); it.hasNext(); ) {
+            Rect r = it.next().r;
+            if (r.centerX() < screen.left || r.centerX() >= screen.right || r.centerY() < screen.top || r.centerY() >= screen.bottom) it.remove();
+        }
         int h = Math.max(1, screen.height());
         List<Bit> body = new ArrayList<>();
         List<Bit> edges = new ArrayList<>();
