@@ -614,13 +614,14 @@ public class KindleService extends AccessibilityService {
             { AccessibilityNodeInfo r2 = kindleRoot(); AccessibilityNodeInfo again = r2 == null ? null : findDesc(r2, "Most recent book", 0); if (again != null) recent = again; }
             Rect at = new Rect();
             recent.getBoundsInScreen(at);
-            // a tap on it works (in the lab); then a screen reader's ways
-            String[] ways = {"tap", "click", "click on what holds it", "double tap"};
+            // a tap opens it (with screen-reader touch on, a double tap: one tap only "touches" it); then the other ways
+            String[] ways = exploreOn ? new String[]{"double tap", "tap", "click", "click on what holds it"} : new String[]{"tap", "double tap", "click", "click on what holds it"};
             for (int w = 0; w < ways.length; w++) {
                 boolean sent = false;
-                if (w == 0) sent = taps(at.centerX(), at.centerY(), 1);
-                else if (w == 1) sent = recent.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-                else if (w == 2) { AccessibilityNodeInfo c = recent.getParent(); for (int up = 0; up < 3 && c != null && !sent; up++, c = c.getParent()) sent = c.performAction(AccessibilityNodeInfo.ACTION_CLICK); }
+                String way = ways[w];
+                if (way.equals("tap")) sent = taps(at.centerX(), at.centerY(), 1);
+                else if (way.equals("click")) sent = recent.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                else if (way.startsWith("click on")) { AccessibilityNodeInfo c = recent.getParent(); for (int up = 0; up < 3 && c != null && !sent; up++, c = c.getParent()) sent = c.performAction(AccessibilityNodeInfo.ACTION_CLICK); }
                 else { recent.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS); pause(150); sent = taps(at.centerX(), at.centerY(), 2); }
                 // (the book takes a few seconds to open: wait while Kindle's home screen is gone or going)
                 long until = System.currentTimeMillis() + 9000;
