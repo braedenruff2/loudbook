@@ -67,4 +67,16 @@ adb shell screencap -p /sdcard/closed.png
 adb pull /sdcard/closed.png .
 adb shell dumpsys window windows | grep -c "Window{.*com.loudbook.app" | sed 's/^/Loudbook windows on screen after Kindle closed: /' > closed.txt
 adb shell settings get secure touch_exploration_enabled | sed 's/^/touch exploration at the end: /' > explore-state.txt
+# choosing where to start in a Kindle that shares its text only with explore by touch (the same tap as above)
+adb shell log -t LoudbookTest "=== choose where to start, explore-only Kindle ==="
+adb shell am start -S -n com.amazon.kindle/.Reader --ez explore true
+sleep 6
+adb shell input swipe $X $Y $X $Y 1200                # hold the button
+sleep 2
+adb shell input tap $TX $TY
+sleep 10
+adb shell screencap -p /sdcard/explore-pick.png; adb pull /sdcard/explore-pick.png .
+adb logcat -d | sed -n '/=== choose where to start, explore-only/,$p' | grep -o "kindle: start at letter.*\|no book text found" | tail -1 | sed 's/^/explore-only, hold and tap: /' > pick.txt
+adb shell am force-stop com.amazon.kindle
+adb shell input keyevent KEYCODE_HOME
 adb logcat -d > logcat.txt

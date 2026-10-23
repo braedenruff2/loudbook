@@ -314,16 +314,23 @@ public class KindleService extends AccessibilityService {
     /** Starts reading from the sentence at a point on the page. */
     private void startFrom(float x, float y) {
         if (svc == null) return;
+        if (busy) return;
+        busy = true;
         new Thread(() -> {
-            Page p = readPage();
-            if (p.paragraphs.isEmpty()) { main.post(() -> toast("No book text found there.")); return; }
+            pause(150);                                              // (let the picker's window go first)
+            boolean[] ex = {false, false};
+            Page p = readOrExplore(ex);
+            if (p.paragraphs.isEmpty()) {
+                final String why = report(p);
+                main.post(() -> { busy = false; noText(why); });
+                return;
+            }
             KindleLayout lay = p.layout(false);
             int letter = lay.letterAt(x, y);
-            Log.i("LoudbookTest", "kindle: start at letter " + letter + " (tap " + Math.round(x) + "," + Math.round(y) + ")");
+            Log.i("LoudbookTest", "kindle: start at letter " + letter + " (tap " + Math.round(x) + "," + Math.round(y) + ")" + (ex[0] ? ", explore by touch" : ""));
             main.post(() -> {
-                accept(p);
-                svc.startKindle(p, letter);
-                watch();
+                busy = false;
+                begin(p, ex, letter);
             });
         }, "lb-kindle-from").start();
     }
@@ -372,37 +379,44 @@ public class KindleService extends AccessibilityService {
         if (busy) return;
         busy = true;
         new Thread(() -> {
-            Page p = readPage();
-            boolean explored = false;
-            if (p.paragraphs.isEmpty() && kindleRoot() != null) {
-                // Kindle may share a book's text only with a screen reader that explores by touch
-                // (as TalkBack does): turn that on and look again
-                Log.i("LoudbookTest", "no text; trying explore-by-touch");
-                main.post(() -> setExplore(true));
-                for (int i = 0; i < 16 && p.paragraphs.isEmpty(); i++) { pause(300); p = readPage(); }
-                explored = !p.paragraphs.isEmpty();
-                if (!explored) main.post(() -> setExplore(false));
-            }
-            final Page got = p;
-            final boolean ex = explored;
-            final String why = report(got);
+            boolean[] ex = {false, false};
+            final Page got = readOrExplore(ex);
+            final String why = report(got);                  // (also kept for Settings)
             main.post(() -> {
                 busy = false;
-                if (got.paragraphs.isEmpty()) {
-                    // what Loudbook sees, ready to paste, so the reader can be fixed for this Kindle
-                    copy(why);
-                    Log.i("LoudbookTest", "no book text found");
-                    toast("No book text found in Kindle. What Loudbook sees there is copied: paste it to Claude to get it fixed. (Or the book's publisher doesn't allow screen readers.)");
-                    return;
-                }
-                needExplore = ex;
-                startedAt = System.currentTimeMillis();
-                if (ex) toast("Kindle shares this book's text only with screen readers, so while Loudbook reads, the screen works like one. Tap the gold button to pause and get your screen back.");
-                accept(got);
-                svc.startKindle(got, 0);
-                watch();
+                if (got.paragraphs.isEmpty()) { noText(why); return; }
+                begin(got, ex, 0);
             });
         }, "lb-kindle").start();
+    }
+
+    /** The page's text. Kindle may share a book's text only with a screen reader that explores by touch
+     *  (as TalkBack does): if there's none, that's turned on and the page read again. explored: {needs it, just turned on}. */
+    private Page readOrExplore(boolean[] explored) {
+        Page p = readPage();
+        if (p.paragraphs.isEmpty() && !exploreOn && kindleRoot() != null) {
+            Log.i("LoudbookTest", "no text; trying explore-by-touch");
+            main.post(() -> setExplore(true));
+            for (int i = 0; i < 16 && p.paragraphs.isEmpty(); i++) { pause(300); p = readPage(); }
+            explored[0] = explored[1] = !p.paragraphs.isEmpty();
+            if (!explored[0]) main.post(() -> setExplore(false));
+        } else if (!p.paragraphs.isEmpty() && exploreOn) explored[0] = needExplore;
+        return p;
+    }
+    /** Nothing to read: what Loudbook sees is copied, ready to paste, so the reader can be fixed for this Kindle. */
+    private void noText(String why) {
+        copy(why);
+        Log.i("LoudbookTest", "no book text found");
+        toast("No book text found in Kindle. What Loudbook sees there is copied: paste it to Claude to get it fixed. (Or the book's publisher doesn't allow screen readers.)");
+    }
+    /** Starts reading the page from a letter (0: the top). */
+    private void begin(Page p, boolean[] explored, int letter) {
+        needExplore = explored[0];
+        startedAt = System.currentTimeMillis();
+        if (explored[1]) toast("Kindle shares this book's text only with screen readers, so while Loudbook reads, the screen works like one. Tap the gold button to pause and get your screen back.");
+        accept(p);
+        svc.startKindle(p, letter);
+        watch();
     }
     private volatile boolean busy;
     private volatile long startedAt;

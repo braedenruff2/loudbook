@@ -1,3 +1,4 @@
+Kindle: holding the gold button and tapping where to start now works for books whose text Kindle shares only with screen readers (it said "No book text found"). If it still can't find text, what it sees is copied so you can paste it to Claude.
 If a site's "next" button leads back to the same chapter, Loudbook stops there instead of reading it again.
 Reads dates like "Jan. 5" and "on 12/25" or "3/14/1995" as "January fifth", "December twenty-fifth" and "March fourteenth, nineteen ninety-five", "5 ft 6 in" as "five foot six", "250 dmg" as damage, "Mr. & Mrs. Smith", and "5th Ave." and "42nd St." as Avenue and Street.
 Says "call 911" as "nine one one", "$0.99" as "ninety-nine cents", "the year 1066" as "ten sixty-six", "476 AD", and "1.000.000" as a million.
