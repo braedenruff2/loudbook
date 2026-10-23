@@ -31,6 +31,17 @@ final class KindleText {
     List<Chapter.Chunk> chunks(List<String> paragraphs, boolean last) {
         List<String> paras = new ArrayList<>();
         for (String p : paragraphs) { String t = p.replaceAll("\\s+", " ").trim(); if (!t.isEmpty()) paras.add(t); }
+        if (skip != null) {
+            // the start of this page was already read with the sentence that ran over the page
+            // break (see bridge): carry on after it
+            String s0 = paras.isEmpty() ? "" : paras.get(0);
+            if (s0.startsWith(skip)) {
+                String rest0 = s0.substring(skip.length()).trim();
+                if (rest0.isEmpty()) paras.remove(0); else paras.set(0, rest0);
+                carry = "";
+            }
+            skip = null;
+        }
         if (!carry.isEmpty()) {
             if (paras.isEmpty()) paras.add(carry);
             else paras.set(0, carry + (startsLower(paras.get(0)) || !END.matcher(carry).find() ? " " : " ") + paras.get(0));
@@ -40,8 +51,7 @@ final class KindleText {
             // the page ends mid-sentence: keep the unfinished part for the next page
             String lp = paras.get(paras.size() - 1);
             if (!END.matcher(lp).find()) {
-                String[] parts = SENT.split(lp);
-                carry = parts[parts.length - 1];
+                carry = lastSentence(lp);
                 String rest = lp.substring(0, lp.length() - carry.length()).trim();
                 if (rest.isEmpty()) paras.remove(paras.size() - 1); else paras.set(paras.size() - 1, rest);
             }
@@ -56,6 +66,42 @@ final class KindleText {
             block++;
         }
         return out;
+    }
+
+    /** The last sentence of a paragraph ("Mr." and initials don't end one). */
+    static String lastSentence(String p) {
+        String[] parts = SENT.split(p);
+        String last = parts[parts.length - 1];
+        for (int i = parts.length - 2; i >= 0 && ABBREV.matcher(parts[i]).find(); i--) last = parts[i] + " " + last;
+        return p.substring(Math.max(0, p.length() - last.length()));
+    }
+    /** The first sentence of a paragraph. */
+    static String firstSentence(String p) {
+        String[] parts = SENT.split(p);
+        StringBuilder b = new StringBuilder(parts[0]);
+        for (int i = 1; i < parts.length && ABBREV.matcher(parts[i - 1]).find(); i++) b.append(' ').append(parts[i]);
+        int n = Math.min(p.length(), b.length());
+        return p.substring(0, n);
+    }
+
+    private String skip;
+    /** Length of the bridge's part on this page, for when to turn it. */
+    int bridgeHead;
+    /**
+     * The sentence that runs over the page break, whole, when the start of the next page is known
+     * (Kindle shares it, unseen, with screen readers): it's read before the page is turned, and the
+     * page turns when the voice gets to the words on the next page. null if there's none (then the
+     * unfinished part waits for the next page, as before).
+     */
+    Chapter.Chunk bridge(String nextStart) {
+        if (carry.isEmpty() || nextStart == null) return null;
+        String n = nextStart.replaceAll("\\s+", " ").trim();
+        if (n.isEmpty()) return null;
+        String first = firstSentence(n);
+        String whole = carry + " " + first;
+        skip = first;
+        bridgeHead = carry.length();
+        return new Chapter.Chunk(block, whole, say(whole));
     }
 
     private static final Pattern PAUSE = Pattern.compile("[,;:\u2014\u2013]\\s");

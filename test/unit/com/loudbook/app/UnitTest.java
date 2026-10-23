@@ -60,12 +60,27 @@ public class UnitTest {
         java.util.List<float[]> bx = Arrays.asList(new float[]{40, 100, 400, 140}, new float[]{0, 140, 400, 180}, new float[]{0, 180, 380, 220});
         KindleLayout kl = new KindleLayout(ls, bx, null);
         java.util.List<int[]> sp = kl.spans(Arrays.asList("The road out of the valley was older than the town.", "Mara walked it every morning, and liked it."));
-        check("sentence spans", Arrays.toString(sp.get(0)) + Arrays.toString(sp.get(1)), "[0, 40][40, 74]");
+        check("sentence spans", Arrays.toString(Arrays.copyOf(sp.get(0), 2)) + Arrays.toString(Arrays.copyOf(sp.get(1), 2)), "[0, 40][40, 74]");
         check("second sentence covers two lines", kl.boxesFor(sp.get(1)[0], sp.get(1)[1]).size(), 2);
         check("its first word starts mid-line", Math.round(kl.wordAt(sp.get(1)[0], sp.get(1)[1], 0f)[0]), 263);
         check("a tap on 'Mara' starts that sentence", kl.letterAt(300, 160), 40);
         check("a sentence begun on the page before is found by its end",
-            Arrays.toString(kl.spans(Arrays.asList("Far off, the road out of the valley was older than the town.")).get(0)), "[0, 40]");
+            Arrays.toString(kl.spans(Arrays.asList("Far off, the road out of the valley was older than the town.")).get(0)), "[0, 40, 6, 46]");
+        // a sentence that runs on to the next page: found by its start; the word is on this page only for its first part
+        int[] runOn = kl.spans(Arrays.asList("The road out of the valley was older than the town.", "Mara walked it every morning, and liked it, until the snow came.")).get(1);
+        check("a sentence running on to the next page is found by its start", Arrays.toString(runOn), "[40, 74, 0, 50]");
+        check("halfway through it, the word is past this page's part", KindleLayout.localFrac(runOn, 0.9f), 1.0f);
+        check("on the next page, the start isn't there", KindleLayout.localFrac(new int[]{0, 15, 34, 49}, 0.5f), -1.0f);
+        check("on the next page, its end is", Math.round(KindleLayout.localFrac(new int[]{0, 15, 34, 49}, 0.9f) * 100), 67);
+        // the sentence over a page break, whole, when the next page's start is known
+        KindleText kb = new KindleText("");
+        java.util.List<Chapter.Chunk> pgb = kb.chunks(Arrays.asList("It was late. He agreed with Mr. Morris"), false);
+        Chapter.Chunk br = kb.bridge("immediately; that he is to take possession. \u201cWhat is his name?\u201d");
+        check("page break: the page's whole sentences", pgb.size() + " " + pgb.get(0).text, "1 It was late.");
+        check("page break: the sentence over it, whole (not cut at Mr.)", br.text, "He agreed with Mr. Morris immediately; that he is to take possession.");
+        check("page break: where the next page starts in it", kb.bridgeHead, 25);
+        java.util.List<Chapter.Chunk> pg2 = kb.chunks(Arrays.asList("immediately; that he is to take possession. \u201cWhat is his name?\u201d"), false);
+        check("page break: the next page goes on after it", pg2.size() + " " + pg2.get(0).text, "1 \u201cWhat is his name?\u201d");
         // a line that wraps onto two rows on screen (known from the character boxes): a box per row
         float[][] cb = new float[11][];
         for (int i = 0; i < 11; i++) cb[i] = i < 5 ? new float[]{10 + i * 10, 100, 20 + i * 10, 120} : i == 5 ? new float[]{0, 0, 0, 0} : new float[]{10 + (i - 6) * 10, 120, 20 + (i - 6) * 10, 140};

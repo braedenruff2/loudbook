@@ -52,14 +52,29 @@ final class KindleLayout {
             String n = normOf(sentences.get(k));
             if (n.isEmpty()) { out.add(null); continue; }
             int f = norm.indexOf(n, at);
-            if (f >= 0 && f - at < 400) { out.add(new int[]{f, f + n.length()}); at = f + n.length(); continue; }
+            if (f >= 0 && f - at < 400) { out.add(new int[]{f, f + n.length(), 0, n.length()}); at = f + n.length(); continue; }
             // only part of it is on this page (it started on the one before): find how it ends
             int tail = Math.min(n.length(), 30);
             int g = norm.indexOf(n.substring(n.length() - tail), at);
-            if (g >= 0 && g - at < 400) { out.add(new int[]{at, g + tail}); at = g + tail; continue; }
+            if (g >= 0 && g - at < 400) { int e = g + tail; out.add(new int[]{at, e, Math.max(0, n.length() - (e - at)), n.length()}); at = e; continue; }
+            // or it runs on to the next page: the page ends with its start
+            int head = Math.min(n.length(), 30);
+            int h = norm.indexOf(n.substring(0, head), at);
+            if (h >= 0 && h - at < 400 && n.startsWith(norm.substring(h))) { out.add(new int[]{h, norm.length(), 0, n.length()}); at = norm.length(); continue; }
             out.add(null);
         }
         return out;
+    }
+
+    /**
+     * How far through the part of a sentence on this page the voice is (0..1), from how far through
+     * the whole sentence it is; -1 while it's still on the part on the page before.
+     */
+    static float localFrac(int[] span, float frac) {
+        if (span == null || span.length < 4 || span[3] <= 0 || span[1] <= span[0]) return frac;
+        float at = frac * span[3] - span[2];
+        if (at < 0) return -1f;
+        return Math.min(1f, at / (span[1] - span[0]));
     }
 
     /** The boxes covering letters [s, e) of the page, one per line. */

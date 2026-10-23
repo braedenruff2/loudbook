@@ -212,7 +212,8 @@ public class KindleService extends AccessibilityService {
         if (k >= 0 && k < spans.size() && spans.get(k) != null) {
             int[] sp = spans.get(k);
             sentence = lay.boxesFor(sp[0], sp[1]);
-            if (!svc.isPaused()) word = lay.wordAt(sp[0], sp[1], now[1]);
+            float lf = KindleLayout.localFrac(sp, now[1]);
+            if (!svc.isPaused() && lf >= 0) word = lay.wordAt(sp[0], sp[1], lf);
         }
         if (idx != lastLit) {
             lastLit = idx;
@@ -446,6 +447,7 @@ public class KindleService extends AccessibilityService {
         String signature = "";
         List<Bit> edges = new ArrayList<>();
         List<Bit> lines = new ArrayList<>();          // the book's lines, in reading order
+        String nextStart;                             // how the next page starts, if Kindle shares it (unseen)
         KindleLayout layout(boolean exact) { return KindleService.layoutOf(lines, exact); }
     }
 
@@ -727,11 +729,51 @@ public class KindleService extends AccessibilityService {
         if (para.length() > 0) p.paragraphs.add(para.toString());
         p.edges = edges;
         p.lines = body;
+        if (!body.isEmpty()) {
+            p.nextStart = hiddenAfter(root, body.get(body.size() - 1).text);
+            if (p.nextStart != null) Log.i("LoudbookTest", "kindle: next page starts \"" + (p.nextStart.length() > 50 ? p.nextStart.substring(0, 50) + "…" : p.nextStart) + "\"");
+        }
         // what's on screen, unfiltered: tells whether the page really changed
         StringBuilder sig = new StringBuilder();
         for (Bit b : bits) sig.append(b.text.length() > 40 ? b.text.substring(0, 40) : b.text).append('|');
         p.signature = sig.toString();
         return p;
+    }
+
+    /**
+     * Kindle (with a screen reader on) also lists the next page's paragraphs, unseen (no place on
+     * screen), right after this page's: the text of the first one after the page's last piece.
+     */
+    private static String hiddenAfter(AccessibilityNodeInfo root, String last) {
+        List<AccessibilityNodeInfo> all = new ArrayList<>();
+        textNodes(root, all, 0);
+        String key = last.trim();
+        if (key.length() > 40) key = key.substring(0, 40);
+        int at = -1;
+        Rect r = new Rect();
+        for (int i = 0; i < all.size(); i++) {
+            CharSequence t = all.get(i).getText();
+            all.get(i).getBoundsInScreen(r);
+            if (t != null && t.toString().trim().startsWith(key) && r.width() > 0 && r.height() > 0) at = i;
+        }
+        if (at < 0) return null;
+        for (int i = at + 1; i < all.size() && i < at + 4; i++) {
+            AccessibilityNodeInfo n = all.get(i);
+            n.getBoundsInScreen(r);
+            CharSequence t = n.getText();
+            if (t == null || t.toString().trim().isEmpty()) continue;
+            if (r.width() > 0 && r.height() > 0 && n.isVisibleToUser()) return null;     // (something else on this page)
+            String s = t.toString().trim();
+            return HINT.matcher(s).matches() ? null : s;
+        }
+        return null;
+    }
+    private static void textNodes(AccessibilityNodeInfo n, List<AccessibilityNodeInfo> out, int depth) {
+        if (n == null || depth > 40) return;
+        String id = n.getViewIdResourceName();
+        if (id != null && OVERLAY.matcher(id).find()) return;
+        if (n.getText() != null) out.add(n);
+        for (int i = 0; i < n.getChildCount(); i++) textNodes(n.getChild(i), out, depth + 1);
     }
 
     private static boolean startsLower(String t) { return !t.isEmpty() && Character.isLowerCase(t.codePointAt(0)); }

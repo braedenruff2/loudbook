@@ -550,6 +550,20 @@ public class ReaderService extends Service {
     }
     private static String ends(String t) { return t.length() <= 70 ? "[" + t + "]" : "[" + t.substring(0, 30) + " … " + t.substring(t.length() - 35) + "] (" + t.length() + ")"; }
 
+    /** The sentence that runs over the page break (if Kindle shared how the next page starts), and how far into it the next page starts (0..1); -1 if none. */
+    private volatile int splitIdx = -1;
+    private volatile float splitFrac;
+    private volatile boolean splitTurned;
+    private float addBridge(java.util.List<Chapter.Chunk> list, Chapter.Chunk bridge) {
+        if (bridge == null) return -1;
+        java.util.List<Chapter.Chunk> said = spoken(java.util.Collections.singletonList(bridge));
+        if (said.isEmpty()) return -1;
+        list.add(said.get(0));
+        float f = Math.max(0.05f, Math.min(0.98f, kt.bridgeHead / (float) Math.max(1, bridge.text.length())));
+        Log.i("LoudbookTest", "kindle: sentence over the page break, next page from " + Math.round(f * 100) + "%: " + ends(bridge.text));
+        return f;
+    }
+
     /** Starts reading the page open in Kindle (from KindleService's button); letter: where on the page to start (0 = the top). */
     void startKindle(KindleService.Page p, int letter) {
         kt = new KindleText(prefs.getString("fixes", ""));
@@ -558,9 +572,12 @@ public class ReaderService extends Service {
         logKindle("start", p.paragraphs, raw);
         kindleSig = p.signature;
         kindleEnded = false; kindleBusy = false;
+        splitIdx = -1; splitTurned = false;
         final java.util.List<Chapter.Chunk> page = raw;
+        final Chapter.Chunk bridge = kt.bridge(p.nextStart);
         kindleThread.submit(() -> {
-            java.util.List<Chapter.Chunk> first = spoken(page);
+            java.util.List<Chapter.Chunk> first = new java.util.ArrayList<>(spoken(page));
+            float frac = addBridge(first, bridge);
             // the sentence at the place tapped (or the first)
             int at = 0;
             if (letter > 0) {
@@ -585,6 +602,7 @@ public class ReaderService extends Service {
                 Chapter ch = new Chapter("kindle:" + System.currentTimeMillis(), "kindle", p.title.isEmpty() ? "Kindle" : p.title, "Kindle", first);
                 Log.i("LoudbookTest", "kindle start: " + p.paragraphs.size() + " paragraphs, " + first.size() + " sentences, from sentence " + startAt + ", title " + p.title);
                 kindleFrom = 0; kindleTo = first.size();
+                splitTurned = false; splitIdx = frac >= 0 ? first.size() - 1 : -1; splitFrac = frac;
                 setChapter(ch, startAt, true);
             });
             return null;
@@ -643,10 +661,15 @@ public class ReaderService extends Service {
                     kindleSig = p.signature;
                     java.util.List<Chapter.Chunk> got = kt.chunks(p.paragraphs, false);
                     logKindle("turned", p.paragraphs, got);
-                    java.util.List<Chapter.Chunk> more = spoken(got);
+                    Chapter.Chunk bridge = kt.bridge(p.nextStart);
+                    java.util.List<Chapter.Chunk> more = new java.util.ArrayList<>(spoken(got));
+                    float frac = addBridge(more, bridge);
                     int from = ch.size();
+                    // the sentence that ran over the page break (being heard now) is partly on this page too
+                    int pageFrom = splitIdx >= 0 && splitTurned && splitIdx == from - 1 ? splitIdx : from;
                     ch.chunks.addAll(more);
-                    kindleFrom = from; kindleTo = ch.size();
+                    kindleFrom = pageFrom; kindleTo = ch.size();
+                    splitTurned = false; splitIdx = frac >= 0 ? ch.size() - 1 : -1; splitFrac = frac;
                     Log.i("LoudbookTest", "kindle page turned: +" + more.size() + " sentences");
                 }
             } catch (Throwable t) { Log.w(TAG, "kindle page", t); kindleEnded = true; }
@@ -797,7 +820,18 @@ public class ReaderService extends Service {
                     return;
                 }
                 if (chapter != ch) return;
-                if (kt != null && "kindle".equals(ch.site) && next >= ch.size() && !kindleEnded) {
+                if (kt != null && "kindle".equals(ch.site) && next >= ch.size() && !kindleEnded && splitIdx == ch.size() - 1) {
+                    // Kindle: the page ends inside a sentence, and that sentence is queued whole: the
+                    // page turns when the voice gets to the next page's words (splitCheck)
+                    long until = System.currentTimeMillis() + 60_000;
+                    while (gen == myGen && !splitTurned && splitIdx == ch.size() - 1 && System.currentTimeMillis() < until) { heard(ch, marks, myGen); sleep(20); }
+                    if (gen != myGen) return;
+                    if (!splitTurned && splitIdx == ch.size() - 1) { splitTurned = true; kindleMore(ch); }   // (never got there: turn anyway)
+                    until = System.currentTimeMillis() + 10_000;
+                    while (gen == myGen && next >= ch.size() && (kindleBusy || !kindleQueued) && System.currentTimeMillis() < until) { heard(ch, marks, myGen); sleep(40); }
+                    if (gen != myGen) return;
+                }
+                else if (kt != null && "kindle".equals(ch.site) && next >= ch.size() && !kindleEnded) {
                     // Kindle: everything on this page is queued. Turn the page only once its last
                     // word has been heard (the screen shows what's being read), then carry on
                     if (!drain(myGen, ch, marks)) return;
@@ -903,6 +937,20 @@ public class ReaderService extends Service {
     }
 
     /** Moves the highlight (and saved place) to the sentence now coming out of the speaker. */
+    /** Kindle: the voice has got to the words on the next page (in the sentence over the page break): turn now. */
+    private void splitCheck(Chapter ch, AudioTrack t) {
+        int si = splitIdx;
+        if (si < 0 || splitTurned || heardIdx != si || kt == null || !"kindle".equals(ch.site)) return;
+        long head = t.getPlaybackHeadPosition() & 0xffffffffL;
+        float f = heardLen > 0 ? (head - heardStart) / (float) heardLen : 0f;
+        float secs = heardLen / (float) Math.max(1, t.getSampleRate());
+        float lead = secs > 0 ? Math.min(0.15f, 0.25f / secs) : 0f;              // (the turn takes a moment to show)
+        if (f < splitFrac - lead) return;
+        splitTurned = true;
+        Log.i("LoudbookTest", "kindle: the voice is at the next page's words (" + Math.round(f * 100) + "% of sentence " + si + "), turning");
+        kindleMore(ch);
+    }
+
     private void heard(Chapter ch, java.util.ArrayDeque<long[]> marks, int myGen) {
         AudioTrack t = track;
         if (t != null && sleepAt > 0) {
@@ -910,6 +958,7 @@ public class ReaderService extends Service {
             long left = sleepAt - System.currentTimeMillis();
             if (left < 15_000) { try { t.setVolume(Math.max(0.05f, left / 15_000f)); } catch (Exception ignored) { } }
         }
+        if (t != null) splitCheck(ch, t);
         if (t == null || marks.isEmpty()) return;
         long head = t.getPlaybackHeadPosition() & 0xffffffffL;
         int reached = -1;
