@@ -1,3 +1,4 @@
+Kindle: the highlight now follows the words on pages that start a chapter too, and on any part of the page near the gold button.
 Kindle: reads the page that's on screen (never an old page, Kindle's tips or the dictionary), turns the page when the voice gets to the next page's first word, and the highlight lines up with the words again.
 Kindle: holding the gold button and tapping where to start now works for books whose text Kindle shares only with screen readers (it said "No book text found"). If it still can't find text, what it sees is copied so you can paste it to Claude.
 If a site's "next" button leads back to the same chapter, Loudbook stops there instead of reading it again.

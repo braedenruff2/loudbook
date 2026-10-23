@@ -192,7 +192,66 @@ final class InkLayout {
             }
         }
         for (int p = 0; p < any.length; p++) if (!any[p]) out.set(p, null);
+        headings(out, texts, toks, f.moves, boxes);
         return out;
+    }
+
+    /**
+     * A short piece none of whose words matched, alone between two pieces that did (or at the
+     * top), with a row of ink there that nothing matched: that's a heading set bigger or spaced
+     * out ("C H A P T E R  1 1"), so its letters are spread along that row.
+     */
+    private static void headings(List<float[][]> out, List<String> texts, List<int[]> toks, List<int[]> moves, List<Word> boxes) {
+        int np = texts.size(), m = boxes.size();
+        int[] first = new int[np], last = new int[np];
+        Arrays.fill(first, -1); Arrays.fill(last, -1);
+        boolean[] used = new boolean[m];
+        for (int[] mv : moves) {
+            if (mv[0] < 1 || mv[0] > 3) continue;
+            int j0 = mv[2], j1 = mv[0] == 2 ? mv[2] + 1 : mv[2];
+            used[j0] = used[j1] = true;
+            int p = toks.get(mv[1])[0], p2 = mv[0] == 3 ? toks.get(mv[1] + 1)[0] : p;
+            for (int q : new int[]{p, p2}) { if (first[q] < 0 || j0 < first[q]) first[q] = j0; if (j1 > last[q]) last[q] = j1; }
+        }
+        List<Integer> hs = new ArrayList<>();
+        for (int j = 0; j < m; j++) if (used[j]) hs.add(boxes.get(j).y1 - boxes.get(j).y0);
+        if (hs.isEmpty()) return;
+        Collections.sort(hs);
+        int typical = hs.get(hs.size() / 2);
+        for (int p = 0; p < np; p++) {
+            String t = texts.get(p);
+            if (out.get(p) != null || t.trim().isEmpty() || t.length() > 60) continue;
+            int before = -1, after = m;
+            for (int q = p - 1; q >= 0; q--) if (last[q] >= 0) { before = last[q]; break; }
+            for (int q = p + 1; q < np; q++) if (first[q] >= 0) { after = first[q]; break; }
+            boolean alone = true;                                      // (the only piece without a place in that gap)
+            for (int q = p - 1; q >= 0 && last[q] < 0; q--) if (!texts.get(q).trim().isEmpty()) alone = false;
+            for (int q = p + 1; q < np && first[q] < 0; q++) if (!texts.get(q).trim().isEmpty()) alone = false;
+            if (!alone || after - before < 2) continue;
+            // the rows of unmatched ink in the gap; the heading is the tallest, and must stand out
+            int bestY = -1, bestH = 0, bx0 = 0, bx1 = 0, by1 = 0;
+            for (int j = before + 1; j < after; ) {
+                int y0 = boxes.get(j).y0, x0 = Integer.MAX_VALUE, x1 = 0, y1 = 0; boolean clean = true;
+                int s = j;
+                while (j < after && boxes.get(j).y0 == y0) { Word w = boxes.get(j); clean &= !used[j]; x0 = Math.min(x0, w.x0); x1 = Math.max(x1, w.x1); y1 = Math.max(y1, w.y1); j++; }
+                if (clean && j > s && y1 - y0 > bestH) { bestH = y1 - y0; bestY = y0; bx0 = x0; bx1 = x1; by1 = y1; }
+            }
+            if (bestY < 0 || bestH < typical * 1.2 || bestH > typical * 4) continue;
+            float[][] o = new float[t.length()][];
+            double at = 0, px = bx1 - bx0;
+            int s = 0, e = t.length();
+            while (s < e && Character.isWhitespace(t.charAt(s))) s++;
+            while (e > s && Character.isWhitespace(t.charAt(e - 1))) e--;
+            double inner = 0;
+            for (int c = s; c < e; c++) inner += Character.isWhitespace(t.charAt(c)) ? 1 : letter(t.charAt(c));
+            for (int c = s; c < e; c++) {
+                char ch = t.charAt(c);
+                double a0 = px * at / inner;
+                at += Character.isWhitespace(ch) ? 1 : letter(ch);
+                if (!Character.isWhitespace(ch)) o[c] = new float[]{(float) (bx0 + a0), bestY, (float) (bx0 + px * at / inner), by1};
+            }
+            out.set(p, o);
+        }
     }
 
     private static final class Fit { List<int[]> moves = new ArrayList<>(); int matched; double fitSum, matchedWidth, matchedWeight; }

@@ -670,7 +670,7 @@ public class KindleService extends AccessibilityService {
                         finally { try { r.getHardwareBuffer().close(); } catch (Throwable ignored) { } }
                         if (hl != null) hl.setVisibility(View.VISIBLE);
                         final android.graphics.Bitmap pic = shot;
-                        final Rect button = bubble == null ? null : new Rect(bubbleLp.x, bubbleLp.y, bubbleLp.x + bubbleLp.width, bubbleLp.y + bubbleLp.height);
+                        final Rect button = buttonOnScreen();
                         if (pic != null) new Thread(() -> placeFromPicture(p, pic, button, tries), "lb-kindle-ink").start();
                     }
                     @Override public void onFailure(int code) {
@@ -681,6 +681,19 @@ public class KindleService extends AccessibilityService {
                 });
             } catch (Throwable t) { if (hl != null) hl.setVisibility(View.VISIBLE); Log.w(TAG, "kindle screen", t); }
         }, 120);
+    }
+
+    /**
+     * Where the gold button is in a picture of the screen. (Its window's x/y can be measured from
+     * below the status bar, which Kindle hides, so it's asked where it really is.)
+     */
+    private Rect buttonOnScreen() {
+        if (bubble == null) return null;
+        int[] at = new int[2];
+        try { bubble.getLocationOnScreen(at); } catch (Throwable t) { at = null; }
+        int bw = bubble.getWidth() > 0 ? bubble.getWidth() : bubbleLp.width, bh = bubble.getHeight() > 0 ? bubble.getHeight() : bubbleLp.height;
+        if (at == null || (at[0] == 0 && at[1] == 0 && bubble.getWidth() == 0)) return new Rect(bubbleLp.x, bubbleLp.y, bubbleLp.x + bubbleLp.width, bubbleLp.y + bubbleLp.height);
+        return new Rect(at[0], at[1], at[0] + bw, at[1] + bh);
     }
 
     private void placeFromPicture(Page p, android.graphics.Bitmap pic, Rect button, int tries) {
@@ -711,7 +724,7 @@ public class KindleService extends AccessibilityService {
                 chars.add(got != null ? got : before != null && i < before.chars.size() ? before.chars.get(i) : null);
             }
             if (found == 0) {
-                Log.i("LoudbookTest", "kindle: couldn't place the words from the screen (" + ink.size() + " ink words), estimated instead");
+                Log.i("LoudbookTest", "kindle: couldn't place the words from the screen (" + ink.size() + " ink words, button " + button + "), estimated instead");
                 again = tries < 2;                                       // (maybe the page was still turning)
                 return;
             }

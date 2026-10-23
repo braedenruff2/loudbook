@@ -119,6 +119,16 @@ public class UnitTest {
         check("page: 'stones' boxed where it is", pg != null && pg.get(1) != null && pg.get(1)[si] != null
             && Math.abs(pg.get(1)[si][0] - where.get("stones")[0]) < 6 && Math.abs(pg.get(1)[si][1] - (where.get("stones")[1] + 60)) < 4, true);
         check("page: words not on screen have no box", pg != null && pg.get(1) != null && pg.get(1)[pieceTwo.indexOf("river")] == null, true);
+        // a chapter heading: bigger and spaced out ("C H A P T E R  2"), each letter its own run of ink
+        int[] px3 = new int[W * (H + 200)];
+        java.util.Arrays.fill(px3, 0xFFF8F0E0);
+        for (int yy = 0; yy < H; yy++) for (int xx = 0; xx < W; xx++) if (px[yy * W + xx] != 0xFF101010) px3[(yy + 200) * W + xx] = 0xFF202020;
+        for (int c = 0; c < 9; c++) { int hx = 100 + c * 45 + (c == 8 ? 40 : 0); for (int yy = 60; yy < 140; yy++) for (int xx = hx; xx < hx + 30; xx++) px3[yy * W + xx] = 0xFF202020; }
+        java.util.List<float[][]> pg3 = InkLayout.pageBoxes(Arrays.asList("CHAPTER 2", inkText), InkLayout.words(px3, W, H + 200, 0, 0));
+        check("heading page: the text placed", pg3 != null && pg3.get(1) != null && pg3.get(1)[vi] != null
+            && Math.abs(pg3.get(1)[vi][1] - (where.get("valley")[1] + 200)) < 4, true);
+        check("heading page: the heading spread along its row", pg3 != null && pg3.get(0) != null && pg3.get(0)[0] != null
+            && Math.abs(pg3.get(0)[0][0] - 100) < 3 && pg3.get(0)[0][1] == 60 && Math.abs(pg3.get(0)[8][2] - 530) < 3 && pg3.get(0)[7] == null, true);
         System.out.println(bad == 0 ? "ALL OK" : bad + " FAILED");
         System.exit(bad == 0 ? 0 : 1);
     }
