@@ -43,12 +43,16 @@ public class NewChapters extends JobService {
     }
 
     /** The story's latest chapter was just read to the end: watch it for a next one. */
-    static void caughtUp(Context c, Chapter ch) { mark(c, ch.url, true); }
-    private static void mark(Context c, String url, boolean on) {
+    static void caughtUp(Context c, Chapter ch) { mark(c, ch.url, true, null); }
+    /** on: watch it; newUrl: the new chapter found after it (the start page shows "New chapter out"). */
+    private static void mark(Context c, String url, boolean on, String newUrl) {
         SharedPreferences p = Voice.prefs(c);
         try {
             JSONArray a = new JSONArray(p.getString("shelf", "[]"));
-            for (int i = 0; i < a.length(); i++) if (a.getJSONObject(i).optString("url").equals(url)) a.getJSONObject(i).put("caughtUp", on);
+            for (int i = 0; i < a.length(); i++) if (a.getJSONObject(i).optString("url").equals(url)) {
+                a.getJSONObject(i).put("caughtUp", on);
+                if (newUrl != null) a.getJSONObject(i).put("newUrl", newUrl);
+            }
             p.edit().putString("shelf", a.toString()).apply();
         } catch (Exception e) { Log.w(TAG, "shelf", e); }
     }
@@ -78,7 +82,7 @@ public class NewChapters extends JobService {
             if (ch != null && ch.nextUrl != null) {
                 Log.i("LoudbookTest", "new chapter of " + s.optString("fiction") + ": " + ch.nextUrl);
                 notify(s.optString("fiction"), ch.nextUrl, i);
-                mark(this, url, false);
+                mark(this, url, false, ch.nextUrl);
             } else Log.i("LoudbookTest", "no new chapter of " + s.optString("fiction") + (err != null ? " (" + err + ")" : ""));
             next(watch, i + 1, params);
         });

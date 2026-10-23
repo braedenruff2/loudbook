@@ -43,4 +43,14 @@ adb shell dumpsys jobscheduler | grep -i "loudbook" | head -5 > jobs.txt
 adb shell cmd jobscheduler run -f com.loudbook.app 4711
 sleep 25
 adb shell dumpsys notification --noredact | grep -o "New chapter[^,]*" | head -3 | sed 's/^/notification: /' > newchapter.txt
+# reopened after the new chapter came out: play with nothing open goes on to the new chapter
+adb shell am force-stop com.loudbook.app
+adb shell input keyevent KEYCODE_WAKEUP
+adb shell wm dismiss-keyguard
+adb shell log -t LoudbookTest "=== reopened after the new chapter, play with nothing open ==="
+adb shell am start -n com.loudbook.app/.MainActivity
+sleep 25
+adb shell input tap $((W * 46 / 100)) $((H * 89 / 100))          # the big play button
+sleep 25
 adb logcat -d > logcat.txt
+grep -o "resumed with the next chapter: [^ ]*" logcat.txt | head -1 | sed 's/^/new chapter on play: /' >> newchapter.txt

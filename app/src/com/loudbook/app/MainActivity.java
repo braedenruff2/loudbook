@@ -416,7 +416,20 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         }
         if (resumeOnLoad != null && ch.url.equals(resumeOnLoad)) {
             resumeOnLoad = null;
-            if (svc != null) svc.setChapter(ch, svc.savedPos(ch.url), true);
+            if (svc == null) return;
+            int at = svc.savedPos(ch.url);
+            if (ch.size() > 0 && at >= ch.size()) {                    // read to the end last time
+                if (ch.nextUrl != null) {                               // there's a chapter after it now: go on to that
+                    onStatus("On to the next chapter\u2026", false);
+                    resumeOnLoad = ch.nextUrl;
+                    web.loadUrl(ch.nextUrl);
+                    return;
+                }
+                svc.setChapter(ch, ch.size() - 1, false);
+                onStatus(ReaderService.caughtUpLine(ch), false);
+                return;
+            }
+            svc.setChapter(ch, at, true);
             return;
         }
         offer(ch);

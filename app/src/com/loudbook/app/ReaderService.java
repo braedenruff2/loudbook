@@ -976,9 +976,39 @@ public class ReaderService extends Service {
             resuming = false;
             if (c == null) { status("Couldn't open your last chapter (" + err + "). Open it in Loudbook.", true); return; }
             if (chapter != null) return;                                   // something else was opened meanwhile
+            if (c.size() > 0 && savedPos(last) >= c.size()) {                // that chapter was read to the end
+                if (c.nextUrl != null) { resumeNext(c); return; }
+                setChapter(c, c.size() - 1, false);
+                if (listener != null) listener.onOpened(c);
+                status(caughtUpLine(c), false);
+                return;
+            }
             setChapter(c, Math.min(savedPos(last), Math.max(0, c.size() - 1)), true);
             if (listener != null) listener.onOpened(c);
         }));
+    }
+
+    /** The last chapter was finished and there's one after it now (a new chapter, or reading stopped at the end): read that. */
+    private void resumeNext(Chapter done) {
+        resuming = true;
+        status("On to the next chapter\u2026", false);
+        fetcher().get(done.nextUrl, (n, err) -> {
+            resuming = false;
+            if (chapter != null) return;
+            if (n == null || n.size() == 0) {                                // can't load it: stay on the last one
+                setChapter(done, done.size() - 1, false);
+                if (listener != null) listener.onOpened(done);
+                status("Couldn't open the next chapter (" + err + "). Try again in a moment.", true);
+                return;
+            }
+            Log.i("LoudbookTest", "resumed with the next chapter: " + n.url);
+            setChapter(n, Math.min(savedPos(n.url), n.size() - 1), true);
+            if (listener != null) listener.onOpened(n);
+        });
+    }
+    static String caughtUpLine(Chapter c) {
+        String f = c.fiction == null || c.fiction.trim().isEmpty() ? "this story" : c.fiction.trim();
+        return "You're caught up on " + f + ". Loudbook will tell you when the next chapter is out.";
     }
 
     // ---------------------------------------------------------------- the next chapter, ahead of time
@@ -1345,9 +1375,15 @@ public class ReaderService extends Service {
         try {
             org.json.JSONArray old = new org.json.JSONArray(prefs.getString("shelf", "[]")), now = new org.json.JSONArray();
             boolean caught = false;                       // (still caught up if it's the same, latest, chapter)
-            for (int i = 0; i < old.length(); i++) if (old.getJSONObject(i).optString("url").equals(ch.url)) caught = old.getJSONObject(i).optBoolean("caughtUp");
-            now.put(new org.json.JSONObject().put("fiction", ch.fiction).put("title", ch.title).put("url", ch.url).put("site", ch.site)
-                .put("pct", ch.size() > 0 ? Math.round(100f * at / ch.size()) : 0).put("at", System.currentTimeMillis()).put("caughtUp", caught));
+            String newUrl = null;                         // (and a new chapter found after it is still new)
+            for (int i = 0; i < old.length(); i++) if (old.getJSONObject(i).optString("url").equals(ch.url)) {
+                caught = old.getJSONObject(i).optBoolean("caughtUp");
+                newUrl = old.getJSONObject(i).optString("newUrl", null);
+            }
+            org.json.JSONObject entry = new org.json.JSONObject().put("fiction", ch.fiction).put("title", ch.title).put("url", ch.url).put("site", ch.site)
+                .put("pct", ch.size() > 0 ? Math.round(100f * at / ch.size()) : 0).put("at", System.currentTimeMillis()).put("caughtUp", caught);
+            if (newUrl != null && !newUrl.isEmpty()) entry.put("newUrl", newUrl);
+            now.put(entry);
             for (int i = 0; i < old.length() && now.length() < 8; i++) {
                 org.json.JSONObject o = old.getJSONObject(i);
                 if (!(o.optString("fiction").equals(ch.fiction) && o.optString("site").equals(ch.site))) now.put(o);
