@@ -68,11 +68,13 @@ public class KindleService extends AccessibilityService {
             f.addAction("com.loudbook.app.KINDLE_DUMP");
             f.addAction("com.loudbook.app.KINDLE_TURN");
             f.addAction("com.loudbook.app.KINDLE_TRY");
+            f.addAction("com.loudbook.app.KINDLE_TAP");
             testReceiver = new android.content.BroadcastReceiver() {
                 @Override public void onReceive(Context c, Intent i) {
                     String a = String.valueOf(i.getAction());
                     Log.i("LoudbookTest", "kindle test: " + a);
                     if (a.endsWith("READ")) readFresh();
+                    else if (a.endsWith("TAP")) tapped();
                     else if (a.endsWith("TRY")) { String how = i.getStringExtra("how"); new Thread(() -> tryTurn(how), "lb-kindle-try").start(); }
                     else if (a.endsWith("DUMP")) new Thread(() -> { report(readPage()); Log.i("LoudbookTest", "kindle test: dumped"); }, "lb-kindle-dump").start();
                     else new Thread(() -> { Page p = readPage(); Page q = nextPage(p.signature); Log.i("LoudbookTest", "kindle test: turned " + (q.paragraphs.isEmpty() ? "no" : "yes")); }, "lb-kindle-turn").start();
@@ -483,7 +485,10 @@ public class KindleService extends AccessibilityService {
             new Thread(() -> {
                 pause(needExplore ? 500 : 0);
                 Page p;
-                try { p = readPage(); } catch (Throwable t) { Log.w(TAG, "kindle resume", t); p = new Page(); }
+                try {
+                    p = readPage();
+                    for (int k = 0; k < 40 && p.paragraphs.isEmpty(); k++) { pause(250); p = readPage(); }
+                } catch (Throwable t) { Log.w(TAG, "kindle resume", t); p = new Page(); }
                 boolean moved = was != null && !p.paragraphs.isEmpty() && !p.paragraphs.equals(was.paragraphs);
                 final Page fp = p;
                 main.post(() -> {
@@ -521,7 +526,7 @@ public class KindleService extends AccessibilityService {
             Page before = p;
             pause(400);
             Page q = readPage();
-            for (int i = 0; i < 12 && q.paragraphs.isEmpty(); i++) { pause(250); q = readPage(); }
+            for (int i = 0; i < 40 && q.paragraphs.isEmpty(); i++) { pause(250); q = readPage(); }
             if (!q.paragraphs.isEmpty()) {
                 if (!q.paragraphs.equals(before.paragraphs)) Log.i("LoudbookTest", "kindle: the text without a screen reader was an old page");
                 explored[0] = explored[1] = true;
@@ -533,7 +538,7 @@ public class KindleService extends AccessibilityService {
         if (p.paragraphs.isEmpty() && !exploreOn && kindleRoot() != null) {
             Log.i("LoudbookTest", "no text; trying explore-by-touch");
             main.post(() -> setExplore(true));
-            for (int i = 0; i < 16 && p.paragraphs.isEmpty(); i++) { pause(300); p = readPage(); }
+            for (int i = 0; i < 36 && p.paragraphs.isEmpty(); i++) { pause(300); p = readPage(); }
             explored[0] = explored[1] = !p.paragraphs.isEmpty();
             if (!explored[0]) main.post(() -> setExplore(false));
         } else if (!p.paragraphs.isEmpty() && exploreOn) explored[0] = needExplore;
@@ -561,7 +566,10 @@ public class KindleService extends AccessibilityService {
     private void begin(Page p, boolean[] explored, int letter) {
         needExplore = explored[0];
         startedAt = System.currentTimeMillis();
-        if (explored[1]) toast("Kindle shares this book's text only with screen readers, so while Loudbook reads, the screen works like one. Tap the gold button to pause and get your screen back.");
+        if (explored[1] && !Voice.prefs(this).getBoolean("exploreToldOnce", false)) {
+            Voice.prefs(this).edit().putBoolean("exploreToldOnce", true).apply();
+            toast("Kindle shares this book's text only with screen readers, so while Loudbook reads, the screen works like one. Tap the gold button to pause and get your screen back.");
+        }
         accept(p);
         svc.startKindle(p, letter);
         watch();
@@ -577,12 +585,50 @@ public class KindleService extends AccessibilityService {
         try {
             AccessibilityServiceInfo i = getServiceInfo();
             if (i == null) return;
+            boolean bookOpen = krf();
             if (on) i.flags |= AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE;
             else i.flags &= ~AccessibilityServiceInfo.FLAG_REQUEST_TOUCH_EXPLORATION_MODE;
             setServiceInfo(i);
             exploreOn = on;
             Log.i("LoudbookTest", "explore by touch " + (on ? "on" : "off"));
+            // Kindle closes the book when a screen reader comes or goes: open it again
+            if (bookOpen) new Thread(this::reopenBook, "lb-kindle-reopen").start();
         } catch (Exception e) { Log.w(TAG, "explore by touch", e); }
+    }
+
+    /** If Kindle closed the book (it does when screen-reader mode switches), opens it again (Kindle's "Most recent book"). */
+    private void reopenBook() {
+        long end = System.currentTimeMillis() + 5000;
+        while (System.currentTimeMillis() < end) {
+            pause(250);
+            AccessibilityNodeInfo root = kindleRoot();
+            if (root == null) continue;
+            if (findClass(root, "KRFView", 0) != null) continue;               // (still open, or open again)
+            AccessibilityNodeInfo recent = findDesc(root, "Most recent book", 0);
+            if (recent == null) continue;
+            AccessibilityNodeInfo c = recent;
+            while (c != null && !c.isClickable()) c = c.getParent();
+            boolean ok = c != null && c.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+            Log.i("LoudbookTest", "kindle closed the book: opening it again" + (ok ? "" : " (couldn't)"));
+            reopenedAt = System.currentTimeMillis();
+            return;
+        }
+    }
+    volatile long reopenedAt;
+    private static AccessibilityNodeInfo findDesc(AccessibilityNodeInfo n, String start, int depth) {
+        if (n == null || depth > 40) return null;
+        CharSequence d = n.getContentDescription();
+        if (d != null && d.toString().startsWith(start)) return n;
+        for (int i = 0; i < n.getChildCount(); i++) { AccessibilityNodeInfo f = findDesc(n.getChild(i), start, depth + 1); if (f != null) return f; }
+        return null;
+    }
+    /** The real Kindle app (its views have ids), not the stand-in the tests use. */
+    private static boolean realKindle(AccessibilityNodeInfo n, int depth) {
+        if (n == null || depth > 12) return false;
+        String id = n.getViewIdResourceName();
+        if (id != null && id.startsWith(KINDLE + ":id/")) return true;
+        for (int i = 0; i < n.getChildCount(); i++) if (realKindle(n.getChild(i), depth + 1)) return true;
+        return false;
     }
 
     private void toast(String s) { android.widget.Toast.makeText(this, s, android.widget.Toast.LENGTH_LONG).show(); }
@@ -866,7 +912,9 @@ public class KindleService extends AccessibilityService {
         AccessibilityNodeInfo page = findClass(root, "KRFView", 0);
         List<Bit> inPage = new ArrayList<>();
         if (page != null) collect(page, inPage, 0);
-        if (!inPage.isEmpty()) bits = inPage; else collect(root, bits, 0);
+        if (!inPage.isEmpty()) bits = inPage;
+        else if (page != null || realKindle(root, 0)) return p;           // (Kindle, but not a book page: its home, library, a pop-up...)
+        else collect(root, bits, 0);
         // Kindle may lay out the pages either side of this one too (off to the left or right, or below): only what's on screen
         for (java.util.Iterator<Bit> it = bits.iterator(); it.hasNext(); ) {
             Rect r = it.next().r;

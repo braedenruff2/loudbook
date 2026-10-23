@@ -102,7 +102,7 @@ final class InkLayout {
      * (between letters, between words), so they're split in two groups and the line drawn between.
      */
     static int wordGap(List<Integer> gaps, int rowHeight) {
-        int lo = Math.max(3, Math.round(rowHeight * 0.1f)), hi = Math.max(lo + 1, Math.round(rowHeight * 0.45f));
+        int lo = Math.max(3, Math.round(rowHeight * 0.15f)), hi = Math.max(lo + 1, Math.round(rowHeight * 0.45f));
         if (gaps.size() < 6) return Math.max(lo, Math.min(hi, Math.round(rowHeight * 0.22f)));
         int[] g = new int[gaps.size()];
         for (int i = 0; i < g.length; i++) g[i] = gaps.get(i);
@@ -110,13 +110,16 @@ final class InkLayout {
         // (huge gaps, between columns or around a picture, aren't spaces: leave them out)
         int top = g.length;
         while (top > 1 && g[top - 1] > rowHeight * 2) top--;
-        // the cut that best splits the gaps in two tight groups (Otsu)
+        // the cut that best splits the gaps in two tight groups (Otsu), on a log scale: spaces in
+        // justified text vary a lot (tight rows and loose ones), the gaps between letters little
         double best = -1; int cut = Math.round(rowHeight * 0.22f);
+        double[] lg = new double[top];
+        for (int i = 0; i < top; i++) lg[i] = Math.log(Math.max(1, g[i]));
         double total = 0;
-        for (int i = 0; i < top; i++) total += g[i];
+        for (int i = 0; i < top; i++) total += lg[i];
         double left = 0;
         for (int i = 0; i + 1 < top; i++) {
-            left += g[i];
+            left += lg[i];
             if (g[i + 1] == g[i]) continue;
             int nl = i + 1, nr = top - nl;
             double ml = left / nl, mr = (total - left) / nr;

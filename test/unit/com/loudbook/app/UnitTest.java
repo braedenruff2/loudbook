@@ -129,6 +129,12 @@ public class UnitTest {
             && Math.abs(pg3.get(1)[vi][1] - (where.get("valley")[1] + 200)) < 4, true);
         check("heading page: the heading spread along its row", pg3 != null && pg3.get(0) != null && pg3.get(0)[0] != null
             && Math.abs(pg3.get(0)[0][0] - 100) < 3 && pg3.get(0)[0][1] == 60 && Math.abs(pg3.get(0)[8][2] - 530) < 3 && pg3.get(0)[7] == null, true);
+        // spaces in justified text: loose rows (26-28 px) and tight ones (9-11 px), letters 1-6 px apart
+        java.util.List<Integer> gs = new java.util.ArrayList<>();
+        int[][] hist = {{1, 29}, {2, 36}, {3, 51}, {4, 13}, {5, 6}, {6, 4}, {9, 1}, {10, 1}, {11, 4}, {13, 4}, {14, 4}, {20, 2}, {26, 3}, {27, 3}, {28, 4}};
+        for (int[] hb : hist) for (int c = 0; c < hb[1]; c++) gs.add(hb[0]);
+        int cutG = InkLayout.wordGap(gs, 48);
+        check("ink: tight spaces still count as spaces, letter gaps don't", cutG > 6 && cutG <= 9, true);
         System.out.println(bad == 0 ? "ALL OK" : bad + " FAILED");
         System.exit(bad == 0 ? 0 : 1);
     }
