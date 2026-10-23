@@ -747,11 +747,16 @@ public class KindleService extends AccessibilityService {
         return false;
     }
 
+    private static final java.util.regex.Pattern OVERLAY = java.util.regex.Pattern.compile(
+        ":id/(compose_infosheet_container|selection_buttons_menu|object_selection_view|writing_toolbar_overlay|pinnable_content_\\w+|notepad_fragment_container|ipw_notepad_fragment_container|bottom_sheet_container|full_audio_player_container)$");
     /** Text-bearing nodes with no text below them (the finest pieces), skipping buttons. */
     private static void collect(AccessibilityNodeInfo n, List<Bit> out, int depth) {
         if (n == null || depth > 40) return;
         if (android.os.Build.VERSION.SDK_INT < 34 && depth > 0) n.refresh();
         if (!n.isVisibleToUser()) return;
+        // Kindle's own pop-ups over the page (the dictionary after a long press, the selection menu, notes) aren't the book
+        String id = n.getViewIdResourceName();
+        if (id != null && OVERLAY.matcher(id).find()) return;
         int before = out.size();
         for (int i = 0; i < n.getChildCount(); i++) collect(n.getChild(i), out, depth + 1);
         if (out.size() > before) return;                         // its children had the text
