@@ -69,12 +69,14 @@ public class KindleService extends AccessibilityService {
             f.addAction("com.loudbook.app.KINDLE_TURN");
             f.addAction("com.loudbook.app.KINDLE_TRY");
             f.addAction("com.loudbook.app.KINDLE_TAP");
+            f.addAction("com.loudbook.app.KINDLE_REOPEN");
             testReceiver = new android.content.BroadcastReceiver() {
                 @Override public void onReceive(Context c, Intent i) {
                     String a = String.valueOf(i.getAction());
                     Log.i("LoudbookTest", "kindle test: " + a);
                     if (a.endsWith("READ")) readFresh();
                     else if (a.endsWith("TAP")) tapped();
+                    else if (a.endsWith("REOPEN")) new Thread(KindleService.this::reopenBook, "lb-kindle-reopen").start();
                     else if (a.endsWith("TRY")) { String how = i.getStringExtra("how"); new Thread(() -> tryTurn(how), "lb-kindle-try").start(); }
                     else if (a.endsWith("DUMP")) new Thread(() -> { report(readPage()); Log.i("LoudbookTest", "kindle test: dumped"); }, "lb-kindle-dump").start();
                     else new Thread(() -> { Page p = readPage(); Page q = nextPage(p.signature); Log.i("LoudbookTest", "kindle test: turned " + (q.paragraphs.isEmpty() ? "no" : "yes")); }, "lb-kindle-turn").start();
@@ -592,7 +594,7 @@ public class KindleService extends AccessibilityService {
             exploreOn = on;
             Log.i("LoudbookTest", "explore by touch " + (on ? "on" : "off"));
             // Kindle closes the book when a screen reader comes or goes: open it again
-            if (bookOpen) new Thread(this::reopenBook, "lb-kindle-reopen").start();
+            if (bookOpen) new Thread(KindleService.this::reopenBook, "lb-kindle-reopen").start();
         } catch (Exception e) { Log.w(TAG, "explore by touch", e); }
     }
 
@@ -606,15 +608,36 @@ public class KindleService extends AccessibilityService {
             if (findClass(root, "KRFView", 0) != null) continue;               // (still open, or open again)
             AccessibilityNodeInfo recent = findDesc(root, "Most recent book", 0);
             if (recent == null) continue;
-            AccessibilityNodeInfo c = recent;
-            while (c != null && !c.isClickable()) c = c.getParent();
-            boolean ok = c != null && c.performAction(AccessibilityNodeInfo.ACTION_CLICK);
-            Log.i("LoudbookTest", "kindle closed the book: opening it again" + (ok ? "" : " (couldn't)"));
+            Log.i("LoudbookTest", "kindle closed the book: opening it again");
             reopenedAt = System.currentTimeMillis();
+            Rect at = new Rect();
+            recent.getBoundsInScreen(at);
+            // the item itself or what holds it; then, as a screen reader would, a double tap on it
+            String[] ways = {"click", "click on what holds it", "double tap", "tap"};
+            for (int w = 0; w < ways.length; w++) {
+                boolean sent = false;
+                if (w == 0) sent = recent.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                else if (w == 1) { AccessibilityNodeInfo c = recent.getParent(); for (int up = 0; up < 3 && c != null && !sent; up++, c = c.getParent()) sent = c.performAction(AccessibilityNodeInfo.ACTION_CLICK); }
+                else if (w == 2) { recent.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS); pause(150); sent = taps(at.centerX(), at.centerY(), 2); }
+                else sent = taps(at.centerX(), at.centerY(), 1);
+                long until = System.currentTimeMillis() + 3000;
+                boolean open = false;
+                while (sent && System.currentTimeMillis() < until) { pause(250); AccessibilityNodeInfo r = kindleRoot(); if (r != null && findClass(r, "KRFView", 0) != null) { open = true; break; } }
+                Log.i("LoudbookTest", "kindle reopen by " + ways[w] + ": " + (!sent ? "not possible" : open ? "open" : "didn't open"));
+                if (open) return;
+                AccessibilityNodeInfo r = kindleRoot();
+                if (r != null) { AccessibilityNodeInfo again = findDesc(r, "Most recent book", 0); if (again != null) recent = again; }
+            }
             return;
         }
     }
     volatile long reopenedAt;
+    /** n quick taps at a point (with screen-reader touch on, a double tap opens what's under the screen reader's focus). */
+    private boolean taps(int x, int y, int n) {
+        GestureDescription.Builder gb = new GestureDescription.Builder();
+        for (int k = 0; k < n; k++) { Path pt = new Path(); pt.moveTo(x, y); gb.addStroke(new GestureDescription.StrokeDescription(pt, k * 150L, 50)); }
+        return dispatchGesture(gb.build(), null, null);
+    }
     private static AccessibilityNodeInfo findDesc(AccessibilityNodeInfo n, String start, int depth) {
         if (n == null || depth > 40) return null;
         CharSequence d = n.getContentDescription();
