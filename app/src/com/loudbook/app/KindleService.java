@@ -1019,11 +1019,14 @@ public class KindleService extends AccessibilityService {
     Page nextPage(String beforeSig) {
         AccessibilityNodeInfo root = kindleRoot();
         if (root == null) return new Page();
-        for (int attempt = 0; attempt < 3; attempt++) {
+        for (int attempt = 0; attempt < 4; attempt++) {
+            // what a screen reader does (Kindle in screen-reader mode turns only so, or with two fingers),
+            // then a two-finger swipe, then what a finger does
             boolean sent;
             if (attempt == 0) sent = scrollForward(root);
-            else sent = gesture(attempt == 1);
-            Log.i("LoudbookTest", "kindle turn: " + (attempt == 0 ? "scroll forward" : attempt == 1 ? "swipe" : "tap at the right edge") + (sent ? " sent" : " not possible"));
+            else if (attempt == 1) sent = swipe2();
+            else sent = gesture(attempt == 2);
+            Log.i("LoudbookTest", "kindle turn: " + new String[]{"scroll forward", "two-finger swipe", "swipe", "tap at the right edge"}[attempt] + (sent ? " sent" : " not possible"));
             if (!sent) continue;
             long end = System.currentTimeMillis() + 2500;
             while (System.currentTimeMillis() < end) {
@@ -1033,6 +1036,7 @@ public class KindleService extends AccessibilityService {
                     try { Thread.sleep(250); } catch (InterruptedException ignored) { }   // let it finish drawing
                     Page q = readPage();
                     Page got = q.paragraphs.isEmpty() ? p : q;
+                    clearFocus();
                     accept(got);
                     return got;
                 }
@@ -1056,6 +1060,10 @@ public class KindleService extends AccessibilityService {
                 n.getBoundsInScreen(r);
                 boolean onScreen = r.width() > 0 && r.centerX() >= screen.left && r.centerX() < screen.right;
                 if ((pass == 0) != onScreen) continue;
+                // (Kindle's page scrolls only for the piece a screen reader is on)
+                n.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS);
+                try { Thread.sleep(120); } catch (InterruptedException ignored) { }
+                n.refresh();
                 if (n.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) return true;
             }
         return false;
@@ -1064,6 +1072,22 @@ public class KindleService extends AccessibilityService {
         if (n == null || depth > 40) return;
         if (n.isScrollable()) out.add(n);
         for (int i = 0; i < n.getChildCount(); i++) scrollables(n.getChild(i), out, depth + 1);
+    }
+
+    /** Two fingers swiped right to left (with a screen reader on, that turns Kindle's page). */
+    private boolean swipe2() {
+        DisplayMetrics dm = getResources().getDisplayMetrics();
+        int w = dm.widthPixels, h = dm.heightPixels;
+        GestureDescription.Builder gb = new GestureDescription.Builder();
+        for (int k = 0; k < 2; k++) { Path a = new Path(); a.moveTo(w * 0.8f, h * (0.45f + 0.1f * k)); a.lineTo(w * 0.2f, h * (0.45f + 0.1f * k)); gb.addStroke(new GestureDescription.StrokeDescription(a, 0, 250)); }
+        return dispatchGesture(gb.build(), null, null);
+    }
+    /** Takes the screen reader's focus box off Kindle's text (it was put there to turn the page). */
+    private void clearFocus() {
+        try {
+            AccessibilityNodeInfo f = findFocus(AccessibilityNodeInfo.FOCUS_ACCESSIBILITY);
+            if (f != null) f.performAction(AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS);
+        } catch (Throwable ignored) { }
     }
 
     private boolean gesture(boolean swipe) {
