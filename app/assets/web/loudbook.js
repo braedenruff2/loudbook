@@ -546,7 +546,7 @@ function tidy(t) {
     .replace(/\b(\d+)v(\d+)\b/g, '$1 versus $2')                  // a 1v1
     .replace(/\b(\d+)\s?(?:y\/o|yo|y\.o\.)(?![\w\/])/g, (m, n) => n + (n === '1' ? ' year old' : ' years old'))   // 25 y/o
     .replace(/(?<!\b[A-Za-z]{2,}:\s?)\b50\s?\/\s?50\b/g, 'fifty-fifty')   // not "MP: 50/50\"
-    .replace(/\b(\d+)'\s?(\d+)(?:"|''|”)/g, '$1 foot $2')           // 6'2"
+    .replace(/\b(\d+)['′]\s?(\d+)(?:"|''|”|″)/g, '$1 foot $2')   // also 6′2″ (prime marks)           // 6'2"
     .replace(/\b(\d+)\s?(am|pm|AM|PM|a\.m\.|p\.m\.)(?![\w])/g, (m, n, ap, at, all) =>
       // "at 3 a.m." ending a sentence keeps its full stop (the dots used to be dropped with it)
       n + ' ' + ap.replace(/\./g, '').toUpperCase() + (ap.endsWith('.') && /^["'”’)\]]*(\s*$|\s+\p{Lu})/u.test(all.slice(at + m.length)) ? '.' : ''))
