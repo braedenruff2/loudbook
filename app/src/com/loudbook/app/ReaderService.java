@@ -543,11 +543,19 @@ public class ReaderService extends Service {
         return new float[]{i, f, kindleFrom, kindleTo};
     }
 
+    /** For the tests: the page's paragraphs and the sentences made of them (ends only). */
+    private static void logKindle(String what, java.util.List<String> paras, java.util.List<Chapter.Chunk> chunks) {
+        for (int i = 0; i < paras.size(); i++) Log.i("LoudbookTest", "kindle " + what + " para " + i + ": " + ends(paras.get(i)));
+        for (int i = 0; i < chunks.size(); i++) Log.i("LoudbookTest", "kindle " + what + " sentence " + i + ": " + ends(chunks.get(i).text));
+    }
+    private static String ends(String t) { return t.length() <= 70 ? "[" + t + "]" : "[" + t.substring(0, 30) + " … " + t.substring(t.length() - 35) + "] (" + t.length() + ")"; }
+
     /** Starts reading the page open in Kindle (from KindleService's button); letter: where on the page to start (0 = the top). */
     void startKindle(KindleService.Page p, int letter) {
         kt = new KindleText(prefs.getString("fixes", ""));
         java.util.List<Chapter.Chunk> raw = kt.chunks(p.paragraphs, false);
         if (raw.isEmpty()) raw = new KindleText(prefs.getString("fixes", "")).chunks(p.paragraphs, true);
+        logKindle("start", p.paragraphs, raw);
         kindleSig = p.signature;
         kindleEnded = false; kindleBusy = false;
         final java.util.List<Chapter.Chunk> page = raw;
@@ -633,7 +641,9 @@ public class ReaderService extends Service {
                     if (k == null || !k.kindleVisible()) main.post(() -> status("Kindle isn't on screen, so the page can't be turned. Open it to carry on.", false));
                 } else {
                     kindleSig = p.signature;
-                    java.util.List<Chapter.Chunk> more = spoken(kt.chunks(p.paragraphs, false));
+                    java.util.List<Chapter.Chunk> got = kt.chunks(p.paragraphs, false);
+                    logKindle("turned", p.paragraphs, got);
+                    java.util.List<Chapter.Chunk> more = spoken(got);
                     int from = ch.size();
                     ch.chunks.addAll(more);
                     kindleFrom = from; kindleTo = ch.size();
