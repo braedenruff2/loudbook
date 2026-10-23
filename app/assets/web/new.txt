@@ -1,3 +1,5 @@
+Skips emoji and hearts (the voice used to read out "red heart"), drops the "~" in "Hello~", and says "21yo" as "twenty-one years old".
+"What...?" now sounds like a question instead of running into the next words. Also says "lvl.5", "HP/MP", "a 1/10 chance", "9/10 times", "×3" and "Approx 5 mins" the way you would.
 Says "Q&A", "AT&T", "Q1", "99¢", "v3", "2.0.1", "a 2x2 grid", "the '90s" and "WWII" the way you would, and skips smileys like ":)" and "xD".
 Says "Room 404" as "four oh four", "Apt. 305", "24/7", "w/o", "Ep. 4" and "1/2 done" the way you would. Also "0300 hours", "1000s of people" and "Fig. 3".
 On sites Loudbook doesn't know, the story's name now comes from the page title ("The Story - Chapter 12"), so the shelf, lock screen and new-chapter alerts show it instead of the site's address.

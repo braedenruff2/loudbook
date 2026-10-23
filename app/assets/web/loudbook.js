@@ -490,6 +490,9 @@ function tidy(t) {
   // scene breaks and decorations ("***", "~~~", "=== Chapter 5 ===", "---o0o---", "◇◇◇"): silent
   t = t.replace(/([~=*#_<>+\-—–])\1{2,}/g, ' ').replace(/(^|\s)(?!XXX\b)[oO0xX]{3}(?=\s|$)/g, '$1 ').replace(/^\s*XXX\s*$/, '').replace(/[◇◆◈❖•·♦♢❦☆★✦✧♪♫]+/gu, ' ')
     .replace(/(\p{L})\s+<3\s+(?=\p{L})/gu, '$1 heart ').replace(/<3\b/g, '')
+    // emoji and ♥ ™ ® (the voice reads out their names: "red heart", "trade mark"); © is kept
+    .replace(/(?![©‼⁉])[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{1F3FB}-\u{1F3FF}]+/gu, ' ')
+    .replace(/(\p{L})~+(?=[\s.,!?"'”’)]|$)/gu, '$1')                 // "Hello~" (the voice said "tilde")
     // emoticons: ":)", ";)", ":D", "xD", "^_^", "T_T" (the voice says "colon", "ex dee")
     .replace(/(^|\s)(?:[:;=]-?[)(DPpO3\]\[|\/]|xD+|XD+(?=[\s.!?]*$)|\^_*\^|T_T|>_<|-_-|o_O|O_o|:'\()(?=[\s.,!?"'”’)]|$)/g, '$1');
   if (!/[\p{L}\p{N}]/u.test(t)) return '';
@@ -501,6 +504,7 @@ function tidy(t) {
     .replace(/\p{L}*(\p{L})\1{2,}\p{L}*/giu, stretched)
     .replace(/([!?])[!?]{2,}/g, (m) => (m.includes('?') && m.includes('!') ? '?!' : m[0]))
     .replace(/\.{4,}/g, '...')
+    .replace(/(?:\.\.\.|…)+\s?([?!])/g, '$1')                     // "What...?" (the voice ran it into the next words)
     // the voice drops "..." altogether (no pause at all): a beat instead, or a full stop before a new sentence
     .replace(/(\.\.\.|…)(?=\s*["'”’)\]]*\s*$)/gu, '.')
     .replace(/(\.\.\.|…)\s*(?=\p{Lu})/gu, '. ').replace(/(\p{L}|\p{N}|,)\s*(\.\.\.|…)\s*(?=[\p{Ll}\p{N}])/gu, '$1; ')
@@ -513,7 +517,8 @@ function tidy(t) {
     .replace(/\b(\p{L})(?:-\1)*-(\1)/giu, (m, a, b) => (a === a.toUpperCase() ? b.toUpperCase() : b))   // also "W-w-wait"
     // arrows in stat changes: "15 → 17"
     .replace(/\s*(?:→|->|⟶|=>)\s*/g, ' to ')
-    .replace(/\b(?:Lv|Lvl|LVL|LV)\.?\s*(?=\d)/g, 'Level ')
+    .replace(/\b(?:Lv|Lvl|LVL|LV|lvl|lv)\.?\s*(?=\d)/g, 'Level ')
+    .replace(/\b(HP|MP|SP|XP|EXP|EP|AP)\/(HP|MP|SP|XP|EXP|EP|AP)\b/g, '$1 and $2')   // HP/MP (not "slash")
     .replace(/\b([A-Z]{3})(?=\s*(?::|\+|-|—|–|\d))/g, (m, k) => STATS[k] || m)
     .replace(/(\d\s*)([A-Z]{3})\b(?![a-z])/g, (m, n, k) => n + (STATS[k] || k))   // +5 STR
     .replace(/(^|[\s(\[])\+(?=\d)/g, '$1plus ')                     // +5 Agility
@@ -522,6 +527,7 @@ function tidy(t) {
     .replace(/(\d)\s?\+\s?(?=\d)|(\d)\+(?=[\s.,!?)\]]|$)/g, (m, a, b) => (a ? a + ' plus ' : b + ' plus'))   // 1d20+5, 2+2, 18+                  // -5 degrees
     .replace(/\b(\d+)x(\d+)\b/g, '$1 by $2')                       // a 2x2 grid, 1920x1080
     .replace(/#(?=\d)/g, 'number ')                                // Rank #1
+    .replace(/\b(\d+)\s?×(?=\s|$)/g, '$1 times').replace(/(^|\s)×\s?(?=\d)/g, '$1times ')   // 3× damage, ×3
     .replace(/\b(\d+)x\b/g, '$1 times').replace(/\bx(\d+)\b/g, 'times $1')   // 2x damage, x3
     .replace(/\$(\d+(?:\.\d+)?)\s?(k|K|m|M|bn|b|B)\b/g, (m, n, u) => n + ' ' + { k: 'thousand', m: 'million', b: 'billion', bn: 'billion' }[u.toLowerCase()] + ' dollars')
     .replace(/\b(\d+(?:\.\d+)?)\s?k\b/g, '$1 thousand')            // 10k
@@ -529,7 +535,7 @@ function tidy(t) {
     .replace(/\b(\d+(?:\.\d+)?)(M|bn)\b(?=\s+(?!(?:is|was|and|or|on|in|at|to|of|for|with|had|has)\b)\p{Ll})|\b(\d+\.\d+)(M|B|bn|K)\b/gu, (m, a, u, b, v) =>
       (a || b) + ' ' + { m: 'million', b: 'billion', bn: 'billion', k: 'thousand' }[(u || v).toLowerCase()])
     .replace(/\b(\d+)v(\d+)\b/g, '$1 versus $2')                  // a 1v1
-    .replace(/\b(\d+)\s?y\/o\b/g, (m, n) => n + (n === '1' ? ' year old' : ' years old'))   // 25 y/o
+    .replace(/\b(\d+)\s?(?:y\/o|yo|y\.o\.)(?![\w\/])/g, (m, n) => n + (n === '1' ? ' year old' : ' years old'))   // 25 y/o
     .replace(/(?<!\b[A-Za-z]{2,}:\s?)\b50\s?\/\s?50\b/g, 'fifty-fifty')   // not "MP: 50/50\"
     .replace(/\b(\d+)'\s?(\d+)(?:"|''|”)/g, '$1 foot $2')           // 6'2"
     .replace(/\b(\d+)\s?(am|pm|AM|PM|a\.m\.|p\.m\.)(?![\w])/g, (m, n, ap, at, all) =>
@@ -562,6 +568,8 @@ function tidy(t) {
     .replace(/\b((?:[Rr]oom|[Ee]rror|[Ss]uite|[Aa]pt\.?|[Aa]partment|[Ff]light|[Cc]ell|[Ll]ocker|[Gg]ate|[Pp]latform)\s+#?)([1-9])(\d)(\d)\b(?![\d/:-]|[.,]\d)/g,
       (m, pre, a, b, c) => pre.replace(/^([Aa])pt\.?/, '$1partment') + (b === '0' && c === '0' ? a + b + c : b === '0' ? a + ' oh ' + c : a + ' ' + b + c))
     .replace(/\b(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})\b/g, '$1 $2 $3')            // 10/12/2025 (not "ten of twelve of")
+    .replace(/\b1\s?\/\s?(\d+)(?=\s+(?:chance|odds|shot)\b)/g, '1 in $1')                 // a 1/10 chance
+    .replace(/\b(\d+)\s?\/\s?(\d+)(?=\s+times\b)/g, '$1 out of $2')                      // 9/10 times
     .replace(/(\d|\bthousand|\bmillion|\bbillion)\s*\/\s*(\d)/g, '$1 of $2')   // 120/150 -> 120 of 150, 1.2k/3k
     // phone numbers digit by digit: "555-1234", "(555) 123-4567" (not "five hundred and fifty-five to...")
     .replace(/(?:\((\d{3})\)\s?|\b(\d{3})[-.])(\d{3})-(\d{4})\b(?![-–/]\d)|\b([2-9]\d\d)-(\d{4})\b(?![-–/]\d)/g, (m, ...g) =>
@@ -571,7 +579,8 @@ function tidy(t) {
     .replace(/\bCh\.\s*(?=\d)/g, 'Chapter ').replace(/\bVol\.\s*(?=\d)/g, 'Volume ').replace(/\bNo\.\s*(?=\d)/g, 'Number ')
     .replace(/\bEp\.\s*(?=\d)/g, 'Episode ').replace(/\bpg\.\s*(?=\d)/gi, 'page ').replace(/\bpp\.\s*(?=\d)/g, 'pages ')     // "pg. 45" (the voice said "P G")
     .replace(/\b([CF])#(?![\w#])/g, '$1 sharp')                     // C#, F# (languages, notes)
-    .replace(/\b([Aa])pprox\.(?=\s)/g, '$1pproximately').replace(/(^|\s)w\/o(?=[\s,.!?]|$)/g, '$1without').replace(/(^|\s)w\/(?=\s)/g, '$1with').replace(/\bb\/c\b/g, 'because')
+    .replace(/\b([Aa])pprox\.(?=\s)|\b([Aa])pprox\b(?=\s+[~\d])/g, (m, a, b) => (a || b) + 'pproximately')
+    .replace(/(^|\s)w\/o(?=[\s,.!?]|$)/g, '$1without').replace(/(^|\s)w\/(?=\s)/g, '$1with').replace(/\bb\/c\b/g, 'because')
     .replace(/([£€¥])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d\d))?\b/g, (m, c, n, p) => {   // £1,000, ¥10,000
       const [one, many] = c === '£' ? ['pound', 'pounds'] : c === '¥' ? ['yen', 'yen'] : ['euro', 'euros'];
       return n + ' ' + (n === '1' ? one : many) + (p && +p ? ' ' + (+p) : '');
