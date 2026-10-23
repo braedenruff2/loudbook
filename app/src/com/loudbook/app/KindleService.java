@@ -251,10 +251,18 @@ public class KindleService extends AccessibilityService {
         final boolean[] moved = {false};
         // while the screen works like a screen reader's, a tap arrives as a short hover
         final long[] hoverAt = {0};
+        // and a hold as a long one: the buzz says it's held, letting go brings up "tap where to start"
+        final Runnable held = () -> { if (bubble != null) bubble.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); };
         bubble.setOnHoverListener((v, ev) -> {
             if (!exploreOn) return false;
-            if (ev.getActionMasked() == MotionEvent.ACTION_HOVER_ENTER) hoverAt[0] = ev.getEventTime();
-            else if (ev.getActionMasked() == MotionEvent.ACTION_HOVER_EXIT && ev.getEventTime() - hoverAt[0] < 700) tapped();
+            if (ev.getActionMasked() == MotionEvent.ACTION_HOVER_ENTER) { hoverAt[0] = ev.getEventTime(); main.postDelayed(held, 700); }
+            else if (ev.getActionMasked() == MotionEvent.ACTION_HOVER_EXIT) {
+                main.removeCallbacks(held);
+                long t = ev.getEventTime() - hoverAt[0];
+                boolean inside = ev.getX() >= 0 && ev.getY() >= 0 && ev.getX() <= v.getWidth() && ev.getY() <= v.getHeight();
+                if (t < 700) tapped();
+                else if (inside && t < 5000) { Log.i("LoudbookTest", "kindle button held (screen-reader touch)"); showPicker(); }
+            }
             return true;
         });
         bubble.setOnTouchListener((v, ev) -> {
@@ -403,6 +411,23 @@ public class KindleService extends AccessibilityService {
                 main.post(() -> { copy(d); toast("Copied what Loudbook sees in Kindle. Paste it to Claude to get the reading fixed."); });
             }, "lb-kindle-copy").start();
         });
+        // with screen-reader touch on, a tap on the page arrives as a short hover (and the button's "Copy" can't be clicked)
+        final long shown = android.os.SystemClock.uptimeMillis();
+        final long[] enter = {0};
+        View.OnHoverListener hover = (v, ev) -> {
+            if (ev.getActionMasked() == MotionEvent.ACTION_HOVER_ENTER) { if (enter[0] == 0 || v == f) enter[0] = ev.getEventTime(); }
+            else if (ev.getActionMasked() == MotionEvent.ACTION_HOVER_EXIT && enter[0] > shown + 150 && ev.getEventTime() - enter[0] < 1500 && picker == f) {
+                float x = ev.getRawX(), y = ev.getRawY();
+                int[] at = new int[2];
+                copyIt.getLocationOnScreen(at);
+                enter[0] = 0;
+                if (x >= at[0] && x <= at[0] + copyIt.getWidth() && y >= at[1] && y <= at[1] + copyIt.getHeight()) copyIt.performClick();
+                else { Log.i("LoudbookTest", "kindle: picked by hover"); hidePicker(); startFrom(x, y); }
+            }
+            return true;
+        };
+        f.setOnHoverListener(hover);
+        copyIt.setOnHoverListener(hover);
         f.setOnTouchListener((v, ev) -> {
             if (ev.getActionMasked() != MotionEvent.ACTION_UP) return true;
             final float x = ev.getRawX(), y = ev.getRawY();
