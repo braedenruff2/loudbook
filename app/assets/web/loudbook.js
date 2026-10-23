@@ -459,6 +459,9 @@ const TITLES = { Mr: 'Mister', Mrs: 'Missus', Ms: 'Miz', Dr: 'Doctor', Prof: 'Pr
   Lt: 'Lieutenant', Gen: 'General', Col: 'Colonel', Rev: 'Reverend', Fr: 'Father', Sr: 'Senior', Jr: 'Junior', Gov: 'Governor',
   Sen: 'Senator', Rep: 'Representative', Pres: 'President', Insp: 'Inspector', Det: 'Detective', Cpl: 'Corporal', Pvt: 'Private',
   Adm: 'Admiral', Cmdr: 'Commander', Maj: 'Major', Hon: 'Honorable' };
+const MONTHS = { Jan: 'January', Feb: 'February', Mar: 'March', Apr: 'April', Jun: 'June', Jul: 'July', Aug: 'August', Sep: 'September',
+  Sept: 'September', Oct: 'October', Nov: 'November', Dec: 'December' };
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const DAYS = { Mon: 'Monday', Tue: 'Tuesday', Tues: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Thur: 'Thursday', Thurs: 'Thursday',
   Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' };
 const UNITS = { km: ['kilometer', 'kilometers'], cm: ['centimeter', 'centimeters'], mm: ['millimeter', 'millimeters'],
@@ -544,6 +547,13 @@ function tidy(t) {
     .replace(/\b(\d+(?:\.\d+)?)(M|bn)\b(?=\s+(?!(?:is|was|and|or|on|in|at|to|of|for|with|had|has)\b)\p{Ll})|\b(\d+\.\d+)(M|B|bn|K)\b/gu, (m, a, u, b, v) =>
       (a || b) + ' ' + { m: 'million', b: 'billion', bn: 'billion', k: 'thousand' }[(u || v).toLowerCase()])
     .replace(/\b(\d+)v(\d+)\b/g, '$1 versus $2')                  // a 1v1
+    // "on 12/25" -> on December 25th (a date, not "twelve of twenty-five")
+    .replace(/\b([Oo]n|[Bb]y|[Uu]ntil|[Bb]efore|[Aa]fter|[Ss]ince)\s+(1[0-2]|0?[1-9])\/(3[01]|[12]\d|0?[1-9])\b(?![\/\d])(?!\s+of\b)/g,
+      (m, pre, mo, d) => pre + ' ' + MONTH_NAMES[+mo - 1] + ' ' + +d + ({ 1: 'st', 2: 'nd', 3: 'rd' }[+d % 10 && (+d < 11 || +d > 13) ? +d % 10 : 0] || 'th'))
+    .replace(/\b(\d+)\s?dmg\b/gi, '$1 damage').replace(/\bdmg\b/g, 'damage').replace(/\bDMG\b/g, 'Damage')   // 250 dmg
+    .replace(/\b(\d)\s?ft\.?\s?(\d{1,2})\s?in\b(?:\.(?=\s+\p{Ll}))?/gu, '$1 foot $2')                      // 5 ft 6 in
+    .replace(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\.?\s+(3[01]|[12]\d|0?[1-9])(st|nd|rd|th)?\b(?![:.\/]?\d)/g,   // Jan. 5, 2024 -> January 5th
+      (m, mo, d, th) => (MONTHS[mo] || mo) + ' ' + +d + (th || ({ 1: 'st', 2: 'nd', 3: 'rd' }[+d % 10 && (+d < 11 || +d > 13) ? +d % 10 : 0] || 'th')))
     .replace(/\b(\d+)\s?(?:y\/o|yo|y\.o\.)(?![\w\/])/g, (m, n) => n + (n === '1' ? ' year old' : ' years old'))   // 25 y/o
     .replace(/(?<!\b[A-Za-z]{2,}:\s?)\b50\s?\/\s?50\b/g, 'fifty-fifty')   // not "MP: 50/50\"
     .replace(/\b(\d+)['′]\s?(\d+)(?:"|''|”|″)/g, '$1 foot $2')   // also 6′2″ (prime marks)           // 6'2"
@@ -584,7 +594,13 @@ function tidy(t) {
     .replace(/\b((?:[Rr]oom|[Ee]rror|[Ss]uite|[Aa]pt\.?|[Aa]partment|[Ff]light|[Cc]ell|[Ll]ocker|[Gg]ate|[Pp]latform)\s+#?)([1-9])(\d)(\d)\b(?![\d/:-]|[.,]\d)/g,
       (m, pre, a, b, c) => pre.replace(/^([Aa])pt\.?/, '$1partment') + (b === '0' && c === '0' ? a + b + c : b === '0' ? a + ' oh ' + c : a + ' ' + b + c))
     .replace(/(?<![\d,.$\/]|Porsche )\b911\b(?![\d\/]|[.,]\d)/g, '9 1 1').replace(/\bPorsche 911\b/g, 'Porsche 9 11')   // call 911 (was "nine hundred and eleven")
-    .replace(/\b(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})\b/g, '$1 $2 $3')
+    // 3/14/1995 -> March 14th, 1995 (25/12/2024, day first, -> December 25th); impossible dates as before
+    .replace(/\b(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})\b/g, (m, a, b, y) => {
+      let mo = +a, d = +b;
+      if (mo > 12 && d <= 12) [mo, d] = [d, mo];
+      if (mo < 1 || mo > 12 || d < 1 || d > 31) return a + ' ' + b + ' ' + y;
+      return MONTH_NAMES[mo - 1] + ' ' + d + ({ 1: 'st', 2: 'nd', 3: 'rd' }[d % 10 && (d < 11 || d > 13) ? d % 10 : 0] || 'th') + ', ' + y;
+    })
     .replace(/(?<![\d.])\b(\d{1,2})\.(\d{1,2})\.((?:19|20)\d\d)\b(?!\.?\d)/g, '$1 $2 $3')   // 1.5.2024 (was "one point five.twenty twenty-four")            // 10/12/2025 (not "ten of twelve of")
     .replace(/\b1\s?\/\s?(\d+)(?=\s+(?:chance|odds|shot)\b)/g, '1 in $1')                 // a 1/10 chance
     .replace(/\b(\d+)\s?\/\s?(\d+)(?=\s+times\b)/g, '$1 out of $2')                      // 9/10 times
@@ -636,7 +652,10 @@ function tidy(t) {
     .replace(/(\b\p{L}+\s)['’](\d\d)(s?)\b(?![\d'’%])(?![^'’\n]*['’](?:[\s,.!?;:]|$))/gu, '$1$2$3')
     .replace(/\bMt\.(?=\s+[A-Z])/g, 'Mount')                     // the voice says "M T." and stops
     .replace(/(^|\s)~\s?(?=\d)/g, '$1about ')                     // ~5 minutes (the voice says "tilde")
+    .replace(/\b(\d+(?:st|nd|rd|th))\s+St\.(?!\w)/g, '$1 Street')                          // 42nd St.
     .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)/g, '$1 Street')
+    .replace(/\b(Ave|Blvd)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, a, mid) => (a === 'Ave' ? 'Avenue' : 'Boulevard') + (mid !== undefined ? '' : '.'))          // 5th Ave.
+    .replace(/\b(Mr|Mrs|Ms|Dr)\.(?=\s*(?:&|and)\s)/g, (m, t) => TITLES[t])                 // Mr. & Mrs. Smith
     .replace(/\b(Lt|Sgt|Capt|Cpl|Pvt|Cmdr|Jr|Sr)\.(?=\s+\p{Ll}|\s*$)/gu, (m, t) => TITLES[t])   // "the Lt. arrived"
     .replace(/\ba\.k\.a\.?(?=\s)/gi, 'also known as').replace(/\bCh\s+(?=\d)/g, 'Chapter ')
     .replace(/\b([4-7])'(\d|1[01])(?![\d'"”])/g, '$1 foot $2')         // a 5'2 girl
