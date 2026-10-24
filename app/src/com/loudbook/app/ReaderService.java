@@ -702,7 +702,11 @@ public class ReaderService extends Service {
 
     private synchronized GeminiBook bookFor(Chapter ch) {
         String k = GeminiBook.key(ch.url, cVoice(), cModel(), cStyle());
-        if (book == null || !k.equals(bookKey)) { book = GeminiBook.open(cloudRoot(), k); bookKey = k; }
+        if (book == null || !k.equals(bookKey)) {
+            book = GeminiBook.open(cloudRoot(), k); bookKey = k;
+            // recorded before Gemini's read-out instructions were allowed for: time it again (free)
+            for (GeminiBook.Made m : book.needsRetiming()) refineLater(ch, book, m);
+        }
         book.bind(ch);
         return book;
     }

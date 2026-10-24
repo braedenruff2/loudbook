@@ -34,6 +34,25 @@ final class CloudVoice {
     };
     static final String DEFAULT_STYLE = "Read this like a skilled audiobook narrator: natural and engaging, following the mood of the story and the characters' emotions.";
 
+    /**
+     * The older API takes the reading style and the text in one prompt, and Gemini sometimes read
+     * the style out loud ("natural and engaging, following the mood..."), which put every sentence
+     * after it one off. Set out the way Google's own examples do: notes for the narrator, then the
+     * transcript, marked as the only part to say.
+     */
+    static String prompt(String style, String text) {
+        String st = style == null ? "" : style.trim();
+        if (st.isEmpty()) return text;
+        return "### DIRECTOR'S NOTES (for the narrator only; never say these out loud)\n" + st
+            + "\n\n### TRANSCRIPT (say exactly this, and nothing else)\n" + text;
+    }
+
+    /** About how many letters of instructions Gemini might say before the text, if it says them (0: none sent). */
+    static int preambleChars(String style) {
+        String st = style == null ? "" : style.trim();
+        return st.isEmpty() ? 0 : st.length();
+    }
+
     static final class Audio { final float[] samples; final int rate; Audio(float[] s, int r) { samples = s; rate = r; } }
 
     /** Which way of asking worked last time (Google has two APIs and has renamed models before). */
@@ -70,7 +89,7 @@ final class CloudVoice {
      */
     static Pcm speakToFile(String key, String model, String voice, String style, String text, java.io.File out, int timeoutMs) throws IOException {
         String st = style == null ? "" : style.trim();
-        String withStyle = (st.isEmpty() ? "" : st + "\n\n") + text;
+        String withStyle = prompt(st, text);
         String[] urls = new String[4], bodies = new String[4];
         String content = "{\"type\":\"text\",\"text\":" + PcLink.quote(text)
             + (st.isEmpty() ? "" : ",\"annotations\":[{\"type\":\"speech_metadata\",\"style\":" + PcLink.quote(st) + "}]") + "}";

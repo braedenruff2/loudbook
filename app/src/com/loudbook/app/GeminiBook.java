@@ -30,6 +30,8 @@ final class GeminiBook {
     private final Map<Integer, Seg> bound = new HashMap<>();           // chapter sentence -> recording
     private final java.util.Set<Integer> issued = new java.util.HashSet<>();   // handed out to play (timing frozen)
     private Chapter boundTo;
+    private int version;                                                // 2: timed with the passed-over instructions in mind
+    static final int VERSION = 2;
 
     private GeminiBook(File dir) { this.dir = dir; }
 
@@ -88,6 +90,23 @@ final class GeminiBook {
         return new Voice.Clip(p.read(s.start, (int) (s.end - s.start)), p.rate, 1f, 0);
     }
 
+    /**
+     * Recordings made before sentence timing allowed for Gemini reading its instructions out: each
+     * part, once, to be timed again by the recogniser (it costs no request).
+     */
+    synchronized List<Made> needsRetiming() {
+        List<Made> out = new ArrayList<>();
+        if (version >= VERSION) return out;
+        version = VERSION;
+        for (int p = 0; p < parts.size(); p++) {
+            Made m = new Made(); m.part = p; m.from = Integer.MAX_VALUE;
+            for (Seg s : all) if (s.part == p) { m.from = Math.min(m.from, s.idx); m.count++; }
+            if (m.count > 0) out.add(m);
+        }
+        if (!all.isEmpty()) save();
+        return out;
+    }
+
     /** A recording just made, for sentence timing. */
     static final class Made { int part; int from; int count; }
 
@@ -109,12 +128,13 @@ final class GeminiBook {
         synchronized (this) { partNo = parts.size(); }
         File f = new File(dir, "part" + partNo + "-" + System.currentTimeMillis() + ".pcm");
         CloudVoice.Pcm pcm = CloudVoice.speakToFile(key, model, voice, style, text.toString(), f, 600_000);
-        Align.Result r = Align.align(pcm, chars, pace);
+        Align.Result r = Align.align(pcm, chars, pace, CloudVoice.preambleChars(style));
         if (r.count == 0) throw new IOException("Gemini's recording didn't match the chapter text");
         if (paceOut != null) paceOut[0] = r.cutShort ? 0 : r.secPerChar;
         Made m = new Made();
         synchronized (this) {
             m.part = parts.size(); m.from = from; m.count = r.count;
+            if (all.isEmpty()) version = VERSION;
             parts.add(pcm);
             for (int k = 0; k < r.count; k++)
                 all.add(new Seg(from + k, hash(ch.chunks.get(from + k)), m.part, r.start[k], r.end[k], k < r.count - 1));
@@ -127,8 +147,11 @@ final class GeminiBook {
 
     /**
      * Exact timing: the recogniser hears the words, and each sentence's cut moves to where its
-     * first word starts (into the pause just before it). Sentences already handed out to play keep
-     * theirs, so nothing is heard twice or skipped.
+     * first word starts (into the pause just before it). The whole recording is listened to, so
+     * anything Gemini said before the text (its instructions, read out by mistake) is passed over
+     * and the first sentence starts at its own first word. When most sentences are heard, all the
+     * cuts are rebuilt from the words, which also fixes timing that was a whole sentence off.
+     * Sentences already handed out to play keep theirs, so nothing is heard twice or skipped.
      */
     void refine(Chapter ch, Made m, AsrAligner asr) throws IOException {
         CloudVoice.Pcm pcm;
@@ -138,43 +161,47 @@ final class GeminiBook {
             for (Seg s : all) if (s.part == m.part) segs.add(s);
         }
         if (segs.isEmpty()) return;
-        long from = segs.get(0).start, to = segs.get(segs.size() - 1).end;
-        List<AsrAligner.Word> heard = asr.words(pcm, from, to - from);
+        long to = segs.get(segs.size() - 1).end;
+        List<AsrAligner.Word> heard = asr.words(pcm, 0, to);
         List<String> texts = new ArrayList<>();
         for (Seg s : segs) texts.add(ch.chunks.get(Math.min(s.idx, ch.size() - 1)).say);
         double[] st = AsrAligner.sentenceStarts(heard, texts);
-        double[][] pauses = Align.pauses(pcm);
-        int rate = pcm.rate;
-        int moved = 0;
+        long[] old = new long[segs.size()];
+        synchronized (this) { for (int k = 0; k < old.length; k++) old[k] = segs.get(k).start; }
+        long[] cut = AsrAligner.cuts(st, texts, Align.pauses(pcm), pcm.rate, old);
+        int moved = 0, n = segs.size();
+        long gap = pcm.rate / 5;
         synchronized (this) {
-            for (int k = 1; k < segs.size(); k++) {
-                if (Double.isNaN(st[k])) continue;
-                Seg prev = segs.get(k - 1), cur = segs.get(k);
-                if (issued.contains(prev.idx) || issued.contains(cur.idx)) continue;
-                // (the recogniser reports a word about a quarter second after it begins)
-                double word = from / (double) rate + st[k] - 0.22;
-                // cut in the middle of the pause just before the first word, if there is one
-                double cut = word - 0.05, best = Double.MAX_VALUE;
-                for (double[] p : pauses) {
-                    double end = p[0] + p[1] / 2;                       // where the pause ends
-                    if (end > word + 0.25 || end < word - 0.6) continue;
-                    double d = Math.abs(end - word);
-                    if (d < best) { best = d; cut = p[0]; }
+            for (int k = 0; k < n; k++) {
+                long at = cut[k];
+                if (at < 0) continue;
+                Seg cur = segs.get(k);
+                if (issued.contains(cur.idx)) continue;
+                // the end of this sentence: the next cut if that one will be made, else as it is
+                long limit = cur.end;
+                if (k + 1 < n && cut[k + 1] >= 0 && !issued.contains(segs.get(k + 1).idx)) limit = Math.max(limit, cut[k + 1]);
+                if (at >= limit - gap) continue;
+                if (k == 0) {
+                    // the first sentence: where its first word is (after anything said before it)
+                    if (Math.abs(at - cur.start) > pcm.rate / 20) moved++;
+                    cur.start = at;
+                    continue;
                 }
-                long at = Math.round(cut * rate);
-                if (at <= prev.start + rate / 5 || at >= cur.end - rate / 5) continue;
-                if (Math.abs(at - cur.start) > rate / 20) moved++;
+                Seg prev = segs.get(k - 1);
+                if (issued.contains(prev.idx) || at <= prev.start + gap) continue;
+                if (Math.abs(at - cur.start) > pcm.rate / 20) moved++;
                 prev.end = at; cur.start = at;
             }
             save();
         }
         lastRefined = moved;
     }
+
     volatile int lastRefined;
 
     // ---------------------------------------------------------------- on disk
     private void save() {
-        StringBuilder sb = new StringBuilder("{\"parts\":[");
+        StringBuilder sb = new StringBuilder("{\"v\":" + version + ",\"parts\":[");
         for (int p = 0; p < parts.size(); p++) {
             CloudVoice.Pcm x = parts.get(p);
             if (p > 0) sb.append(',');
@@ -203,6 +230,8 @@ final class GeminiBook {
         try {
             String j = new String(java.nio.file.Files.readAllBytes(idx.toPath()), StandardCharsets.UTF_8);
             int cut = j.indexOf("\"segs\"");
+            java.util.regex.Matcher vm = java.util.regex.Pattern.compile("^\\{\"v\":(\\d+)").matcher(j);
+            version = vm.find() ? Integer.parseInt(vm.group(1)) : 0;
             java.util.regex.Matcher pm = java.util.regex.Pattern.compile("\\[\"([^\"]+)\",(\\d+),(\\d+),(\\d+)\\]").matcher(j.substring(0, cut));
             while (pm.find()) {
                 File f = new File(dir, pm.group(1));

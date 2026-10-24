@@ -110,7 +110,13 @@ final class AsrAligner {
         int j = 0, misses = 0;
         for (int i = 0; i < tw.size() && j < hw.length; i++) {
             int found = -1;
-            for (int m = j; m < Math.min(hw.length, j + 12); m++) if (hw[m].equals(tw.get(i))) { found = m; break; }
+            // (at the very start, look further, as Gemini may have said its instructions first; and
+            // there a word counts only with the next word after it too, so a "the" in the
+            // instructions, or further into the first sentence, isn't taken for the first word)
+            boolean atStart = j == 0 && i < 6;
+            int reach = atStart ? 150 : 12;
+            for (int m = j; m < Math.min(hw.length, j + reach); m++)
+                if (hw[m].equals(tw.get(i)) && (!atStart || i + 1 >= tw.size() || (m + 1 < hw.length && hw[m + 1].equals(tw.get(i + 1))))) { found = m; break; }
             if (found < 0 && ++misses > 20) {
                 // lost: find the next place where three words in a row agree
                 outer:
@@ -134,5 +140,60 @@ final class AsrAligner {
             if (start[k] <= last + 0.15) start[k] = Double.NaN; else last = start[k];
         }
         return start;
+    }
+
+    /**
+     * Where each sentence should start (samples; -1 where it can't be told), from the times the
+     * recogniser heard their first words. If most were heard, the rest are filled in between them
+     * (by length, at the nearest pause) so the whole recording is re-cut from the words.
+     */
+    static long[] cuts(double[] st, List<String> texts, double[][] pauses, int rate, long[] old) {
+        int n = st.length;
+        double[] at = new double[n];
+        int known = 0;
+        for (int k = 0; k < n; k++) {
+            if (Double.isNaN(st[k])) { at[k] = Double.NaN; continue; }
+            known++;
+            // (the recogniser reports a word about a quarter second after it begins)
+            double word = st[k] - 0.22;
+            // cut in the middle of the pause just before the first word, if there is one
+            double c = word - 0.05, best = Double.MAX_VALUE;
+            for (double[] p : pauses) {
+                double end = p[0] + p[1] / 2;                       // where the pause ends
+                if (end > word + 0.25 || end < word - 0.6) continue;
+                double d = Math.abs(end - word);
+                if (d < best) { best = d; c = p[0]; }
+            }
+            at[k] = Math.max(0, c);
+        }
+        if (known * 2 >= n && known >= 2) {
+            // fill the gaps: between two heard sentences, by their lengths, snapped to a pause
+            int[] len = new int[n];
+            for (int k = 0; k < n; k++) len[k] = Math.max(1, texts.get(k).length());
+            for (int k = 0; k < n; k++) {
+                if (!Double.isNaN(at[k])) continue;
+                int a = k - 1; while (a >= 0 && Double.isNaN(at[a])) a--;
+                int b = k + 1; while (b < n && Double.isNaN(st[b])) b++;
+                double guess;
+                if (a >= 0 && b < n) {
+                    double tot = 0, upto = 0;
+                    for (int q = a; q < b; q++) { tot += len[q]; if (q < k) upto += len[q]; }
+                    guess = at[a] + (at[b] - at[a]) * upto / tot;
+                } else if (a >= 0) guess = at[a] + (old[k] - old[a]) / (double) rate;       // after the last heard one: keep the spacing
+                else guess = Double.NaN;                                                     // before the first heard one: leave it
+                if (Double.isNaN(guess)) continue;
+                double c = guess, best = 0.6;
+                for (double[] p : pauses) { double d = Math.abs(p[0] - guess); if (d < best) { best = d; c = p[0]; } }
+                at[k] = c;
+            }
+        }
+        long[] out = new long[n];
+        double last = -1;
+        for (int k = 0; k < n; k++) {
+            if (Double.isNaN(at[k]) || at[k] <= last + 0.2) { out[k] = -1; continue; }
+            out[k] = Math.round(at[k] * rate);
+            last = at[k];
+        }
+        return out;
     }
 }

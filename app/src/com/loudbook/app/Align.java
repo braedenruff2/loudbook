@@ -23,7 +23,16 @@ final class Align {
     static final int FRAME_MS = 20;
 
     static Result align(CloudVoice.Pcm pcm, int[] chars, double secPerChar) throws IOException {
-        return alignFrames(frames(pcm), chars, secPerChar, pcm.rate, pcm.samples());
+        return align(pcm, chars, secPerChar, 0);
+    }
+
+    /**
+     * leadChars: Gemini may say its instructions (about this many letters) before the text. If the
+     * sentences fit much better with that much speech passed over at the start, it is: otherwise
+     * every sentence would be one off.
+     */
+    static Result align(CloudVoice.Pcm pcm, int[] chars, double secPerChar, int leadChars) throws IOException {
+        return alignFrames(frames(pcm), chars, secPerChar, pcm.rate, pcm.samples(), leadChars);
     }
 
     /** The pauses in a recording: {middle, length} in seconds. */
@@ -69,6 +78,10 @@ final class Align {
     }
 
     static Result alignFrames(float[] rms, int[] chars, double secPerChar, int rate, long totalSamples) {
+        return alignFrames(rms, chars, secPerChar, rate, totalSamples, 0);
+    }
+
+    static Result alignFrames(float[] rms, int[] chars, double secPerChar, int rate, long totalSamples, int leadChars) {
         int nf = rms.length;
         double fs = FRAME_MS / 1000.0;
         float quiet = quietLevel(rms);
@@ -103,11 +116,11 @@ final class Align {
         double bestScore = Double.MAX_VALUE;
         double lo = secPerChar > 0 ? secPerChar * 0.7 : 0.04, hi = secPerChar > 0 ? secPerChar * 1.4 : 0.11;
         for (double spc = lo; spc <= hi; spc *= 1.04) {
-            Result r = viterbi(t, st, strong, chars, spc, end, rate);
+            Result r = viterbi(t, st, strong, chars, spc, end, rate, leadChars);
             if (best == null || r.score < bestScore) { bestScore = r.score; best = r; }
         }
         for (double spc = best.secPerChar * 0.97; spc <= best.secPerChar * 1.03; spc *= 1.01) {   // finer
-            Result r = viterbi(t, st, strong, chars, spc, end, rate);
+            Result r = viterbi(t, st, strong, chars, spc, end, rate, leadChars);
             if (r.score < bestScore) { bestScore = r.score; best = r; }
         }
         for (int k = 0; k < best.count; k++) {
@@ -118,7 +131,10 @@ final class Align {
         return best;
     }
 
-    private static Result viterbi(double[] t, double[] st, int[] strong, int[] chars, double spc, double end, int rate) {
+    /** What passing over spoken instructions at the start costs: only worth it if the fit gets clearly better. */
+    static final double LEAD_COST = 2.5;
+
+    private static Result viterbi(double[] t, double[] st, int[] strong, int[] chars, double spc, double end, int rate, int leadChars) {
         int C = t.length, N = chars.length;
         final float INF = Float.MAX_VALUE / 4;
         final double REWARD = 1.5;
@@ -127,6 +143,18 @@ final class Align {
         for (float[] row : dp) java.util.Arrays.fill(row, INF);
         dp[0][0] = 0;
         boolean abrupt = st[C - 1] < 0;
+        if (leadChars > 0) {
+            // or the text starts after some spoken instructions (all of them, or just a few words),
+            // ended by a clear pause. A flat cost: it's taken only when the sentences then fit
+            // clearly better, which they do by a lot when everything would otherwise be one off.
+            double hi = 2.2 * Math.max(0.35, leadChars * spc) + 1.2;
+            for (int j2 = 1; j2 < C - 1; j2++) {
+                if (t[j2] < 0.8) continue;
+                if (t[j2] > hi) break;
+                if (st[j2] < 0.2) continue;
+                dp[0][j2] = (float) (LEAD_COST - 1.5 * Math.min(st[j2], 0.6));
+            }
+        }
         for (int k = 0; k < N; k++) {
             double e = Math.max(0.35, Math.max(1, chars[k]) * spc);
             double lo = 0.4 * e, hi = 2.2 * e + 1.2, sd = 0.22 * e + 0.3;

@@ -4,7 +4,7 @@ name: Sentence timing model
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/asr.yml', 'app/src/com/loudbook/app/AsrAligner.java', 'test/jvm/com/loudbook/app/AsrTest.java']
+    paths: ['.github/workflows/asr.yml', 'app/src/com/loudbook/app/AsrAligner.java', 'app/src/com/loudbook/app/Align.java', 'app/src/com/loudbook/app/CloudVoice.java', 'test/jvm/com/loudbook/app/AsrTest.java', 'test/jvm/com/loudbook/app/PreambleTest.java']
   workflow_dispatch:
 permissions:
   contents: write
@@ -45,11 +45,14 @@ jobs:
           final class BuildInfo { static final String VERSION = "test"; static final int CODE = 1; static final String REPO = "${{ github.repository }}";
             static final String RELEASES = "https://github.com/" + REPO + "/releases/"; static final String VOICE_URL = RELEASES + "download/voice-1/"; }
           J
-          javac -nowarn -d cls -sourcepath test/jvm test/jvm/com/loudbook/app/AsrTest.java app/src/com/loudbook/app/{AsrAligner,Align,CloudVoice,PcLink,Net,Voice}.java BuildInfo.java app/src/com/k2fsa/sherpa/onnx/*.java
+          javac -nowarn -d cls -sourcepath test/jvm test/jvm/com/loudbook/app/AsrTest.java test/jvm/com/loudbook/app/PreambleTest.java app/src/com/loudbook/app/{AsrAligner,Align,CloudVoice,PcLink,Net,Voice}.java BuildInfo.java app/src/com/k2fsa/sherpa/onnx/*.java
           LIB=$(dirname $(find jni -name 'libsherpa-onnx-jni.so' | head -1))
           set +e
           LD_LIBRARY_PATH=$LIB timeout 900 java -Djava.library.path=$LIB -cp cls com.loudbook.app.AsrTest files kokoro-multi-lang-v1_0 > run.log 2>&1
           echo "exit code: $?" >> run.log
+          # Gemini reading its instructions out loud first must not put the sentences one off
+          LD_LIBRARY_PATH=$LIB timeout 900 java -Djava.library.path=$LIB -cp cls com.loudbook.app.PreambleTest files kokoro-multi-lang-v1_0 >> run.log 2>&1
+          echo "preamble test exit code: $?" >> run.log
           { echo '## Sentence timing test'; echo; echo '```'; grep -v "^/home/runner\|^$\|^[0-9 ]*$\|In bytes\|^GenerationConfig" run.log | tail -80; echo '```'; } > results.md
           cat results.md
       - name: Publish
