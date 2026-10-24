@@ -579,7 +579,14 @@ function tidy(t) {
     // 5°C, 90°F, a 90° angle (the voice skipped the sign)
     .replace(/(?<![\d.])(\d+(?:\.\d+)?)\s?°(\s?[CF]\b)?/g, (m, n, u, at, all) => n + (!u && /^\s+(?:angle|turn|slope|incline|bend|arc|view|cone|rotation)\b/.test(all.slice(at + m.length)) ? '-degree' : n === '1' ? ' degree' : ' degrees') + (u ? (u.trim() === 'C' ? ' Celsius' : ' Fahrenheit') : ''))
     .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|km|cm|mm|kg|lbs|lb|oz|mph|kph|ft|mi|mins|min|secs|sec|hrs|hr|m|g)\b(?!\/)/g,
-      (m, pre, n, u) => pre + n + ' ' + UNITS[u][n === '1' ? 0 : 1])
+      (m, pre, n, u, at, all) => {
+        // "a 10 km run", "the 5 kg bag" -> ten-kilometer run (the adjective form takes the singular)
+        const next = /^\s+(\p{Ll}+)/u.exec(all.slice(at + m.length));
+        if (!/[\/h]$/.test(u) && /(?:^|\s)(?:[Aa]n?|[Tt]he|[Hh]is|[Hh]er|[Tt]heir|[Mm]y|[Yy]our|[Oo]ur)\s$/.test(all.slice(0, at) + pre) && next &&
+            !/^(?:away|long|tall|wide|high|deep|thick|off|of|from|to|and|or|per|in|on|at|by|for|ahead|behind|down|up|later|ago|left|more|less|each|apiece|north|south|east|west|he|she|it|they|we|you|that|which|who|was|were|is|are|had|has|felt|seemed|took|went)$/.test(next[1]))
+          return pre + n + '-' + UNITS[u][0];
+        return pre + n + ' ' + UNITS[u][n === '1' ? 0 : 1];
+      })
     .replace(/\b1\/2(?=\s+(?:of|a|an|the)\b)/g, 'half').replace(/\b1\/3(?=\s+(?:of|a|an|the)\b)/g, 'a third')
     .replace(/\b1\/4(?=\s+(?:of|a|an|the)\b)/g, 'a quarter')
     .replace(/\b1\/(\d)(?:st|nd|rd|th)\b/g, (m, d) => ({ 2: 'half', 3: 'a third', 4: 'a quarter' }[d] || 'one ' + d + 'th'))   // 1/3rd
@@ -633,6 +640,15 @@ function tidy(t) {
     // gamer words the voice gets wrong: "AoE" ("ow-ee"), "DoT" ("doo-tee"), "IRL" ("url"), "idk"
     .replace(/\bAoEs?\b/g, (m) => 'AOE' + m.slice(3)).replace(/\bDoT(s?)\b/g, 'dot$1')
     .replace(/\bIRL\b/g, 'I-R-L').replace(/\b(?:idk|IDK)\b/g, 'I-D-K').replace(/\b(?:brb|BRB)\b/g, 'be right back')
+    // day lists: "Mon, Tue and Wed", "Sat or Sun", "Mon/Wed/Fri" -> full names (a lone "Sun" stays as written)
+    .replace(/\b(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b(?:,\s*(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b)*,?\s+(?:and|or|&)\s+(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b(?![\w'’])/g,
+      (m) => m.replace(/\b(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b/g, (d) => DAYS[d]).replace(/\s&\s/, ' and '))
+    .replace(/\b(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)(?:\/(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun))+\b(?![\w\/])/g,
+      (m) => { const d = m.split('/').map((x) => DAYS[x]); return d.slice(0, -1).join(', ') + ' and ' + d[d.length - 1]; })
+    .replace(/(?<![\w\/])(?:N\/A|n\/a)(?![\w\/])/g, 'not applicable')                // N/A (was "N slash A")
+    .replace(/\b(\d+)\s?(yrs?|wks?|mos)\.?(?![\w'’])/gu, (m, n, u, at, all) =>     // 25 yrs old, 3 wks
+      n + ' ' + { yr: 'year', yrs: 'year', wk: 'week', wks: 'week', mos: 'month' }[u] + (n === '1' ? '' : 's') +
+      (m.endsWith('.') && /^\s*(?:\p{Lu}|$)/u.test(all.slice(at + m.length)) ? '.' : ''))
     .replace(/\b([Oo]n|[Bb]y|[Uu]ntil|[Tt]ill|[Nn]ext|[Ll]ast|[Tt]his|[Ee]very)\s+(Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)(\.|(?!\s+\p{Lu}))(?![\w'’])(?=(\s*[,;:)]|\s+\p{Ll})?)/gu,
       (m, p, d, dot, mid) => p + ' ' + DAYS[d] + (dot && mid === undefined ? '.' : ''))   // on Mon. -> on Monday
     .replace(/\bMk\.?\s*(?=\d)/g, 'Mark ')                          // Mk. II (already "Mk. 2")
