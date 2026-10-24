@@ -78,7 +78,7 @@ public class KindleService extends AccessibilityService {
                     if (a.endsWith("READ")) readFresh();
                     else if (a.endsWith("TAP")) tapped();
                     else if (a.endsWith("REOPEN")) new Thread(KindleService.this::reopenBook, "lb-kindle-reopen").start();
-                    else if (a.endsWith("HOLD")) { final int tx = i.getIntExtra("x", 640), ty = i.getIntExtra("y", 1500); new Thread(() -> testHold(tx, ty), "lb-kindle-hold").start(); }
+                    else if (a.endsWith("HOLD")) { final int tx = i.getIntExtra("x", 640), ty = i.getIntExtra("y", 1500), wig = i.getIntExtra("wiggle", 0); new Thread(() -> testHold(tx, ty, wig), "lb-kindle-hold").start(); }
                     else if (a.endsWith("TRY")) { String how = i.getStringExtra("how"); new Thread(() -> tryTurn(how), "lb-kindle-try").start(); }
                     else if (a.endsWith("DUMP")) new Thread(() -> { report(readPage()); Log.i("LoudbookTest", "kindle test: dumped"); }, "lb-kindle-dump").start();
                     else new Thread(() -> { Page p = readPage(); Page q = nextPage(p.signature); Log.i("LoudbookTest", "kindle test: turned " + (q.paragraphs.isEmpty() ? "no" : "yes")); }, "lb-kindle-turn").start();
@@ -90,10 +90,11 @@ public class KindleService extends AccessibilityService {
     private android.content.BroadcastReceiver testReceiver;
     /** Test builds: a finger held on the gold button for 1.5 s, then a tap on the page at x,y, both through the
      *  screen-reader touch like a person's (adb's input skips it). "... am broadcast -a com.loudbook.app.KINDLE_HOLD --ei x 640 --ei y 1500" */
-    private void testHold(int x, int y) {
+    private void testHold(int x, int y, int wiggle) {
         Rect b = buttonOnScreen();
         if (b == null) { Log.i("LoudbookTest", "kindle test: hold: no button"); return; }
         Path pt = new Path(); pt.moveTo(b.centerX(), b.centerY());
+        if (wiggle > 0) { pt.lineTo(b.centerX() + wiggle, b.centerY() + wiggle); pt.lineTo(b.centerX(), b.centerY() + wiggle); }   // (a finger is never quite still)
         GestureDescription.Builder gb = new GestureDescription.Builder();
         gb.addStroke(new GestureDescription.StrokeDescription(pt, 0, 1500));
         Log.i("LoudbookTest", "kindle test: hold at " + b.centerX() + "," + b.centerY() + " sent " + dispatchGesture(gb.build(), null, null));
