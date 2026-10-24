@@ -431,7 +431,9 @@ function makeSayer(fixes = [], { tidy: doTidy = true } = {}) {
 // Roman numerals: "Chapter IV" -> "Chapter 4", "Tier III" -> "Tier 3", "Henry VIII" -> "Henry the 8th"
 // (the voice otherwise says "Roman four", and a run of I's used to get squashed).
 const ROMAN = /^M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$/;
-const COUNTED = /^(chapter|book|part|volume|vol\.?|act|arc|season|episode|tier|rank|class|grade|level|stage|phase|type|mark|mk\.?|model|gen|generation|war|floor|circle|realm|step|star|ch\.?)$/i;
+const COUNTED = /^(chapter|book|part|volume|vol\.?|act|arc|season|episode|tier|rank|class|grade|level|stage|phase|type|mark|mk\.?|model|gen|generation|war|floor|circle|realm|step|star|bowl|ch\.?)$/i;
+// words that aren't names, so the capitals after them aren't a king's number ("The MC" was "the the 1100th")
+const NOT_NAME = /^(?:The|A|An|His|Her|Its|My|Our|Their|Your|This|That|These|Those|And|But|Or|If|When|While|Then|So|No|Every|Each|Some|Any|Of|In|On|At|To|For|With|From|By|As|Is|Was|Not|Like|Than|Mr|Mrs|Ms|Dr|Miss|Sir|Lady|Lord|Dear|Hey|Oh|Yes|Our|Its|Big|Old|New|Young)$/;
 function romanValue(r) {
   const v = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
   let n = 0;
@@ -443,7 +445,7 @@ function romans(t) {
     if (!ROMAN.test(r)) return m;
     if (COUNTED.test(before)) return before + sp + romanValue(r);
     // after a name: a king, a pope, a ship. Only two letters or more ("Henry V" stays, "I" is a word).
-    if (r.length >= 2 && /^[A-Z][a-z]+$/.test(before)) return before + sp + 'the ' + romanValue(r) + ord(romanValue(r));
+    if (r.length >= 2 && /^[A-Z][a-z]+$/.test(before) && !NOT_NAME.test(before) && romanValue(r) <= 40) return before + sp + 'the ' + romanValue(r) + ord(romanValue(r));
     return m;
   });
 }
@@ -573,8 +575,8 @@ function tidy(t) {
       .filter(([v]) => v).map(([v, u]) => v + ' ' + u + (v === 1 ? '' : 's')).join(' ') || '0 seconds')
     .replace(/\b(\d+)d\s(\d+)h(?:\s(\d+)m)?\b(?!\/)/g, (m, d, h, n) => d + (d === '1' ? ' day ' : ' days ') + h + (h === '1' ? ' hour' : ' hours') + (n ? ' ' + n + (n === '1' ? ' minute' : ' minutes') : ''))   // 2d 3h left
     // coins: "50g 20s 5c" -> gold, silver, copper (not grams and seconds)
-    .replace(/\b(\d+)\s?g\s(\d+)\s?s\b(?:\s(\d+)\s?c\b)?/g, (m, g, sv, c) => g + ' gold ' + sv + ' silver' + (c ? ' ' + c + ' copper' : ''))
-    .replace(/\b(\d+)\s?s\s(\d+)\s?c\b/g, '$1 silver $2 copper')
+    .replace(/\b(\d+)\s?g(,?\s(?:and\s)?)(\d+)\s?s\b(?:(,?\s(?:and\s)?)(\d+)\s?c\b)?/g, (m, g, s1, sv, s2, c) => g + ' gold' + s1 + sv + ' silver' + (c ? s2 + c + ' copper' : ''))   // 5g 2s, 500g, 2s, 5c
+    .replace(/\b(\d+)\s?s(,?\s(?:and\s)?)(\d+)\s?c\b/g, '$1 silver$2$3 copper')
     // durations: "5m 30s", "2h 30m", "Cooldown: 30s", "1.5s" (not "in his 30s", "the 80s", "two 6s")
     .replace(/\b(\d+)\s?h\s(\d+)\s?m\b(?!\/)/g, (m, h, n) => h + (h === '1' ? ' hour ' : ' hours ') + n + (n === '1' ? ' minute' : ' minutes'))
     .replace(/\b(\d+)\s?m\s(\d+(?:\.\d+)?)\s?s\b(?!\/)/g, (m, a, b) => a + (a === '1' ? ' minute ' : ' minutes ') + b + (b === '1' ? ' second' : ' seconds'))
@@ -643,6 +645,7 @@ function tidy(t) {
     // ranks and grades: "Rank: S+", "an A+ student", "Grade: B-" (the voice dropped the sign)
     .replace(/\b([SABCDEF]{1,3})\+(?![+\w])/g, '$1 plus')
     .replace(/\b((?:[Rr]ank|[Gg]rade|[Tt]ier|[Cc]lass)(?::\s*|\s+))([SABCDEF]{1,3})-(?=[\s.,!?)\]]|$)/g, '$1$2 minus')
+    .replace(/(\b(?:[Aa]n?|got|gets|get|earned|scored)\s)([A-F])-(?=[\s.,!?)\]]|$)|\b([SABCDEF]{1,3})-(?=\s+(?:rank|grade|tier|class|student|average|level)\b)/g, (m, a, g, h) => (a ? a + g : h) + ' minus')   // a C-, a B- rank
     .replace(/\bvs\.?(?=\s)/gi, 'versus').replace(/(?<![\w.'’-])(ok|Ok|OK)(?![\w'’-]|\.\w)/g, (m) => (m[0] === 'o' ? 'okay' : 'Okay'))   // "ok" (the voice could say "ock")
     .replace(/\bi\.e\.(?=[\s,])/gi, 'that is')
     .replace(/\bPh\.D\./g, (m, at, all) => 'PhD' + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))
