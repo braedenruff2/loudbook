@@ -68,13 +68,15 @@
       .replace(/\b(\d{1,2}):(\d{2})\b/g, (_, h, m, at, all) => words(+h) + (+m === 0 ? (/^\s*(o'clock|o’clock|[ap]\.?m\b|[AP]M\b)/i.test(all.slice(at + 3 + h.length)) ? '' : " o'clock") : +m < 10 ? ' oh ' + words(+m) : ' ' + words(+m)))
       .replace(/\b(\d+)(st|nd|rd|th)\b/gi, (_, d) => ordinal(+d))
       // years before 1100, where it's clearly a year: "the year 1066", "in 1066.", "800 AD" -> ten sixty-six, eight hundred AD
-      .replace(/\b([Yy]ear\s+)(10\d\d)\b(?![.,]?\d)|\b((?:[Ii]n|[Ss]ince|[Uu]ntil|[Cc]irca|[Bb]y)\s+)(10\d\d)(?=\s*(?:[,;:!?)]|\.(?!\d)|$)|\s+(?:the|a|an|he|she|they|it|we|I|his|her|their|there|when|after|before)\b)|\b(\d{3,4})(?=\s?(?:AD|BC|BCE|CE|A\.D\.|B\.C\.)(?!\w))/g,
-        (m, p1, y1, p2, y2, y3) => { const y = +(y1 || y2 || y3); return (p1 || p2 || '') + (y % 1000 === 0 || (y < 1000 && y % 100 === 0) ? words(y) : yearWords(y)); })
+      .replace(/\b([Yy]ear\s+)(10\d\d)\b(?![.,]?\d)|\b((?:[Ii]n|[Ss]ince|[Uu]ntil|[Cc]irca|[Bb]y)\s+)(10\d\d)(?=\s*(?:[,;:!?)]|\.(?!\d)|$)|\s+(?:the|a|an|he|she|they|it|we|I|his|her|their|there|when|after|before)\b)|\b(\d{3,4})(?=\s?(?:AD|BC|BCE|CE|A\.D\.|B\.C\.)(?!\w))|((?:\bAD|\bA\.D\.)\s?)(\d{3,4})\b(?![.,]?\d)/g,
+        (m, p1, y1, p2, y2, y3, p4, y4) => { const y = +(y1 || y2 || y3 || y4); return (p1 || p2 || p4 || '') + (y % 1000 === 0 || (y < 1000 && y % 100 === 0) ? words(y) : yearWords(y)); })
       .replace(/\b(1[1-9]\d\d|20\d\d)s?\b/g, (m, y) => { const w = yearWords(+y); return m.endsWith('s') ? (w.endsWith('y') ? w.slice(0, -1) + 'ies' : w + 's') : w; })
       .replace(/\b(\d)0['’]?s\b/g, (m, d) => (TENS[+d] || 'ten').replace(/y$/, 'ies') + (d === '1' ? 's' : ''))   // the 80s, the 70's
       .replace(/\b([1-9])s\b/g, (m, d) => ONES[+d] + (d === '6' ? 'es' : 's'))   // two 6s -> two sixes         // the 80s -> the eighties
       .replace(/\b\d{1,3}(,\d{3})+\b/g, (m) => words(+m.replace(/,/g, '')))
       .replace(/\b(\d+)\.(\d+)\b/g, (_, a, b) => words(+a) + ' point ' + b.split('').map(x => ONES[+x]).join(' '))
+      .replace(/(?<![\d.,:\/$#-])\b0([1-9])([0-5]\d)\b(?![\d.,:\/]\d)/g, (m, h, n) =>   // 0800 -> oh eight hundred (military time)
+        'oh ' + ONES[+h] + (n === '00' ? ' hundred' : n[0] === '0' ? ' oh ' + ONES[+n[1]] : ' ' + words(+n)))
       .replace(/\b0\d+\b/g, (m) => m.split('').map(x => (x === '0' ? 'oh' : ONES[+x])).join(' '))   // Agent 007
       .replace(/\b\d+\b/g, (m) => (m.length > 15 ? m.split('').map(x => ONES[+x]).join(' ') : words(+m)));
   }

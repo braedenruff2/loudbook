@@ -1,4 +1,4 @@
-Says "N/A" as "not applicable", "Mon, Tue and Wed" and "Mon/Wed/Fri" as the full days, "a 10 km run" as "a ten-kilometer run", and "25 yrs", "3 wks", "6 mos" as years, weeks and months.
+Says "N/A" as "not applicable", "Mon, Tue and Wed" and "Mon/Wed/Fri" as the full days, "a 10 km run" as "a ten-kilometer run", and "25 yrs", "3 wks", "6 mos" as years, weeks and months. Also says "Mr Smith" (no dot), "tbh", "imo" and "2 doz." in full, "AD 476" as a year, "0800" as "oh eight hundred", and "50c" as cents.
 Says "In 1066 the Normans came" as "ten sixty-six", "he was 6'." as "six feet", "5 oz" as ounces, "on Fri" and "next Tues." as the full day, and "brb" as "be right back".
 Kindle: holding the gold button to choose where to start works again while you're reading or paused in Kindle (screen-reader mode): hold until it buzzes, let go, then tap the line to start from.
 Kindle: pause and play are instant again (no more closing and reopening the book). While you're in Kindle the screen stays in screen-reader mode, also when paused; leave Kindle to get your normal screen back.

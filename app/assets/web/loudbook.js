@@ -517,6 +517,7 @@ function tidy(t) {
     .replace(/\b(Mr|Mrs|Ms|Dr|Prof|Capt|Sgt|Lt|Gen|Col|Rev|Fr|Sr|Jr|Gov|Sen|Rep|Pres|Insp|Det|Cpl|Pvt|Adm|Cmdr|Maj|Hon)\.(?=\s+\p{Lu})/gu,
       (m, t) => TITLES[t])
     .replace(/\b(Mr|Mrs|Ms|Dr)\.(?=\p{Lu}\p{Ll})/gu, (m, t) => TITLES[t] + ' ')   // Mr.Smith (no space)
+    .replace(/\b(Mr|Mrs|Ms|Dr)(?=\s+(?:\p{Lu}\p{Ll}|(?:&|and)\s+(?:Mr|Mrs|Ms|Dr)\b))/gu, (m, t) => TITLES[t])   // Mr Smith, Mrs Jones (no dot, British style)
     // *sigh*, **bold**: the voice would say "asterisk"
     .replace(/\*+([^*\n]{1,80}?)\*+/g, '$1').replace(/(^|\s)\*+(?=\s|$)/g, '$1')
     // stammers: "N-no" -> "no", "S-stop" -> "stop" (otherwise "en no", "ess stop")
@@ -640,6 +641,9 @@ function tidy(t) {
     // gamer words the voice gets wrong: "AoE" ("ow-ee"), "DoT" ("doo-tee"), "IRL" ("url"), "idk"
     .replace(/\bAoEs?\b/g, (m) => 'AOE' + m.slice(3)).replace(/\bDoT(s?)\b/g, 'dot$1')
     .replace(/\bIRL\b/g, 'I-R-L').replace(/\b(?:idk|IDK)\b/g, 'I-D-K').replace(/\b(?:brb|BRB)\b/g, 'be right back')
+    .replace(/\b(?:tbh|TBH)\b/g, 'to be honest').replace(/\b(?:imo|IMHO|imho)\b/g, (m) => (m.length > 3 ? 'in my humble opinion' : 'in my opinion'))
+    .replace(/(^|[\s"“'‘(])gg(?=[\s"”'’.,!?)]|$)/g, '$1G-G')   // good game, said as letters
+    .replace(/\b(\d+)\s?doz\.?(?=\s|$)/g, (m, n) => n + ' dozen')
     // day lists: "Mon, Tue and Wed", "Sat or Sun", "Mon/Wed/Fri" -> full names (a lone "Sun" stays as written)
     .replace(/\b(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b(?:,\s*(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b)*,?\s+(?:and|or|&)\s+(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b(?![\w'’])/g,
       (m) => m.replace(/\b(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b/g, (d) => DAYS[d]).replace(/\s&\s/, ' and '))
@@ -660,7 +664,8 @@ function tidy(t) {
     // "&" inside letters: Q&A, R&D, AT&T ("AT&T" ran together; a lone "A" became "uh", so it's "eh")
     .replace(/\b([A-Z]{1,2})&([A-Z]{1,2})\b/g, (m, a, b) => [a, b].map((x) => (x === 'A' ? 'eh' : x.split('').join('-'))).join(' and '))
     .replace(/\bQ([1-4])\b/g, 'Q $1').replace(/\bFY\s?(?=\d{2,4}\b)/g, 'F-Y ')   // Q1, FY2024
-    .replace(/(\d)\s?¢/g, '$1 cents')
+    .replace(/(\d)\s?¢|\b(\d+)c\b(?![\w'’+#])/g, (m, a, b) => (a || b) + ((a || b) === '1' ? ' cent' : ' cents'))   // 50c
+    .replace(/\b(\d+)\s?gp\b/g, '$1 gold')                          // 5 gp (gold pieces)
     .replace(/(\d)ish\b/g, '$1-ish')                              // around 8ish
     // "a $20 bill", "a $100,000 prize": twenty-dollar bill (was "twenty dollars bill")
     .replace(/\$(\d{1,3}(?:,\d{3})+|\d+)(?:\.00)?(?=\s+(?:bill|note|coin|tip|fee|fine|bet|bounty|reward|prize|gift card|check|cheque|budget|loan|bribe|ticket|item|meal|bottle|watch|suit)s?\b)/g, '$1-dollar')
@@ -758,13 +763,15 @@ return { parseFixes, makeSayer, tidy };
       .replace(/\b(\d{1,2}):(\d{2})\b/g, (_, h, m, at, all) => words(+h) + (+m === 0 ? (/^\s*(o'clock|o’clock|[ap]\.?m\b|[AP]M\b)/i.test(all.slice(at + 3 + h.length)) ? '' : " o'clock") : +m < 10 ? ' oh ' + words(+m) : ' ' + words(+m)))
       .replace(/\b(\d+)(st|nd|rd|th)\b/gi, (_, d) => ordinal(+d))
       // years before 1100, where it's clearly a year: "the year 1066", "in 1066.", "800 AD" -> ten sixty-six, eight hundred AD
-      .replace(/\b([Yy]ear\s+)(10\d\d)\b(?![.,]?\d)|\b((?:[Ii]n|[Ss]ince|[Uu]ntil|[Cc]irca|[Bb]y)\s+)(10\d\d)(?=\s*(?:[,;:!?)]|\.(?!\d)|$)|\s+(?:the|a|an|he|she|they|it|we|I|his|her|their|there|when|after|before)\b)|\b(\d{3,4})(?=\s?(?:AD|BC|BCE|CE|A\.D\.|B\.C\.)(?!\w))/g,
-        (m, p1, y1, p2, y2, y3) => { const y = +(y1 || y2 || y3); return (p1 || p2 || '') + (y % 1000 === 0 || (y < 1000 && y % 100 === 0) ? words(y) : yearWords(y)); })
+      .replace(/\b([Yy]ear\s+)(10\d\d)\b(?![.,]?\d)|\b((?:[Ii]n|[Ss]ince|[Uu]ntil|[Cc]irca|[Bb]y)\s+)(10\d\d)(?=\s*(?:[,;:!?)]|\.(?!\d)|$)|\s+(?:the|a|an|he|she|they|it|we|I|his|her|their|there|when|after|before)\b)|\b(\d{3,4})(?=\s?(?:AD|BC|BCE|CE|A\.D\.|B\.C\.)(?!\w))|((?:\bAD|\bA\.D\.)\s?)(\d{3,4})\b(?![.,]?\d)/g,
+        (m, p1, y1, p2, y2, y3, p4, y4) => { const y = +(y1 || y2 || y3 || y4); return (p1 || p2 || p4 || '') + (y % 1000 === 0 || (y < 1000 && y % 100 === 0) ? words(y) : yearWords(y)); })
       .replace(/\b(1[1-9]\d\d|20\d\d)s?\b/g, (m, y) => { const w = yearWords(+y); return m.endsWith('s') ? (w.endsWith('y') ? w.slice(0, -1) + 'ies' : w + 's') : w; })
       .replace(/\b(\d)0['’]?s\b/g, (m, d) => (TENS[+d] || 'ten').replace(/y$/, 'ies') + (d === '1' ? 's' : ''))   // the 80s, the 70's
       .replace(/\b([1-9])s\b/g, (m, d) => ONES[+d] + (d === '6' ? 'es' : 's'))   // two 6s -> two sixes         // the 80s -> the eighties
       .replace(/\b\d{1,3}(,\d{3})+\b/g, (m) => words(+m.replace(/,/g, '')))
       .replace(/\b(\d+)\.(\d+)\b/g, (_, a, b) => words(+a) + ' point ' + b.split('').map(x => ONES[+x]).join(' '))
+      .replace(/(?<![\d.,:\/$#-])\b0([1-9])([0-5]\d)\b(?![\d.,:\/]\d)/g, (m, h, n) =>   // 0800 -> oh eight hundred (military time)
+        'oh ' + ONES[+h] + (n === '00' ? ' hundred' : n[0] === '0' ? ' oh ' + ONES[+n[1]] : ' ' + words(+n)))
       .replace(/\b0\d+\b/g, (m) => m.split('').map(x => (x === '0' ? 'oh' : ONES[+x])).join(' '))   // Agent 007
       .replace(/\b\d+\b/g, (m) => (m.length > 15 ? m.split('').map(x => ONES[+x]).join(' ') : words(+m)));
   }
