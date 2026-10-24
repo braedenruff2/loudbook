@@ -467,7 +467,8 @@ const DAYS = { Mon: 'Monday', Tue: 'Tuesday', Tues: 'Tuesday', Wed: 'Wednesday',
 const UNITS = { km: ['kilometer', 'kilometers'], cm: ['centimeter', 'centimeters'], mm: ['millimeter', 'millimeters'],
   m: ['meter', 'meters'], kg: ['kilogram', 'kilograms'], g: ['gram', 'grams'], lb: ['pound', 'pounds'], lbs: ['pound', 'pounds'],
   ft: ['foot', 'feet'], mph: ['mile per hour', 'miles per hour'], 'km/h': ['kilometer per hour', 'kilometers per hour'],
-  kph: ['kilometer per hour', 'kilometers per hour'], mi: ['mile', 'miles'], min: ['minute', 'minutes'], mins: ['minute', 'minutes'], sec: ['second', 'seconds'], secs: ['second', 'seconds'], hr: ['hour', 'hours'], hrs: ['hour', 'hours'], oz: ['ounce', 'ounces'] };
+  kph: ['kilometer per hour', 'kilometers per hour'], mi: ['mile', 'miles'], min: ['minute', 'minutes'], mins: ['minute', 'minutes'], sec: ['second', 'seconds'], secs: ['second', 'seconds'], hr: ['hour', 'hours'], hrs: ['hour', 'hours'], oz: ['ounce', 'ounces'],
+  kmh: ['kilometer per hour', 'kilometers per hour'], pts: ['point', 'points'] };
 
 const GRUNTS = [[/^[Hh](m+p+h|m+f)$/, 'humph'], [/^[Hh]m$/, 'hmm'], [/^([Mm]hm+|[Mm]m-?hm+)$/, 'mm-hmm'], [/^[Mm]m+$/, 'hmm'],
   [/^[Ss]hh+$/, 'shush'], [/^[Pp]f+t?$/, 'puh'], [/^[Gg]rr+$/, 'grur'], [/^[Bb]rr+$/, 'burr'], [/^[Nn]+g+h$|^[Nn]n+g$|^[Nn]+h$/, 'ungh'],
@@ -579,7 +580,7 @@ function tidy(t) {
       (m, n) => n + (n === '1' ? ' second' : ' seconds'))
     // 5°C, 90°F, a 90° angle (the voice skipped the sign)
     .replace(/(?<![\d.])(\d+(?:\.\d+)?)\s?°(\s?[CF]\b)?/g, (m, n, u, at, all) => n + (!u && /^\s+(?:angle|turn|slope|incline|bend|arc|view|cone|rotation)\b/.test(all.slice(at + m.length)) ? '-degree' : n === '1' ? ' degree' : ' degrees') + (u ? (u.trim() === 'C' ? ' Celsius' : ' Fahrenheit') : ''))
-    .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|km|cm|mm|kg|lbs|lb|oz|mph|kph|ft|mi|mins|min|secs|sec|hrs|hr|m|g)\b(?!\/)/g,
+    .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|ft|mi|mins|min|secs|sec|hrs|hr|pts|m|g)\b(?!\/)/g,
       (m, pre, n, u, at, all) => {
         // "a 10 km run", "the 5 kg bag" -> ten-kilometer run (the adjective form takes the singular)
         const next = /^\s+(\p{Ll}+)/u.exec(all.slice(at + m.length));
@@ -589,7 +590,7 @@ function tidy(t) {
         return pre + n + ' ' + UNITS[u][n === '1' ? 0 : 1];
       })
     .replace(/\b1\/2(?=\s+(?:of|a|an|the)\b)/g, 'half').replace(/\b1\/3(?=\s+(?:of|a|an|the)\b)/g, 'a third')
-    .replace(/\b1\/4(?=\s+(?:of|a|an|the)\b)/g, 'a quarter')
+    .replace(/\b1\/4(?=\s+(?:of|a|an|the)\b)/g, 'a quarter').replace(/\b1\/3(?=\s+off\b)/g, 'a third').replace(/\b1\/4(?=\s+off\b)/g, 'a quarter')
     .replace(/\b1\/(\d)(?:st|nd|rd|th)\b/g, (m, d) => ({ 2: 'half', 3: 'a third', 4: 'a quarter' }[d] || 'one ' + d + 'th'))   // 1/3rd
     .replace(/\b([2-9])\/([3-9]|10)(?=\s+of\b)/g, (m, a, b) => a + ' ' + ({ 3: 'thirds', 4: 'quarters', 5: 'fifths' }[b] || b + 'ths'))   // 3/4 of
     // military time: "0300 hours" -> "oh three hundred hours", "1430 hours" -> "fourteen thirty hours"
@@ -645,8 +646,9 @@ function tidy(t) {
     .replace(/(^|[\s"“'‘(])gg(?=[\s"”'’.,!?)]|$)/g, '$1G-G')   // good game, said as letters
     .replace(/\b(\d+)\s?doz\.?(?=\s|$)/g, (m, n) => n + ' dozen')
     // day lists: "Mon, Tue and Wed", "Sat or Sun", "Mon/Wed/Fri" -> full names (a lone "Sun" stays as written)
-    .replace(/\b(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b(?:,\s*(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b)*,?\s+(?:and|or|&)\s+(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b(?![\w'’])/g,
-      (m) => m.replace(/\b(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b/g, (d) => DAYS[d]).replace(/\s&\s/, ' and '))
+    .replace(/\b(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b\.?(?:,\s*(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b\.?)*,?\s+(?:and|or|&)\s+(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b\.?(?![\w'’])/gu,
+      (m, at, all) => m.replace(/\b(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b\.?/g, (d) => DAYS[d.replace('.', '')]).replace(/\s&\s/, ' and ') +
+        (m.endsWith('.') && /^\s*(?:\p{Lu}|$)/u.test(all.slice(at + m.length)) ? '.' : ''))
     .replace(/\b(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)(?:\/(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun))+\b(?![\w\/])/g,
       (m) => { const d = m.split('/').map((x) => DAYS[x]); return d.slice(0, -1).join(', ') + ' and ' + d[d.length - 1]; })
     .replace(/(?<![\w\/])(?:N\/A|n\/a)(?![\w\/])/g, 'not applicable')                // N/A (was "N slash A")
@@ -677,6 +679,8 @@ function tidy(t) {
     .replace(/(^|\s)~\s?(?=\d)/g, '$1about ')                     // ~5 minutes (the voice says "tilde")
     .replace(/\b(\d+(?:st|nd|rd|th))\s+St\.(?!\w)/g, '$1 Street')                          // 42nd St.
     .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)/g, '$1 Street')
+    .replace(/\b(\p{Lu}\p{Ll}+\s+)(Rd|Ln)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, w, a, mid) => w + (a === 'Rd' ? 'Road' : 'Lane') + (mid !== undefined ? '' : '.'))   // Elm Rd., Oak Ln.
+    .replace(/\bHwy\.?\s*(?=\d)/g, 'Highway ').replace(/\bGr\.\s*(?=\d)/g, 'Grade ')
     .replace(/\b(Ave|Blvd)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, a, mid) => (a === 'Ave' ? 'Avenue' : 'Boulevard') + (mid !== undefined ? '' : '.'))          // 5th Ave.
     .replace(/\b(Mr|Mrs|Ms|Dr)\.(?=\s*(?:&|and)\s)/g, (m, t) => TITLES[t])                 // Mr. & Mrs. Smith
     .replace(/\b(Lt|Sgt|Capt|Cpl|Pvt|Cmdr|Jr|Sr)\.(?=\s+\p{Ll}|\s*$)/gu, (m, t) => TITLES[t])   // "the Lt. arrived"
