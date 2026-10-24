@@ -70,6 +70,7 @@ public class KindleService extends AccessibilityService {
             f.addAction("com.loudbook.app.KINDLE_TRY");
             f.addAction("com.loudbook.app.KINDLE_TAP");
             f.addAction("com.loudbook.app.KINDLE_REOPEN");
+            f.addAction("com.loudbook.app.KINDLE_HOLD");
             testReceiver = new android.content.BroadcastReceiver() {
                 @Override public void onReceive(Context c, Intent i) {
                     String a = String.valueOf(i.getAction());
@@ -77,6 +78,7 @@ public class KindleService extends AccessibilityService {
                     if (a.endsWith("READ")) readFresh();
                     else if (a.endsWith("TAP")) tapped();
                     else if (a.endsWith("REOPEN")) new Thread(KindleService.this::reopenBook, "lb-kindle-reopen").start();
+                    else if (a.endsWith("HOLD")) { final int tx = i.getIntExtra("x", 640), ty = i.getIntExtra("y", 1500); new Thread(() -> testHold(tx, ty), "lb-kindle-hold").start(); }
                     else if (a.endsWith("TRY")) { String how = i.getStringExtra("how"); new Thread(() -> tryTurn(how), "lb-kindle-try").start(); }
                     else if (a.endsWith("DUMP")) new Thread(() -> { report(readPage()); Log.i("LoudbookTest", "kindle test: dumped"); }, "lb-kindle-dump").start();
                     else new Thread(() -> { Page p = readPage(); Page q = nextPage(p.signature); Log.i("LoudbookTest", "kindle test: turned " + (q.paragraphs.isEmpty() ? "no" : "yes")); }, "lb-kindle-turn").start();
@@ -86,6 +88,18 @@ public class KindleService extends AccessibilityService {
         }
     }
     private android.content.BroadcastReceiver testReceiver;
+    /** Test builds: a finger held on the gold button for 1.5 s, then a tap on the page at x,y, both through the
+     *  screen-reader touch like a person's (adb's input skips it). "... am broadcast -a com.loudbook.app.KINDLE_HOLD --ei x 640 --ei y 1500" */
+    private void testHold(int x, int y) {
+        Rect b = buttonOnScreen();
+        if (b == null) { Log.i("LoudbookTest", "kindle test: hold: no button"); return; }
+        Path pt = new Path(); pt.moveTo(b.centerX(), b.centerY());
+        GestureDescription.Builder gb = new GestureDescription.Builder();
+        gb.addStroke(new GestureDescription.StrokeDescription(pt, 0, 1500));
+        Log.i("LoudbookTest", "kindle test: hold at " + b.centerX() + "," + b.centerY() + " sent " + dispatchGesture(gb.build(), null, null));
+        pause(3500);
+        Log.i("LoudbookTest", "kindle test: page tap at " + x + "," + y + " sent " + taps(x, y, 1));
+    }
     /** The emulator tests' and the Kindle lab's builds. */
     static boolean testBuild() { return BuildInfo.CODE == 1 || BuildInfo.VERSION.startsWith("lab-"); }
     /** Test builds: one way of turning Kindle's page, to find which works ("adb shell am broadcast -a com.loudbook.app.KINDLE_TRY --es how X"). */
@@ -664,6 +678,9 @@ public class KindleService extends AccessibilityService {
                     if (home && System.currentTimeMillis() > until - 5000) break;     // (still on the home screen after 4 s: it didn't take)
                 }
                 Log.i("LoudbookTest", "kindle reopen by " + ways[w] + ": " + (!sent ? "not possible" : open ? "open" : home ? "didn't open" : "still opening"));
+                // (if the page's picture was taken while the book was closed, the word places were only estimated: look again)
+                KindleLayout lay = shown; Page sp = shownPage;
+                if ((open || (sent && !home)) && sp != null && (lay == null || lay.exactLines == 0)) main.postDelayed(() -> fromScreen(sp), open ? 1500 : 5000);
                 if (open || (sent && !home)) return;
                 AccessibilityNodeInfo r = kindleRoot();
                 if (r != null) { AccessibilityNodeInfo again = findDesc(r, "Most recent book", 0); if (again != null) recent = again; else return; }
