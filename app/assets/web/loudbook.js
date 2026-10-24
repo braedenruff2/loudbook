@@ -498,7 +498,8 @@ function tidy(t) {
     .replace(/(\p{L})\s+<3\s+(?=\p{L})/gu, '$1 heart ').replace(/<3\b/g, '')
     // emoji and ♥ ™ ® (the voice reads out their names: "red heart", "trade mark"); © is kept
     .replace(/(?![©‼⁉])[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{1F3FB}-\u{1F3FF}]+/gu, ' ')
-    .replace(/(\p{L})~+(?=[\s.,!?"'”’)]|$)/gu, '$1')                 // "Hello~" (the voice said "tilde")
+    .replace(/(\p{L}[!?.]*)~+(?=[\s.,!?"'”’)]|$)/gu, '$1')                 // "Hello~" (the voice said "tilde")
+    .replace(/(^|[\s"“'‘(\[])~+(?=\p{L})/gu, '$1')                    // "~Ding~", "~Level up!~" (the opening tilde)
     // emoticons: ":)", ";)", ":D", "xD", "^_^", "T_T" (the voice says "colon", "ex dee")
     .replace(/(^|\s)(?:[:;=]-?[)(DPpO3\]\[|\/]|xD+|XD+(?=[\s.!?]*$)|\^_*\^|T_T|>_<|-_-|o_O|O_o|:'\()(?=[\s.,!?"'”’)]|$)/g, '$1');
   if (!/[\p{L}\p{N}]/u.test(t)) return '';
@@ -545,6 +546,7 @@ function tidy(t) {
     .replace(/\b(million|billion|thousand|trillion) dollars(\s+dollars)\b/g, '$1$2')   // "$2 million dollars"
     .replace(/\$(\d+(?:\.\d+)?)\s?(k|K|m|M|bn|b|B)\b/g, (m, n, u) => n + ' ' + { k: 'thousand', m: 'million', b: 'billion', bn: 'billion' }[u.toLowerCase()] + ' dollars')
     .replace(/\b(\d+(?:\.\d+)?)\s?k\b/g, '$1 thousand')            // 10k
+    .replace(/\b(\d+)K\b(?=\s+(?!(?:runs?|races?|is|was|and|or|on|in|at|to|of|for|with|had|has|resolution|screens?|monitors?|gold\b(?=\s+(?:ring|chain|coin)))\b)\p{Ll})/gu, '$1 thousand')   // 10K subs, 50K gold (not a 10K run)
     // 1.5M credits, 10M gold, 2.5B people (not "room 12B is": B only with a decimal, M before a noun)
     .replace(/\b(\d+(?:\.\d+)?)(M|bn)\b(?=\s+(?!(?:is|was|and|or|on|in|at|to|of|for|with|had|has)\b)\p{Ll})|\b(\d+\.\d+)(M|B|bn|K)\b/gu, (m, a, u, b, v) =>
       (a || b) + ' ' + { m: 'million', b: 'billion', bn: 'billion', k: 'thousand' }[(u || v).toLowerCase()])
@@ -578,6 +580,12 @@ function tidy(t) {
     .replace(/\b(\d+)\s?m\s(\d+(?:\.\d+)?)\s?s\b(?!\/)/g, (m, a, b) => a + (a === '1' ? ' minute ' : ' minutes ') + b + (b === '1' ? ' second' : ' seconds'))
     .replace(/(?<!\b(?:his|her|their|my|your|our|the|The|early|mid|late|high|low|upper|lower|of|all|two|three|four|five|six|seven|eight|nine|ten|double|triple|some|few)\s)(?<![\d.,'’-])\b(\d{1,3}(?:\.\d+)?)s\b(?![\w'’])/g,
       (m, n) => n + (n === '1' ? ' second' : ' seconds'))
+    // 10 sq ft, 5 sq. mi. -> square feet / miles (the voice said "S Q")
+    .replace(/\b(\d+(?:\.\d+)?)\s?sq\.?\s?(ft|mi|km|m|yd|in)\b(\.(?=\s*[,;:)]|\s+\p{Ll}))?/gu, (m, n, u) =>
+      n + ' square ' + { ft: ['foot', 'feet'], mi: ['mile', 'miles'], km: ['kilometer', 'kilometers'], m: ['meter', 'meters'], yd: ['yard', 'yards'], in: ['inch', 'inches'] }[u][n === '1' ? 0 : 1])
+    // 3 in. long, a 6 in. blade -> inches (only with the dot and a size word after: "put 3 in." stays)
+    .replace(/\b(\d+(?:\.\d+)?)\s?in\.(?=\s+(long|wide|tall|high|deep|thick|across|apart|blade|knife|nails?|screen|of)\b)/g, (m, n, w) =>
+      n + (/^(?:blade|knife|nails?|screen)$/.test(w) ? '-inch' : n === '1' ? ' inch' : ' inches'))
     // 5°C, 90°F, a 90° angle (the voice skipped the sign)
     .replace(/(?<![\d.])(\d+(?:\.\d+)?)\s?°(\s?[CF]\b)?/g, (m, n, u, at, all) => n + (!u && /^\s+(?:angle|turn|slope|incline|bend|arc|view|cone|rotation)\b/.test(all.slice(at + m.length)) ? '-degree' : n === '1' ? ' degree' : ' degrees') + (u ? (u.trim() === 'C' ? ' Celsius' : ' Fahrenheit') : ''))
     .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|ft|mi|mins|min|secs|sec|hrs|hr|pts|m|g)\b(?!\/)/g,
@@ -621,6 +629,7 @@ function tidy(t) {
     .replace(/\b(\d+):(\d)\b(?!\d)/g, '$1 to $2')                  // a 3:1 ratio (times have two digits)
     .replace(/\b[Cc]h\.\s*(?=\d)/g, 'Chapter ').replace(/\bVol\.\s*(?=\d)/g, 'Volume ').replace(/\bNo\.\s*(?=\d)/g, 'Number ')
     .replace(/\bEp\.\s*(?=\d)/g, 'Episode ').replace(/\bpg\.\s*(?=\d)/gi, 'page ').replace(/\bpp\.\s*(?=\d)/g, 'pages ')     // "pg. 45" (the voice said "P G")
+    .replace(/\bPt\.?\s*(?=\d)/g, 'Part ').replace(/\bSec\.\s*(?=\d)/g, 'Section ').replace(/\b([Pp])ara\.\s*(?=\d)/g, '$1aragraph ')   // "Chapter 5 Pt. 2"
     .replace(/\b([CF])#(?![\w#])/g, '$1 sharp')                     // C#, F# (languages, notes)
     .replace(/\b([Aa])pprox\.(?=\s)|\b([Aa])pprox\b(?=\s+[~\d])/g, (m, a, b) => (a || b) + 'pproximately')
     .replace(/(^|\s)w\/o(?=[\s,.!?]|$)/g, '$1without').replace(/(^|\s)w\/(?=\s)/g, '$1with').replace(/\bb\/c\b/g, 'because')
@@ -634,7 +643,8 @@ function tidy(t) {
     // ranks and grades: "Rank: S+", "an A+ student", "Grade: B-" (the voice dropped the sign)
     .replace(/\b([SABCDEF]{1,3})\+(?![+\w])/g, '$1 plus')
     .replace(/\b((?:[Rr]ank|[Gg]rade|[Tt]ier|[Cc]lass)(?::\s*|\s+))([SABCDEF]{1,3})-(?=[\s.,!?)\]]|$)/g, '$1$2 minus')
-    .replace(/\bvs\.?(?=\s)/gi, 'versus').replace(/\bi\.e\.(?=[\s,])/gi, 'that is')
+    .replace(/\bvs\.?(?=\s)/gi, 'versus').replace(/(?<![\w.'’-])(ok|Ok|OK)(?![\w'’-]|\.\w)/g, (m) => (m[0] === 'o' ? 'okay' : 'Okay'))   // "ok" (the voice could say "ock")
+    .replace(/\bi\.e\.(?=[\s,])/gi, 'that is')
     .replace(/\bPh\.D\./g, (m, at, all) => 'PhD' + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))
     // U.S., J.R.R., Ph.D.: letters with no dots (each dot was a full stop: "J R R. | Tolkien", "P H dot D dot")
     .replace(/(?<![\p{L}.])(?:\p{Lu}\.){2,4}(?![\p{L}])/gu, (m, at, all) => m.replace(/\./g, '') + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))
