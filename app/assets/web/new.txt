@@ -1,3 +1,4 @@
+Says "In 1066 the Normans came" as "ten sixty-six", "he was 6'." as "six feet", "5 oz" as ounces, "on Fri" and "next Tues." as the full day, and "brb" as "be right back".
 Kindle: holding the gold button to choose where to start works again while you're reading or paused in Kindle (screen-reader mode): hold until it buzzes, let go, then tap the line to start from.
 Kindle: pause and play are instant again (no more closing and reopening the book). While you're in Kindle the screen stays in screen-reader mode, also when paused; leave Kindle to get your normal screen back.
 Kindle: if Kindle closes the book when you press play or pause (it does when screen-reader mode switches), Loudbook opens it again where you were.
