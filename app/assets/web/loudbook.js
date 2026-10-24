@@ -446,6 +446,7 @@ function romans(t) {
     (m, title, name, r) => title + name + ' the ' + romanValue(r) + ord(romanValue(r)));
   return t.replace(/\b([A-Z][\w.]*)(\s+)([IVXLCDM]+)\b(?![''’]\w)/g, (m, before, sp, r) => {
     if (!ROMAN.test(r)) return m;
+    if (/^[LCDM]$/.test(r)) return m;   // "Rank C", "Grade D", "Class M" are letters (was "Rank one hundred")
     if (COUNTED.test(before)) return before + sp + romanValue(r);
     // after a name: a king, a pope, a ship. Only two letters or more ("Henry V" stays, "I" is a word).
     if (r.length >= 2 && /^[A-Z][a-z]+$/.test(before) && !NOT_NAME.test(before) && romanValue(r) <= 40) return before + sp + 'the ' + romanValue(r) + ord(romanValue(r));
@@ -459,6 +460,8 @@ const STATS = { STR: 'Strength', AGI: 'Agility', DEX: 'Dexterity', INT: 'Intelli
   WIS: 'Wisdom', CHA: 'Charisma', LUK: 'Luck', LCK: 'Luck', PER: 'Perception', CON: 'Constitution', SPD: 'Speed',
   DEF: 'Defense', ATK: 'Attack', MAG: 'Magic', RES: 'Resistance', SPI: 'Spirit', FOC: 'Focus', WIL: 'Willpower' };
 // "1920" -> "19 20", "1600" -> "16 hundred", "720" -> "7 20", "1080" -> "10 80" (the way screen sizes are said)
+const FRAC = { 2: ['half', 'halves'], 3: ['third', 'thirds'], 4: ['quarter', 'quarters'], 5: ['fifth', 'fifths'], 6: ['sixth', 'sixths'], 7: ['seventh', 'sevenths'], 8: ['eighth', 'eighths'] };
+const fracWords = (a, b, mixed) => (a === 1 ? (mixed ? 'a ' : b === 2 ? '' : 'one ') + FRAC[b][0] : a + ' ' + FRAC[b][1]);   // 1/2 -> a half / one half, 3/4 -> 3 quarters
 const pairs = (n) => { const a = n.slice(0, n.length - 2), b = n.slice(-2); return b === '00' ? a + ' hundred' : b[0] === '0' ? a + ' oh ' + b[1] : a + ' ' + b; };
 const TITLES = { Mr: 'Mister', Mrs: 'Missus', Ms: 'Miz', Dr: 'Doctor', Prof: 'Professor', Capt: 'Captain', Sgt: 'Sergeant',
   Lt: 'Lieutenant', Gen: 'General', Col: 'Colonel', Rev: 'Reverend', Fr: 'Father', Sr: 'Senior', Jr: 'Junior', Gov: 'Governor',
@@ -582,6 +585,7 @@ function tidy(t) {
     // rates: "+2/sec", "5 MP/min" -> "per second", "per minute"
     .replace(/(\d|\b[A-Z]{2,3})\s?\/\s?(sec|second|s|min|minute|hr|hour|h|day|turn)\b(?!\/)/g, (m, a, u) =>
       a + ' per ' + ({ sec: 'second', s: 'second', min: 'minute', hr: 'hour', h: 'hour' }[u] || u))
+    .replace(/(?<![\d.,])\b10s(?=\s+of\s+(?:thousands|millions|billions|hundreds|people|men|soldiers|monsters|years|times)\b)/g, 'tens')   // 10s of thousands (was "ten seconds")
     .replace(/(?<!\b[A-Za-z]{2,}:\s?)(?<![\d.,])\b(100|1,?000)s(?![\w'’])/g, (m, n) => (n === '100' ? 'hundreds' : 'thousands'))   // 1000s of people (not "Cooldown: 100s")
     // timers "00:05:30" -> "5 minutes 30 seconds" (was "zero oh five:thirty")
     .replace(/\b(\d{1,2}):([0-5]\d):([0-5]\d)(?=\s?(?:am|pm|AM|PM|a\.m\.|p\.m\.)(?!\w))/g, (m, h, n, sec) => h + ':' + n + ' and ' + +sec + (sec === '01' ? ' second' : ' seconds'))   // 11:59:59 PM
@@ -611,11 +615,20 @@ function tidy(t) {
         if (!/[\/h]$/.test(u) && /(?:^|\s)(?:[Aa]n?|[Tt]he|[Hh]is|[Hh]er|[Tt]heir|[Mm]y|[Yy]our|[Oo]ur)\s$/.test(all.slice(0, at) + pre) && next &&
             !/^(?:away|long|tall|wide|high|deep|thick|off|of|from|to|and|or|per|in|on|at|by|for|ahead|behind|down|up|later|ago|left|more|less|each|apiece|north|south|east|west|he|she|it|they|we|you|that|which|who|was|were|is|are|had|has|felt|seemed|took|went)$/.test(next[1]))
           return pre + n + '-' + UNITS[u][0];
+        // guns: "a 9mm," "5.56mm rounds" -> nine millimeter (not "nine millimeters")
+        if (u === 'mm' && ((next && /^(?:rounds?|pistols?|handguns?|guns?|cannons?|shells?|bullets?|ammo|cartridges?|rifles?|caliber|barrel)$/.test(next[1])) ||
+            (/(?:^|\s)(?:[Aa]n?|[Tt]he|[Hh]is|[Hh]er|[Mm]y)\s$/.test(all.slice(0, at) + pre) && /^\s*(?:[,.;:!?)"'’”]|$|(?:was|is|had|has|jammed|fired|kicked|barked|went|sat|lay|felt|in|from|and|at|on|with)\b)/.test(all.slice(at + m.length)))))
+          return pre + n + ' ' + UNITS.mm[0];
         return pre + n + ' ' + UNITS[u][n === '1' ? 0 : 1];
       })
+    // fractions said as fractions: "2 1/2 hours" -> two and a half hours, "1/4 cup" -> one quarter cup (not "one of four")
+    .replace(/(?<![\d.,\/])\b(\d{1,3}) ([1-7])\/([2-8])\b(?![\d\/:.]\d|\/)/g, (m, w, a, b) => +a < +b ? w + ' and ' + fracWords(+a, +b, true) : m)
+    .replace(/(?<![\d.,\/])\b([1-7])\/([2-8])\b(?![\d\/])(?=\s+(?:cups?|tsp|teaspoons?|tbsp|tablespoons?|inch(?:es)?|in\.|miles?|pounds?|lbs?|oz|ounces?|hours?|hrs?|gallons?|quarts?|pints?|lit(?:er|re)s?|feet|foot|ft|yards?|kilos?|kg|grams?|g|acres?|sticks?|teaspoonfuls?|turns?|seconds?|minutes?|mins?)\b)/g,
+      (m, a, b) => +a < +b ? fracWords(+a, +b, false) : m)
+    .replace(/(?<![\w.])(\d+(?:\.\d+)?|half|thirds?|quarters?|eighths?)\s?(tsp|tbsp)\b/g, (m, n, u, at, all) => n + ' ' + (u === 'tsp' ? 'teaspoon' : 'tablespoon') + (n === '1' || (/^(half|third|quarter|eighth)$/.test(n) && !/and an? $/.test(all.slice(Math.max(0, at - 6), at))) ? '' : 's'))   // 2 tsp
     .replace(/\b1\/2(?=\s+(?:of|a|an|the)\b)/g, 'half').replace(/\b1\/3(?=\s+(?:of|a|an|the)\b)/g, 'a third')
     .replace(/\b1\/4(?=\s+(?:of|a|an|the)\b)/g, 'a quarter').replace(/\b1\/3(?=\s+off\b)/g, 'a third').replace(/\b1\/4(?=\s+off\b)/g, 'a quarter')
-    .replace(/\b1\/(\d)(?:st|nd|rd|th)\b/g, (m, d) => ({ 2: 'half', 3: 'a third', 4: 'a quarter' }[d] || 'one ' + d + 'th'))   // 1/3rd
+    .replace(/\b1\/(\d+)(?:st|nd|rd|th)\b/g, (m, d) => ({ 2: 'half', 3: 'a third', 4: 'a quarter' }[d] || (/^10+$/.test(d) && d.length > 2 ? d + 'th' : 'one ' + d + 'th')))   // 1/3rd, 1/10th, 1/100th
     .replace(/\b([2-9])\/([3-9]|10)(?=\s+of\b)/g, (m, a, b) => a + ' ' + ({ 3: 'thirds', 4: 'quarters', 5: 'fifths' }[b] || b + 'ths'))   // 3/4 of
     // military time: "0300 hours" -> "oh three hundred hours", "1430 hours" -> "fourteen thirty hours"
     .replace(/\b([01]\d|2[0-4])([0-5]\d)(?=\s+hours\b)/g, (m, h, n) =>
@@ -626,6 +639,7 @@ function tidy(t) {
     // room and error numbers the way people say them: "Room 404" -> "four oh four", "Room 212" -> "two twelve"
     .replace(/\b((?:[Rr]oom|[Ee]rror|[Ss]uite|[Aa]pt\.?|[Aa]partment|[Ff]light|[Cc]ell|[Ll]ocker|[Gg]ate|[Pp]latform)\s+#?)([1-9])(\d)(\d)\b(?![\d/:-]|[.,]\d)/g,
       (m, pre, a, b, c) => pre.replace(/^([Aa])pt\.?/, '$1partment') + (b === '0' && c === '0' ? a + b + c : b === '0' ? a + ' oh ' + c : a + ' ' + b + c))
+    .replace(/(^|[\s("“])\.(22|25|32|38|44|45|50|357|380)\b(?=\s+(?:caliber|cal\b|pistols?|revolvers?|rifles?|rounds?|Magnum|ACP|[Ss]pecial|handguns?|automatic|bullets?|slugs?))/g, '$1$2')   // a .45 pistol (was "dot forty-five")
     .replace(/(?<![\d,.$\/]|Porsche )\b911\b(?![\d\/]|[.,]\d)/g, '9 1 1').replace(/\bPorsche 911\b/g, 'Porsche 9 11')   // call 911 (was "nine hundred and eleven")
     // 3/14/1995 -> March 14th, 1995 (25/12/2024, day first, -> December 25th); impossible dates as before
     .replace(/\b(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})\b/g, (m, a, b, y) => {
@@ -638,6 +652,7 @@ function tidy(t) {
     .replace(/\b1\s?\/\s?(\d+)(?=\s+(?:chance|odds|shot)\b)/g, '1 in $1')                 // a 1/10 chance
     .replace(/\b(\d+)\s?\/\s?(\d+)(?=\s+times\b)/g, '$1 out of $2')                      // 9/10 times
     .replace(/(\d|\bthousand|\bmillion|\bbillion)\s*\/\s*(\d)/g, '$1 of $2')   // 120/150 -> 120 of 150, 1.2k/3k
+    .replace(/\b1-(\d{3})-(\d{3})-(\d{4})\b(?![-–\/]\d)/g, (m, a, b, c) => 'one, ' + (/^8(00|88|77|66|55|44|33)$/.test(a) ? (a === '800' ? 'eight hundred' : a.split('').join(' ')) : a.split('').join(' ')) + ', ' + b.split('').join(' ') + ', ' + c.split('').join(' '))   // 1-800-555-0199
     // phone numbers digit by digit: "555-1234", "(555) 123-4567" (not "five hundred and fifty-five to...")
     .replace(/(?:\((\d{3})\)\s?|\b(\d{3})[-.])(\d{3})-(\d{4})\b(?![-–/]\d)|\b([2-9]\d\d)-(\d{4})\b(?![-–/]\d)/g, (m, ...g) =>
       g.slice(0, 6).filter(Boolean).map((x) => x.split('').join(' ')).join(', '))
@@ -645,8 +660,8 @@ function tidy(t) {
     .replace(/\b(\d+):(\d|\d{3,})\b(?![\d:])/g, '$1 to $2')                  // odds of 1:1000
     .replace(/\b(\d+):(\d\d)\b(?![\d:])(?=\s+(?:ratio|odds|scale|split|mix)\b)/g, '$1 to $2')   // a 1:50 scale
     .replace(/\b((?:ratio|odds|scale)(?:\s+(?:of|is|was|were|at|are))?\s+)(\d+):(\d\d)\b(?![\d:])/gi, '$1$2 to $3')                  // a 3:1 ratio (times have two digits)
-    .replace(/\b[Cc]h\.\s*(?=\d)/g, 'Chapter ').replace(/\bVol\.\s*(?=\d)/g, 'Volume ').replace(/\bNo\.\s*(?=\d)/g, 'Number ')
-    .replace(/\bEp\.\s*(?=\d)/g, 'Episode ').replace(/\bpg\.\s*(?=\d)/gi, 'page ').replace(/\bpp\.\s*(?=\d)/g, 'pages ')     // "pg. 45" (the voice said "P G")
+    .replace(/\b[Cc]h\.\s*(?=\d)/g, 'Chapter ').replace(/(^|[\s\[(])CH\s+(?=\d)/g, '$1Chapter ').replace(/\bVol\.\s*(?=\d)/g, 'Volume ').replace(/\bNo\.\s*(?=\d)/g, 'Number ').replace(/\bBk\.?\s*(?=\d)/g, 'Book ')
+    .replace(/\bEp\.\s*(?=\d)/g, 'Episode ').replace(/\bpg\.\s*(?=\d)/gi, 'page ').replace(/\b[Pp]g\s+(?=\d)/g, 'page ').replace(/(^|[\s(\[])p\.\s?(?=\d)/g, '$1page ').replace(/(^|[\s(\[])c\.\s?(?=\d{3,4}\b)/g, '$1circa ').replace(/\bpp\.\s*(?=\d)/g, 'pages ')     // "pg. 45" (the voice said "P G")
     .replace(/\bPt\.?\s*(?=\d)/g, 'Part ').replace(/\bSec\.\s*(?=\d)/g, 'Section ').replace(/\b([Pp])ara\.\s*(?=\d)/g, '$1aragraph ')   // "Chapter 5 Pt. 2"
     .replace(/\b([CF])#(?![\w#])/g, '$1 sharp')                     // C#, F# (languages, notes)
     .replace(/\b([Aa])pprox\.(?=\s)|\b([Aa])pprox\b(?=\s+[~\d])/g, (m, a, b) => (a || b) + 'pproximately')
@@ -673,6 +688,7 @@ function tidy(t) {
     // gamer words the voice gets wrong: "AoE" ("ow-ee"), "DoT" ("doo-tee"), "IRL" ("url"), "idk"
     .replace(/\bAoEs?\b/g, (m) => 'AOE' + m.slice(3)).replace(/\bDoT(s?)\b/g, 'dot$1')
     .replace(/\bIRL\b/g, 'I-R-L').replace(/\b(?:idk|IDK)\b/g, 'I-D-K').replace(/\b(?:brb|BRB)\b/g, 'be right back')
+    .replace(/\b(omg|OMG|wtf|WTF|lmao|LMAO)\b/g, (m) => m.toUpperCase().split('').join('-')).replace(/(\d)-yrs?-old\b/g, '$1-year-old')   // O-M-G (the voice said "omg"), a 30-yr-old
     .replace(/\b(?:tbh|TBH)\b/g, 'to be honest').replace(/\b(?:imo|IMHO|imho)\b/g, (m) => (m.length > 3 ? 'in my humble opinion' : 'in my opinion'))
     .replace(/(^|[\s"“'‘(])gg(?=[\s"”'’.,!?)]|$)/g, '$1G-G')   // good game, said as letters
     .replace(/\b(\d+)\s?doz\.?(?=\s|$)/g, (m, n) => n + ' dozen')
@@ -705,8 +721,8 @@ function tidy(t) {
     .replace(/(\b(?:[Aa]n?|[Tt]he)\s)\$(\d{1,3}(?:,\d{3})+|\d+)(?:\.00)?(?=\s+(?!(?:and|or|to|of|for|in|on|at|from|per|each|a|an|the|is|was|more|less|worth|plus|minus|million|billion|thousand|trillion)\b)\p{Ll})/gu, '$1$2-dollar')
     .replace(/\bWW(?:II|2)\b/g, 'World War Two').replace(/\bWW(?:I|1)\b/g, 'World War One')
     // born '98, the '90s (not an opening quote: "'10 more,' she said")
-    .replace(/(\b\p{L}+\s)['’](\d\d)(s?)\b(?![\d'’%])(?![^'’\n]*['’](?:[\s,.!?;:]|$))/gu, '$1$2$3')
-    .replace(/\bMt\.(?=\s+[A-Z])/g, 'Mount')                     // the voice says "M T." and stops
+    .replace(/(\b\p{L}+\s)['’](\d\d)(s?)\b(?![\d'’%])(?![^'’\n]*['’](?:[\s,.!?;:]|$))/gu, (m, w, d, s) => w + (d === '00' ? '2000' : d) + s)   // class of '00 -> two thousand
+    .replace(/\bMt\.(?=\s+[A-Z])/g, 'Mount').replace(/\bFt\.(?=\s+[A-Z])/g, 'Fort').replace(/(\d)\s?pct\b/g, '$1 percent')                     // the voice says "M T." and stops
     .replace(/(^|\s)~\s?(?=\d)/g, '$1about ')                     // ~5 minutes (the voice says "tilde")
     .replace(/\b(\d+(?:st|nd|rd|th))\s+St\.(?!\w)/g, '$1 Street')                          // 42nd St.
     .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)/g, '$1 Street')
