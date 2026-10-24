@@ -272,7 +272,11 @@ public class KindleService extends AccessibilityService {
             if (ev.getActionMasked() == MotionEvent.ACTION_HOVER_ENTER) { hoverAt[0] = ev.getEventTime(); main.postDelayed(held, 700); }
             else if (ev.getActionMasked() == MotionEvent.ACTION_HOVER_EXIT) {
                 main.removeCallbacks(held);
-                long t = ev.getEventTime() - hoverAt[0];
+                // (the screen reader can hold back the hover's start until the finger lifts: the touch's own start counts too)
+                long from = hoverAt[0], touchAt = ev.getDownTime();
+                if (touchAt > 0 && touchAt < from && ev.getEventTime() - touchAt < 10_000) from = touchAt;
+                long t = ev.getEventTime() - from;
+                Log.i("LoudbookTest", "kindle button hover " + (ev.getEventTime() - hoverAt[0]) + " ms (touch " + (touchAt > 0 ? ev.getEventTime() - touchAt : -1) + " ms)");
                 boolean inside = ev.getX() >= 0 && ev.getY() >= 0 && ev.getX() <= v.getWidth() && ev.getY() <= v.getHeight();
                 if (t < 700) tapped();
                 else if (inside && t < 5000) { Log.i("LoudbookTest", "kindle button held (screen-reader touch)"); showPicker(); }
@@ -429,7 +433,7 @@ public class KindleService extends AccessibilityService {
         final long shown = android.os.SystemClock.uptimeMillis();
         final long[] enter = {0};
         View.OnHoverListener hover = (v, ev) -> {
-            if (ev.getActionMasked() == MotionEvent.ACTION_HOVER_ENTER) { if (enter[0] == 0 || v == f) enter[0] = ev.getEventTime(); }
+            if (ev.getActionMasked() == MotionEvent.ACTION_HOVER_ENTER) { if (enter[0] == 0 || v == f) enter[0] = ev.getEventTime(); Log.i("LoudbookTest", "kindle picker hover in"); }
             else if (ev.getActionMasked() == MotionEvent.ACTION_HOVER_EXIT && enter[0] > shown + 150 && ev.getEventTime() - enter[0] < 1500 && picker == f) {
                 float x = ev.getRawX(), y = ev.getRawY();
                 int[] at = new int[2];
