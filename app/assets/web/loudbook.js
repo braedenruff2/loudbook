@@ -432,6 +432,8 @@ function makeSayer(fixes = [], { tidy: doTidy = true } = {}) {
 // (the voice otherwise says "Roman four", and a run of I's used to get squashed).
 const ROMAN = /^M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$/;
 const COUNTED = /^(chapter|book|part|volume|vol\.?|act|arc|season|episode|tier|rank|class|grade|level|stage|phase|type|mark|mk\.?|model|gen|generation|war|floor|circle|realm|step|star|bowl|ch\.?)$/i;
+// titles numbered like sequels, said as plain numbers ("Final Fantasy VII" is "seven", not "the seventh")
+const SEQUEL = /^(?:Fantasy|Rocky|Creed|Frozen|Diablo|Civilization|Hearts|Fighter|Kombat|Scrolls|Auto|Solid|Trek|Quest|Tekken|Doom|Halo|Shock|Cry|Souls|Evil|Heroes|Godfather|Rambo|Gladiator|Starcraft|StarCraft|Warcraft|Sims|Rising|Crusade|Wars)$/;
 // words that aren't names, so the capitals after them aren't a king's number ("The MC" was "the the 1100th")
 const NOT_NAME = /^(?:The|A|An|His|Her|Its|My|Our|Their|Your|This|That|These|Those|And|But|Or|If|When|While|Then|So|No|Every|Each|Some|Any|Of|In|On|At|To|For|With|From|By|As|Is|Was|Not|Like|Than|Mr|Mrs|Ms|Dr|Miss|Sir|Lady|Lord|Dear|Hey|Oh|Yes|Our|Its|Big|Old|New|Young)$/;
 function romanValue(r) {
@@ -444,10 +446,12 @@ function romans(t) {
   // a single I/V/X after a monarch's name with the title: "King Henry V", "Queen Elizabeth I", "Emperor Charles V"
   t = t.replace(/\b(King|Queen|Pope|Emperor|Empress|Tsar|Czar|Tsarina|Pharaoh|Kaiser|Sultan|Shah|Prince|Princess|Duke|Duchess)(\s+[A-Z][a-z]+)\s+([IVX])\b(?![''’\w])(?!\s+(?:am|think|guess|mean|know|suppose|said|say)\b)/g,
     (m, title, name, r) => title + name + ' the ' + romanValue(r) + ord(romanValue(r)));
-  return t.replace(/\b([A-Z][\w.]*)(\s+)([IVXLCDM]+)\b(?![''’]\w)/g, (m, before, sp, r) => {
+  return t.replace(/\b([A-Z][\w.]*)(\s+)([IVXLCDM]+)\b(?![''’]\w)/g, (m, before, sp, r, at, all) => {
     if (!ROMAN.test(r)) return m;
     if (/^[LCDM]$/.test(r)) return m;   // "Rank C", "Grade D", "Class M" are letters (was "Rank one hundred")
     if (COUNTED.test(before)) return before + sp + romanValue(r);
+    // a game or film sequel: "Final Fantasy VII" -> seven, "Rocky II" -> two (was "the seventh"), "Grand Theft Auto V"
+    if (SEQUEL.test(before) && (r.length >= 2 || /^[VX]$/.test(r)) && all[at + m.length] !== '-') return before + sp + romanValue(r);
     // after a name: a king, a pope, a ship. Only two letters or more ("Henry V" stays, "I" is a word).
     if (r.length >= 2 && /^[A-Z][a-z]+$/.test(before) && !NOT_NAME.test(before) && romanValue(r) <= 40) return before + sp + 'the ' + romanValue(r) + ord(romanValue(r));
     return m;
@@ -658,6 +662,9 @@ function tidy(t) {
     // room and error numbers the way people say them: "Room 404" -> "four oh four", "Room 212" -> "two twelve"
     .replace(/\b((?:[Rr]oom|[Ee]rror|[Ss]uite|[Aa]pt\.?|[Aa]partment|[Ff]light|[Cc]ell|[Ll]ocker|[Gg]ate|[Pp]latform)\s+#?)([1-9])(\d)(\d)\b(?![\d/:-]|[.,]\d)/g,
       (m, pre, a, b, c) => pre.replace(/^([Aa])pt\.?/, '$1partment') + (b === '0' && c === '0' ? a + b + c : b === '0' ? a + ' oh ' + c : a + ' ' + b + c))
+    .replace(/\b([45])0([1-9])(?=\s*(?:errors?|pages?|codes?|responses?|[Nn]ot [Ff]ound|[Ff]orbidden|[Uu]nauthori[sz]ed|[Bb]ad [Gg]ateway|[Ss]ervice [Uu]navailable)\b)/g, '$1 oh $2')   // a 404 error -> four oh four (was "four hundred and four")
+    .replace(/\b([Pp]orts?\s+)([1-9]\d)([1-9]\d)\b(?![\d:\/-]|[.,]\d)/g, '$1$2 $3')   // port 8080 -> eighty eighty
+    .replace(/\b(\d+)\s+x\s+(\d+)\b(?!\s*[x×*])(?![.,]\d)/g, (m, a, b, at, all) => a + (/^\s*(?:=|equals\b)/.test(all.slice(at + m.length)) ? ' times ' : ' by ') + b)   // 3 x 5 cards -> by, 2 x 3 = 6 -> times (was "x")
     .replace(/(^|[\s("“])\.(22|25|32|38|44|45|50|357|380)\b(?=\s+(?:caliber|cal\b|pistols?|revolvers?|rifles?|rounds?|Magnum|ACP|[Ss]pecial|handguns?|automatic|bullets?|slugs?))/g, '$1$2')   // a .45 pistol (was "dot forty-five")
     .replace(/(^|[\s("“~])\.(\d+)(?![\d.]|,\d)(?=[\s,;!?)"”]|\.(?:\s|$)|$)/g, '$1point $2')   // the .5 mark (was ".five")
     .replace(/(?<![\d,.$\/]|Porsche )\b911\b(?![\d\/]|[.,]\d)/g, '9 1 1').replace(/\bPorsche 911\b/g, 'Porsche 9 11')
