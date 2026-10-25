@@ -207,7 +207,8 @@ final class Voice {
         if (tts == null) throw new NeedLocal("the voice isn't loaded");
         lastSource = "phone";
         GeneratedAudio a;
-        synchronized (this) { a = tts.generate(text, sid, speed); }
+        String said = Chapter.forKokoro(text);
+        synchronized (this) { a = tts.generate(said, sid, speed); }
         return new Clip(trim(a.getSamples(), a.getSampleRate()), a.getSampleRate(), speed, System.currentTimeMillis() - t0);
     }
 

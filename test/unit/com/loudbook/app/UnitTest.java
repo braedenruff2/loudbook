@@ -16,6 +16,8 @@ public class UnitTest {
 
     public static void main(String[] a) {
         // a "next" link back to the same page isn't a next chapter
+        check("the letter A for the phone voice", Chapter.forKokoro("Plan A failed. He got an A on the test, an A-plus, Grade A. A man came. Type A people. A. Smith, a plan A."),
+            "Plan Eigh failed. He got an Eigh on the test, an A-plus, Grade Eigh. A man came. Type Eigh people. A. Smith, a plan Eigh.");
         check("next link to itself", Chapter.samePage("https://x.com/s/ch4/#comments", "https://x.com/s/ch4"), true);
         check("next link to the next page", Chapter.samePage("https://x.com/s/ch5", "https://x.com/s/ch4"), false);
         check("no next link", Chapter.samePage(null, "https://x.com/s/ch4"), false);

@@ -531,7 +531,9 @@ function tidy(t) {
       (m, pre, n, c) => pre + (n === '0' ? +c + ' cents' : n + ' ' + (c === '00' ? (n === '1' ? 'dollar' : 'dollars') : c[0] === '0' ? 'oh ' + c[1] : c)))   // "it cost 3.50" (was "three point five zero")
     // titles: "Mr. Smith" (the period made the voice stop as if the sentence had ended)
     .replace(/\b(Mr|Mrs|Ms|Dr|Prof|Capt|Sgt|Lt|Gen|Col|Rev|Fr|Sr|Jr|Gov|Sen|Rep|Pres|Insp|Det|Cpl|Pvt|Adm|Cmdr|Maj|Hon)\.(?=\s+\p{Lu})/gu,
-      (m, t) => TITLES[t])
+      (m, t, at, all) => !/^[SJ]r$/.test(t) ? TITLES[t]
+        : (t === 'Jr' ? /\p{Lu}[\p{L}'’-]*,?\s$/u : /\p{Lu}[\p{L}'’-]*\s+\p{Lu}[\p{L}'’-]*\s$/u).test(all.slice(Math.max(0, at - 40), at)) ? TITLES[t] + (/^\s+(?:Day|High)\b/.test(all.slice(at + m.length)) ? '' : '.')   // "John Smith Jr. He waved." keeps its full stop
+        : t === 'Sr' ? 'Sister' : TITLES[t])   // Sr. Mary is a nun
     .replace(/\b(Mr|Mrs|Ms|Dr)\.(?=\p{Lu}\p{Ll})/gu, (m, t) => TITLES[t] + ' ')   // Mr.Smith (no space)
     .replace(/\b(Mr|Mrs|Ms|Dr)(?=\s+(?:\p{Lu}\p{Ll}|(?:&|and)\s+(?:Mr|Mrs|Ms|Dr)\b))/gu, (m, t) => TITLES[t])   // Mr Smith, Mrs Jones (no dot, British style)
     // sums: "3 * 4 = 12" (the lone asterisk was dropped), "15 + 7 = 22"
@@ -684,6 +686,11 @@ function tidy(t) {
     .replace(/\b(\d+):(\d\d)\b(?![\d:])(?=\s+(?:ratio|odds|scale|split|mix)\b)/g, '$1 to $2')   // a 1:50 scale
     .replace(/\b((?:ratio|odds|scale)(?:\s+(?:of|is|was|were|at|are))?\s+)(\d+):(\d\d)\b(?![\d:])/gi, '$1$2 to $3')                  // a 3:1 ratio (times have two digits)
     .replace(/(^|[\s\[(])(Ep|Vol)\s+(?=\d)/g, (m, b, w) => b + (w === 'Ep' ? 'Episode ' : 'Volume '))   // Ep 4, Vol 2 (no dot)
+    .replace(/(^|[\s\[(])EP\s+(?=\d)/g, '$1Episode ')                       // "EP 140 – Return" (the voice said "ep")
+    .replace(/\b([Aa])pt\.?(?=\s+#?\d)/g, '$1partment')                       // Apt 4C (the voice said "apt")
+    .replace(/\bGG,? EZ\b/g, (m) => m.replace('EZ', 'easy')).replace(/\bK\/D(?= ratio\b| of\b|\s+(?:is|was)\b)/g, 'K D')   // "GG, EZ" (the voice said "ez"), K/D ratio ("K slash D")
+    .replace(/\bAK-?47s?\b/g, (m) => 'AK forty-seven' + (m.endsWith('s') ? 's' : ''))   // AK47 (the voice said "ack")
+    .replace(/(\d)['′](?=\s+(?:wide|tall|long|high|deep|across|thick|away|square|by)\b)/g, (m, d, at, all) => d + (/\b[Aa]n?\s+\d*$/.test(all.slice(Math.max(0, at - 8), at + 1)) ? '-foot' : ' feet'))   // a 3' wide door (the voice dropped the foot mark)
     .replace(/\b(\d+(?:st|nd|rd|th))\s+fl\.(?=\s|$)/g, (m, n, at, all) => n + ' floor' + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))   // the 23rd fl.
     .replace(/\b(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d\d))?\s?USD\b/g, (m, n, c) => n + (n === '1' ? ' dollar' : ' dollars') + (c && +c ? ' ' + +c : ''))   // 3.99 USD
     .replace(/\b([Cc])hs\.\s*(?=\d)/g, (m, c) => (c === 'C' ? 'Chapters ' : 'chapters '))   // chs. 5-10
@@ -702,10 +709,10 @@ function tidy(t) {
     .replace(/\b(Mon|Tue|Tues|Wed|Thu|Thur|Thurs|Fri|Sat|Sun)\s?[-–]\s?(Mon|Tue|Tues|Wed|Thu|Thur|Thurs|Fri|Sat|Sun)\b/g,
       (m, a, b) => DAYS[a] + ' to ' + DAYS[b])                         // Mon-Fri
     // ranks and grades: "Rank: S+", "an A+ student", "Grade: B-" (the voice dropped the sign)
-    .replace(/\b([SABCDEF]{1,3})\+(?![+\w])/g, '$1 plus')
-    .replace(/\b([ABD-Z]|[A-Z]{2,3})\+\+(?![+\w])/g, '$1 plus plus')                // A++ grade, S++ rank (C++ the voice already says)
-    .replace(/\b((?:[Rr]ank|[Gg]rade|[Tt]ier|[Cc]lass)(?::\s*|\s+))([SABCDEF]{1,3})-(?=[\s.,!?)\]]|$)/g, '$1$2 minus')
-    .replace(/(\b(?:[Aa]n?|got|gets|get|earned|scored)\s)([A-F])-(?=[\s.,!?)\]]|$)|\b([SABCDEF]{1,3})-(?=\s+(?:rank|grade|tier|class|student|average|level)\b)/g, (m, a, g, h) => (a ? a + g : h) + ' minus')   // a C-, a B- rank
+    .replace(/\b([SABCDEF]{1,3})\+(?![+\w])/g, '$1-plus')   // A-plus ("A plus": the voice said "uh plus")
+    .replace(/\b([ABD-Z]|[A-Z]{2,3})\+\+(?![+\w])/g, '$1-plus-plus')                // A++ grade, S++ rank (C++ the voice already says)
+    .replace(/\b((?:[Rr]ank|[Gg]rade|[Tt]ier|[Cc]lass)(?::\s*|\s+))([SABCDEF]{1,3})-(?=[\s.,!?)\]]|$)/g, '$1$2-minus')
+    .replace(/(\b(?:[Aa]n?|got|gets|get|earned|scored)\s)([A-F])-(?=[\s.,!?)\]]|$)|\b([SABCDEF]{1,3})-(?=\s+(?:rank|grade|tier|class|student|average|level)\b)/g, (m, a, g, h) => (a ? a + g : h) + '-minus')   // a C-, a B- rank
     .replace(/\bvs\.?(?=\s)/gi, 'versus').replace(/(?<![\w.'’-])(ok|Ok|OK)(?![\w'’-]|\.\w)/g, (m) => (m[0] === 'o' ? 'okay' : 'Okay'))   // "ok" (the voice could say "ock")
     .replace(/\bi\.e\.(?=[\s,])/gi, (m) => m[0] === 'I' ? 'That is' : 'that is')   // "I.e., nothing" at a sentence start
     .replace(/\bPh\.D\./g, (m, at, all) => 'PhD' + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))
@@ -752,7 +759,7 @@ function tidy(t) {
     .replace(/\bMt\.?(?=\s+[A-Z][a-z])/g, 'Mount').replace(/\bFt\.(?=\s+[A-Z])/g, 'Fort').replace(/(\d)\s?pct\b/g, '$1 percent')                     // the voice says "M T." and stops
     .replace(/(^|\s)~\s?(?=\d)/g, '$1about ')                     // ~5 minutes (the voice says "tilde")
     .replace(/\b(\d+(?:st|nd|rd|th))\s+St\.(?!\w)/g, '$1 Street')                          // 42nd St.
-    .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)/g, '$1 Street')
+    .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, w, mid) => w + ' Street' + (mid !== undefined ? '' : '.'))   // "on Patrick St." keeps its full stop
     .replace(/\b(\p{Lu}\p{Ll}+\s+)(Rd|Ln)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, w, a, mid) => w + (a === 'Rd' ? 'Road' : 'Lane') + (mid !== undefined ? '' : '.'))   // Elm Rd., Oak Ln.
     .replace(/\bHwy\.?\s*(?=\d)/g, 'Highway ').replace(/\bGr\.\s*(?=\d)/g, 'Grade ')
     .replace(/\b(Ave|Blvd)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, a, mid) => (a === 'Ave' ? 'Avenue' : 'Boulevard') + (mid !== undefined ? '' : '.'))          // 5th Ave.
@@ -838,7 +845,7 @@ return { parseFixes, makeSayer, tidy };
       .replace(/\$(\d[\d,]*)(?:\.(\d{2}))?\b/g, (_, d, c) => { const n = +d.replace(/,/g, ''); if (n === 0 && c && +c) return words(+c) + (+c === 1 ? ' cent' : ' cents');   // $0.99 -> ninety-nine cents
         return words(n) + (n === 1 ? ' dollar' : ' dollars') + (c && +c ? ' and ' + words(+c) + ' cents' : ''); })
       // 9:00 -> nine o'clock, 15:00 -> fifteen hundred, but "10:00 o'clock" and "3:00 AM" don't get a second o'clock
-      .replace(/\b(\d{1,2}):(\d{2})\b/g, (_, h, m, at, all) => words(+h) + (+m === 0 && +h >= 13 && +h <= 23 ? ' hundred' : +m === 0 ? (/^\s*(o'clock|o’clock|[ap]\.?m\b|[AP]M\b)/i.test(all.slice(at + 3 + h.length)) ? '' : " o'clock") : +m < 10 ? ' oh ' + words(+m) : ' ' + words(+m)))
+      .replace(/\b(\d{1,2}):(\d{2})\b/g, (_, h, m, at, all) => (+h === 0 && +m === 0 ? (/(?:\b(?:at|past|after|until|till|before|by|around|about|since)\s+)$/i.test(all.slice(Math.max(0, at - 9), at)) ? 'midnight' : 'zero zero') : words(+h) + (+m === 0 && +h >= 13 && +h <= 24 ? ' hundred' : +m === 0 ? (/^\s*(o'clock|o’clock|[ap]\.?m\b|[AP]M\b)/i.test(all.slice(at + 3 + h.length)) ? '' : " o'clock") : +m < 10 ? ' oh ' + words(+m) : ' ' + words(+m))))
       .replace(/\b(\d+)(st|nd|rd|th)\b/gi, (_, d) => ordinal(+d))
       // years before 1100, where it's clearly a year: "the year 1066", "in 1066.", "800 AD" -> ten sixty-six, eight hundred AD
       .replace(/\b([Yy]ear\s+)(10\d\d)\b(?![.,]?\d)|\b((?:[Ii]n|[Ss]ince|[Uu]ntil|[Cc]irca|[Bb]y)\s+)(10\d\d)(?=\s*(?:[,;:!?)]|\.(?!\d)|$)|\s+(?:the|a|an|he|she|they|it|we|I|his|her|their|there|when|after|before)\b)|\b(\d{3,4})(?=\s?(?:AD|BC|BCE|CE|A\.D\.|B\.C\.)(?!\w))|((?:\bAD|\bA\.D\.)\s?)(\d{3,4})\b(?![.,]?\d)/g,

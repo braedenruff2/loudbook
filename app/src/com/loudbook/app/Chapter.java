@@ -8,6 +8,13 @@ import java.util.List;
 
 /** A chapter as the page script (assets/web/loudbook.js) hands it over. */
 final class Chapter {
+    // the letter A said as a letter: the phone voice reads a lone "A" before a word as "uh" ("Plan A failed",
+    // "an A on the test"); "Eigh" it says as the letter. Only for the phone voice (Gemini reads A fine).
+    private static final java.util.regex.Pattern LETTER_A = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:(?i:Plan|Type|Grade|Rank|Tier|Class|Option|Section|Vitamin|Group|Team|Block|Wing|Floor|Exhibit|Appendix|Part|Side|Building|Gate|Platform|Row|Seat|Zone|Sector|Squad|Unit|Category|Size|Batch|Phase|Model|Cell|Hall|Ward|Lot|Route|Track|Pod|Bay|Deck|Hangar|Terminal|Dorm|Lab|Tower)|[Aa]n) )A(?![\\p{L}\\d'\u2019+-]|\\.\\p{L})");
+    static String forKokoro(String t) {
+        return t.indexOf('A') < 0 ? t : LETTER_A.matcher(t).replaceAll("Eigh");
+    }
     static final class Chunk {
         final int block; final String text; final String say;
         Chunk(int block, String text, String say) { this.block = block; this.text = text; this.say = say; }
