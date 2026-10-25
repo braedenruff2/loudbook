@@ -462,6 +462,7 @@ const STATS = { STR: 'Strength', AGI: 'Agility', DEX: 'Dexterity', INT: 'Intelli
 // "1920" -> "19 20", "1600" -> "16 hundred", "720" -> "7 20", "1080" -> "10 80" (the way screen sizes are said)
 const FRAC = { 2: ['half', 'halves'], 3: ['third', 'thirds'], 4: ['quarter', 'quarters'], 5: ['fifth', 'fifths'], 6: ['sixth', 'sixths'], 7: ['seventh', 'sevenths'], 8: ['eighth', 'eighths'] };
 const fracWords = (a, b, mixed) => (a === 1 ? (mixed ? 'a ' : b === 2 ? '' : 'one ') + FRAC[b][0] : a + ' ' + FRAC[b][1]);   // 1/2 -> a half / one half, 3/4 -> 3 quarters
+const GROUPS = { 1: 'ones', 2: 'twos', 3: 'threes', 4: 'fours', 5: 'fives', 6: 'sixes', 7: 'sevens', 8: 'eights', 9: 'nines' };
 const pairs = (n) => { const a = n.slice(0, n.length - 2), b = n.slice(-2); return b === '00' ? a + ' hundred' : b[0] === '0' ? a + ' oh ' + b[1] : a + ' ' + b; };
 const TITLES = { Mr: 'Mister', Mrs: 'Missus', Ms: 'Miz', Dr: 'Doctor', Prof: 'Professor', Capt: 'Captain', Sgt: 'Sergeant',
   Lt: 'Lieutenant', Gen: 'General', Col: 'Colonel', Rev: 'Reverend', Fr: 'Father', Sr: 'Senior', Jr: 'Junior', Gov: 'Governor',
@@ -476,7 +477,7 @@ const UNITS = { km: ['kilometer', 'kilometers'], cm: ['centimeter', 'centimeters
   m: ['meter', 'meters'], kg: ['kilogram', 'kilograms'], g: ['gram', 'grams'], lb: ['pound', 'pounds'], lbs: ['pound', 'pounds'],
   ft: ['foot', 'feet'], mph: ['mile per hour', 'miles per hour'], 'km/h': ['kilometer per hour', 'kilometers per hour'],
   kph: ['kilometer per hour', 'kilometers per hour'], mi: ['mile', 'miles'], min: ['minute', 'minutes'], mins: ['minute', 'minutes'], sec: ['second', 'seconds'], secs: ['second', 'seconds'], hr: ['hour', 'hours'], hrs: ['hour', 'hours'], oz: ['ounce', 'ounces'],
-  kmh: ['kilometer per hour', 'kilometers per hour'], pts: ['point', 'points'] };
+  kmh: ['kilometer per hour', 'kilometers per hour'], pts: ['point', 'points'], L: ['liter', 'liters'], ml: ['milliliter', 'milliliters'], mL: ['milliliter', 'milliliters'] };
 
 const GRUNTS = [[/^[Hh](m+p+h|m+f)$/, 'humph'], [/^[Hh]m$/, 'hmm'], [/^([Mm]hm+|[Mm]m-?hm+)$/, 'mm-hmm'], [/^[Mm]m+$/, 'hmm'],
   [/^[Ss]hh+$/, 'shush'], [/^[Pp]f+t?$/, 'puh'], [/^[Gg]rr+$/, 'grur'], [/^[Bb]rr+$/, 'burr'], [/^[Nn]+g+h$|^[Nn]n+g$|^[Nn]+h$/, 'ungh'],
@@ -522,6 +523,7 @@ function tidy(t) {
     .replace(/(?:\.\.\.|…)+\s?([?!])/g, '$1')                     // "What...?" (the voice ran it into the next words)
     // the voice drops "..." altogether (no pause at all): a beat instead, or a full stop before a new sentence
     .replace(/(\.\.\.|…)(?=\s*["'”’)\]]*\s*$)/gu, '.')
+    .replace(/(^|[.!?]["'”’]?\s+|\s["']|[“‘(\[])(?:\.\.\.|…)+\s*(?=[\p{L}\p{N}])/gu, '$1')   // "...Nothing." (was ". Nothing.")
     .replace(/(\.\.\.|…)\s*(?=\p{Lu})/gu, '. ').replace(/(\p{L}|\p{N}|,)\s*(\.\.\.|…)\s*(?=[\p{Ll}\p{N}])/gu, '$1; ')
     // titles: "Mr. Smith" (the period made the voice stop as if the sentence had ended)
     .replace(/\b(Mr|Mrs|Ms|Dr|Prof|Capt|Sgt|Lt|Gen|Col|Rev|Fr|Sr|Jr|Gov|Sen|Rep|Pres|Insp|Det|Cpl|Pvt|Adm|Cmdr|Maj|Hon)\.(?=\s+\p{Lu})/gu,
@@ -536,7 +538,8 @@ function tidy(t) {
     .replace(/\b(\p{L})(?:-\1)*-(\1)/giu, (m, a, b) => (a === a.toUpperCase() ? b.toUpperCase() : b))   // also "W-w-wait"
     // arrows in stat changes: "15 → 17"
     .replace(/\s*(?:→|->|⟶|=>)\s*/g, ' to ')
-    .replace(/\b(?:Lv|Lvl|LVL|LV|lvl|lv)\.?\s*(?=\d)/g, 'Level ')
+    .replace(/\b(?:Lv|Lvl|LVL|LV|lvl|lv)\.?\s*(?=\d|(?:MAX|Max|max)\b)/g, 'Level ')   // also Lv. MAX
+    .replace(/(\w)\s@\s(?=[\d$£€])/g, '$1 at ')   // 12 potions @ 5g each
     .replace(/\b(HP|MP|SP|XP|EXP|EP|AP)\/(HP|MP|SP|XP|EXP|EP|AP)\b/g, '$1 and $2')   // HP/MP (not "slash")
     .replace(/\b([A-Z]{3})(?=\s*(?::|\+|-|—|–|\d))/g, (m, k) => STATS[k] || m)
     .replace(/(\d\s*)([A-Z]{3})\b(?![a-z])/g, (m, n, k) => n + (STATS[k] || k))   // +5 STR
@@ -551,11 +554,11 @@ function tidy(t) {
     .replace(/\b(\d+)\s?×(?=\s|$)/g, '$1 times').replace(/(^|\s)×\s?(?=\d)/g, '$1times ')   // 3× damage, ×3
     .replace(/(^|[:,;(\[•\-–]\s*|\s[-–]\s)(\d+)\s?x\s(?=\p{Lu}\p{Ll})/gu, '$1$2 ')   // Reward: 1x Potion, 3x Mana Crystal (not "one times")
     .replace(/\b(\d+)x\b/g, '$1 times').replace(/\bx(\d+)\b/g, 'times $1')   // 2x damage, x3
+    .replace(/\$(\d+(?:\.\d+)?)\s?(k|K|m|M|bn|b|B)\b/g, (m, n, u) => '$' + n + ' ' + { k: 'thousand', m: 'million', b: 'billion', bn: 'billion' }[u.toLowerCase()])   // $1.5M (then: a $1.5M deal -> million-dollar deal)
     .replace(/(\b(?:[Aa]n?|[Tt]he)\s)?\$(\d+(?:\.\d+)?)\s(thousand|million|billion|trillion)\b(\s+(?!(?:and|or|to|of|for|in|on|at|from|per|each|a|an|the|is|was|were|more|less|worth|plus|minus|dollars?)\b)\p{Ll})?/gu,
       (m, a, n, u, next) => (a || '') + n + ' ' + u + (a && next ? '-dollar' + next : ' dollars' + (next || '')))   // $1.2 million (was "one dollar.two million"), a $5 million deal
     .replace(/\b(million|billion|thousand|trillion) dollars(\s+dollars)\b/g, '$1$2')   // "$2 million dollars"
-    .replace(/\$(\d+(?:\.\d+)?)\s?(k|K|m|M|bn|b|B)\b/g, (m, n, u) => n + ' ' + { k: 'thousand', m: 'million', b: 'billion', bn: 'billion' }[u.toLowerCase()] + ' dollars')
-    .replace(/([£€¥₹₩])(\d+(?:\.\d+)?)(?:(k|K|m|M|bn|b|B)\b|\s(thousand|million|billion|trillion)\b)/g, (m, c, n, u, w) =>   // €2.3B, £5 million (was "two euros.three billion")
+    .replace(/([£€¥₹₩])(\d+(?:\.\d+)?)(?:(k|K|m|M|bn|b|B)\b|\s(thousand|million|billion|trillion|crore|lakh)\b)/g, (m, c, n, u, w) =>   // ₹2 crore -> two crore rupees   // €2.3B, £5 million (was "two euros.three billion")
       n + ' ' + (w || { k: 'thousand', m: 'million', b: 'billion', bn: 'billion' }[u.toLowerCase()]) + ' ' + ({ '£': 'pounds', '¥': 'yen', '₹': 'rupees', '₩': 'won' }[c] || 'euros'))
     // races: "ran 5k", "a 10k run", "ran a half 21k" -> "five K" (not five thousand)
     .replace(/\b((?:ran|run|runs|running|jogged|walked|did|finished)\s(?:a\s|the\s|another\s)?)(\d{1,3})[kK]\b(?!\s+(?:gold|coins?|credits?|points?|dollars?|xp|exp|views|words|subs|followers|people|steps)\b)|\b(\d{1,3})k(?=\s+(?:fun\s)?(?:runs?|races?|marathons?)\b)/g,
@@ -577,7 +580,7 @@ function tidy(t) {
     .replace(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\.?\s+(3[01]|[12]\d|0?[1-9])(st|nd|rd|th)?\b(?![:.\/]?\d)/g,   // Jan. 5, 2024 -> January 5th
       (m, mo, d, th) => (MONTHS[mo] || mo) + ' ' + +d + (th || ({ 1: 'st', 2: 'nd', 3: 'rd' }[+d % 10 && (+d < 11 || +d > 13) ? +d % 10 : 0] || 'th')))
     .replace(/\b(\d+)\s?(?:y\/o|yo|y\.o\.)(?![\w\/])/g, (m, n) => n + (n === '1' ? ' year old' : ' years old'))   // 25 y/o
-    .replace(/(?<!\b[A-Za-z]{2,}:\s?)\b50\s?\/\s?50\b/g, 'fifty-fifty')
+    .replace(/(?<!\b[A-Za-z]{2,}:\s?|\b(?:[A-Z]{2,4}|Mana|Health|Stamina|Energy|Ammo|Charges?|Slots?|Uses)\s)\b50\s?\/\s?50\b/g, 'fifty-fifty')   // not "MP 50/50" (a stat)
     .replace(/(?<!\b[A-Za-z]{2,}:\s?)\b50[-–]50\b(?![-–\d])/g, 'fifty-fifty')   // a 50-50 chance (was "fifty to fifty")
     .replace(/\b(\d+(?:st|nd|rd|th))\/(?=\d+(?:st|nd|rd|th)\b)/g, '$1 or ')   // the 1st/2nd floor   // not "MP: 50/50\"
     .replace(/\b(\d+)['′]\s?(\d+)(?:"|''|”|″)/g, '$1 foot $2')   // also 6′2″ (prime marks)           // 6'2"
@@ -594,6 +597,7 @@ function tidy(t) {
     .replace(/\b(\d{1,2}):([0-5]\d):([0-5]\d)\b/g, (m, h, n, sec) => [[+h, 'hour'], [+n, 'minute'], [+sec, 'second']]
       .filter(([v]) => v).map(([v, u]) => v + ' ' + u + (v === 1 ? '' : 's')).join(' ') || '0 seconds')
     .replace(/\b(\d+)d\s(\d+)h(?:\s(\d+)m)?\b(?!\/)/g, (m, d, h, n) => d + (d === '1' ? ' day ' : ' days ') + h + (h === '1' ? ' hour' : ' hours') + (n ? ' ' + n + (n === '1' ? ' minute' : ' minutes') : ''))   // 2d 3h left
+    .replace(/\bin ([1-9])s (and|or) ([1-9])s\b/g, (m, a, w, b) => 'in ' + GROUPS[a] + ' ' + w + ' ' + GROUPS[b])   // came in 2s and 3s (not seconds)
     // coins: "50g 20s 5c" -> gold, silver, copper (not grams and seconds)
     .replace(/\b(\d+)\s?g(,?\s(?:and\s)?)(\d+)\s?s\b(?:(,?\s(?:and\s)?)(\d+)\s?c\b)?/g, (m, g, s1, sv, s2, c) => g + ' gold' + s1 + sv + ' silver' + (c ? s2 + c + ' copper' : ''))   // 5g 2s, 500g, 2s, 5c
     .replace(/\b(\d+)\s?s(,?\s(?:and\s)?)(\d+)\s?c\b/g, '$1 silver$2$3 copper')
@@ -613,10 +617,13 @@ function tidy(t) {
     .replace(/(\b(?:[Cc]ooldown|COOLDOWN|CD|[Dd]uration|[Cc]ast [Tt]ime|[Cc]ast|[Rr]echarge|[Dd]elay|[Cc]hannel(?:ing)?)\s*:?\s*)(\d+(?:\.\d+)?)\s?([smh])\b(?![\/'’]|\.\w)/g, (m, pre, n, u) =>   // Cooldown: 1.5 s, 10 m (not meters)
       pre + n + ' ' + { s: 'second', m: 'minute', h: 'hour' }[u] + (n === '1' ? '' : 's'))
     .replace(/(?<![\w.$])(\d+(?:\.\d+)?)[mM](?=\s+(?:views|followers|subs|subscribers|people|users|readers|players|fans|likes|downloads|copies|gold|coins|credits|souls|lives|years|troops|soldiers|monsters)\b)/g, '$1 million')   // 3.4m followers (was "meters")
-    .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|ft|mi|mins|min|secs|sec|hrs|hr|pts|m|g)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
+    .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|ft|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|m|g|L)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
       (m, pre, n, u, at, all) => {
         // "a 10 km run", "the 5 kg bag" -> ten-kilometer run (the adjective form takes the singular)
         const next = /^\s+(\p{Ll}+)/u.exec(all.slice(at + m.length));
+        if (u === 'g' && ((next && /^(?:each|apiece)$/.test(next[1])) || /\b(?:for|costs?|paid|sold|bought|at|worth|earned|price:?|fee:?|reward:?)\s$/i.test(all.slice(0, at) + pre)))
+          return pre + n + ' gold';   // "@ 5g each", "sold for 50g" (LitRPG gold, not grams)
+        if (u === 'L' && /\b(?:[Ll]evel|[Ff]loor|[Rr]oom|[Aa]pt|[Ss]eat|[Rr]ow|[Gg]ate|[Uu]nit|[Bb]lock|[Ss]ize)\s$/.test(all.slice(0, at) + pre)) return m;   // Room 2L, size 3L
         if (!/[\/h]$/.test(u) && /(?:^|\s)(?:[Aa]n?|[Tt]he|[Hh]is|[Hh]er|[Tt]heir|[Mm]y|[Yy]our|[Oo]ur)\s$/.test(all.slice(0, at) + pre) && next &&
             !/^(?:away|long|tall|wide|high|deep|thick|off|of|from|to|and|or|per|in|on|at|by|for|ahead|behind|down|up|later|ago|left|more|less|each|apiece|north|south|east|west|he|she|it|they|we|you|that|which|who|was|were|is|are|had|has|felt|seemed|took|went)$/.test(next[1]))
           return pre + n + '-' + UNITS[u][0];
@@ -691,7 +698,7 @@ function tidy(t) {
     .replace(/\b((?:[Rr]ank|[Gg]rade|[Tt]ier|[Cc]lass)(?::\s*|\s+))([SABCDEF]{1,3})-(?=[\s.,!?)\]]|$)/g, '$1$2 minus')
     .replace(/(\b(?:[Aa]n?|got|gets|get|earned|scored)\s)([A-F])-(?=[\s.,!?)\]]|$)|\b([SABCDEF]{1,3})-(?=\s+(?:rank|grade|tier|class|student|average|level)\b)/g, (m, a, g, h) => (a ? a + g : h) + ' minus')   // a C-, a B- rank
     .replace(/\bvs\.?(?=\s)/gi, 'versus').replace(/(?<![\w.'’-])(ok|Ok|OK)(?![\w'’-]|\.\w)/g, (m) => (m[0] === 'o' ? 'okay' : 'Okay'))   // "ok" (the voice could say "ock")
-    .replace(/\bi\.e\.(?=[\s,])/gi, 'that is')
+    .replace(/\bi\.e\.(?=[\s,])/gi, (m) => m[0] === 'I' ? 'That is' : 'that is')   // "I.e., nothing" at a sentence start
     .replace(/\bPh\.D\./g, (m, at, all) => 'PhD' + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))
     // U.S., J.R.R., Ph.D.: letters with no dots (each dot was a full stop: "J R R. | Tolkien", "P H dot D dot")
     .replace(/(?<![\p{L}.])(?:\p{Lu}\.){2,4}(?![\p{L}])/gu, (m, at, all) => m.replace(/\./g, '') + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))
