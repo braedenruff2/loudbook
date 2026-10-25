@@ -665,6 +665,9 @@ function tidy(t) {
     .replace(/(?<![\d.])\b(\d{1,2})\.(\d{1,2})\.((?:19|20)\d\d)\b(?!\.?\d)/g, '$1 $2 $3')   // 1.5.2024 (was "one point five.twenty twenty-four")            // 10/12/2025 (not "ten of twelve of")
     .replace(/\b1\s?\/\s?(\d+)(?=\s+(?:chance|odds|shot)\b)/g, '1 in $1')                 // a 1/10 chance
     .replace(/\b(\d+)\s?\/\s?(\d+)(?=\s+times\b)/g, '$1 out of $2')                      // 9/10 times
+    // scores and ratings: "98/100 on the test", "rated 4.5/5 stars", "a 9/10" -> out of (stats stay "120 of 150")
+    .replace(/\b(\d+(?:\.\d+)?)\s?\/\s?(\d+)\b(?![\/\d])(?=\s+(?:stars?\b|on\s+(?:the|a|an|his|her|my|their|our|your|that|this)\s+(?:\w+\s)?(?:tests?|exams?|quiz(?:zes)?|finals?|midterms?|essays?|papers?|assignments?|SATs?|ACTs?)\b))|(\b(?:scored|rated|rating|grade[ds]?|marks?|score:?|rating:?|(?:gave|gives?|giving)\s(?:it|him|her|them|this|that)(?:\sa)?)\s(?:of\s|a\s|an\s)?)(\d+(?:\.\d+)?)\s?\/\s?(\d+)\b(?![\/\d])/gi,
+      (m, a, b, pre, c, d) => pre ? pre + c + ' out of ' + d : a + ' out of ' + b)
     .replace(/(\d|\bthousand|\bmillion|\bbillion)\s*\/\s*(\d)/g, '$1 of $2')   // 120/150 -> 120 of 150, 1.2k/3k
     .replace(/\b1-(\d{3})-(\d{3})-(\d{4})\b(?![-–\/]\d)/g, (m, a, b, c) => 'one, ' + (/^8(00|88|77|66|55|44|33)$/.test(a) ? (a === '800' ? 'eight hundred' : a.split('').join(' ')) : a.split('').join(' ')) + ', ' + b.split('').join(' ') + ', ' + c.split('').join(' '))   // 1-800-555-0199
     // phone numbers digit by digit: "555-1234", "(555) 123-4567" (not "five hundred and fifty-five to...")
