@@ -74,6 +74,12 @@ final class GeminiBook {
         }
     }
 
+    /** How long a recording is, in seconds. */
+    synchronized double seconds(int part) { CloudVoice.Pcm p = parts.get(part); return p.samples() / (double) p.rate; }
+
+    /** Where sentence i starts in its recording (samples), or -1. */
+    synchronized long startOf(int i) { Seg s = bound.get(i); return s == null ? -1 : s.start; }
+
     synchronized boolean has(int i) { return bound.containsKey(i); }
     synchronized boolean joined(int i) { Seg s = bound.get(i); return s != null && s.joined && bound.containsKey(i + 1); }
     synchronized int recorded() { return all.size(); }
@@ -107,42 +113,199 @@ final class GeminiBook {
         return out;
     }
 
-    /** A recording just made, for sentence timing. */
-    static final class Made { int part; int from; int count; }
+    /** A recording just made, for sentence timing. timed: its sentences were already timed by the words heard. */
+    static final class Made { int part; int from; int count; boolean timed; boolean streamed; }
 
     /**
      * Asks Google for sentences [from, to) in one request, and files what comes back. paceOut[0]:
      * the reader's pace (0 if the recording was cut short).
+     *
+     * With the recogniser (asr, loaded) the audio is asked for as a stream and listened to as it
+     * arrives: each sentence is filed, ready to play, as soon as the first words of the one after
+     * it are heard, so reading starts within seconds instead of after the whole chapter is made.
+     * Its timing comes from the words themselves, so it can't be a sentence off.
      */
     Made fetch(Chapter ch, int from, int to, String key, String model, String voice, String style, double pace, double[] paceOut) throws IOException {
+        return fetch(ch, from, to, key, model, voice, style, pace, paceOut, null);
+    }
+
+    Made fetch(Chapter ch, int from, int to, String key, String model, String voice, String style, double pace, double[] paceOut, AsrAligner asr) throws IOException {
         StringBuilder text = new StringBuilder();
         int[] chars = new int[to - from];
+        List<String> texts = new ArrayList<>();
         for (int k = from; k < to; k++) {
             Chapter.Chunk c = ch.chunks.get(k);
             if (k > from) text.append(c.block != ch.chunks.get(k - 1).block ? "\n\n" : " ");
             text.append(c.say);
             chars[k - from] = c.say.length();
+            texts.add(c.say);
         }
         dir.mkdirs();
         int partNo;
-        synchronized (this) { partNo = parts.size(); }
-        File f = new File(dir, "part" + partNo + "-" + System.currentTimeMillis() + ".pcm");
-        CloudVoice.Pcm pcm = CloudVoice.speakToFile(key, model, voice, style, text.toString(), f, 600_000);
+        File f;
+        synchronized (this) {
+            partNo = parts.size();
+            f = new File(dir, "part" + partNo + "-" + System.currentTimeMillis() + ".pcm");
+            parts.add(new CloudVoice.Pcm(f, 0, 0, 24000));             // (its place, while it arrives)
+        }
+        Follow fo = asr != null && asr.loaded() ? new Follow(ch, from, texts, partNo, f, asr) : null;
+        if (fo != null) fo.start();
+        CloudVoice.Pcm pcm;
+        try {
+            pcm = CloudVoice.speakToFile(key, model, voice, style, text.toString(), f, 600_000, fo != null, fo == null ? null : fo::arrived);
+        } catch (IOException e) {
+            if (fo != null) fo.finish();
+            if (fo != null && fo.filed > 0) {
+                // the connection broke part way: keep what was heard (the rest is asked for again)
+                pcm = new CloudVoice.Pcm(f, 0, fo.bytes & ~1L, 24000);
+            } else {
+                synchronized (this) { if (parts.size() == partNo + 1) parts.remove(partNo); }
+                f.delete();
+                throw e;
+            }
+        }
+        if (fo != null) fo.finish();
         Align.Result r = Align.align(pcm, chars, pace, CloudVoice.preambleChars(style));
-        if (r.count == 0) throw new IOException("Gemini's recording didn't match the chapter text");
+        int filed = fo == null ? 0 : fo.filed;
+        int count = Math.max(r.count, filed);
+        if (count == 0) {
+            synchronized (this) { if (parts.size() == partNo + 1) parts.remove(partNo); }
+            throw new IOException("Gemini's recording didn't match the chapter text");
+        }
         if (paceOut != null) paceOut[0] = r.cutShort ? 0 : r.secPerChar;
+        long total = pcm.samples(), minGap = pcm.rate / 5;
+        // where the rest of the sentences start: from the words heard if there are any, else the pauses
+        long[] starts = new long[count + 1];
+        long[] byWords = null;
+        if (fo != null) {
+            int n = Math.min(texts.size(), count + 1);
+            double[] st = AsrAligner.sentenceStarts(fo.words, texts.subList(0, n));
+            long[] old = new long[n];
+            for (int k = 0; k < n; k++) old[k] = k < r.count ? r.start[k] : -1;
+            byWords = AsrAligner.cuts(st, texts.subList(0, n), Align.pausesOf(fo.rms()), pcm.rate, old);
+        }
+        boolean cutShort = count < texts.size();
+        for (int k = 0; k <= count; k++) {
+            if (k < filed) { starts[k] = fo.starts.get(k); continue; }
+            if (k == filed && filed > 0) { starts[k] = fo.lastEnd; continue; }
+            long w = byWords != null && k < byWords.length ? byWords[k] : -1;
+            long p = k < r.count ? r.start[k] : -1;
+            long prev = k == 0 ? -1 : starts[k - 1];
+            long v = w >= 0 && w > prev + minGap ? w : p >= 0 && p > prev + minGap ? p : -1;
+            if (k == count) v = !cutShort ? total : v >= 0 ? v : r.count == count ? r.end[count - 1] : total;
+            else if (v < 0) v = k == 0 ? 0 : Math.min(total, prev + minGap);
+            starts[k] = Math.min(total, v);
+        }
         Made m = new Made();
         synchronized (this) {
-            m.part = parts.size(); m.from = from; m.count = r.count;
-            if (all.isEmpty()) version = VERSION;
-            parts.add(pcm);
-            for (int k = 0; k < r.count; k++)
-                all.add(new Seg(from + k, hash(ch.chunks.get(from + k)), m.part, r.start[k], r.end[k], k < r.count - 1));
+            m.part = partNo; m.from = from; m.count = count; m.timed = fo != null; m.streamed = CloudVoice.lastWay == 0 || CloudVoice.lastWay == 3;
+            boolean onlyThis = true;
+            for (Seg sg : all) if (sg.part != partNo) onlyThis = false;
+            if (onlyThis) version = VERSION;                                   // (a new recording is timed the new way)
+            parts.set(partNo, pcm);
+            for (int k = filed; k < count; k++)
+                all.add(new Seg(from + k, hash(ch.chunks.get(from + k)), partNo, starts[k], starts[k + 1], k < count - 1));
+            // (the ones filed while it arrived: all but the last are followed by the next in the same recording)
+            for (Seg sg : all) if (sg.part == partNo) sg.joined = sg.idx < from + count - 1;
             all.sort((a, b) -> Integer.compare(a.idx, b.idx));
             boundTo = null; bind(ch);
             save();
         }
         return m;
+    }
+
+    /**
+     * Listens to a recording as it arrives and files each sentence once the next one is heard
+     * starting. Runs on its own thread; the download goes on undisturbed.
+     */
+    private final class Follow implements Runnable {
+        final Chapter ch; final int from; final List<String> texts; final int part; final File f;
+        final AsrAligner.Live live;
+        final int rate = 24000, frame = rate * Align.FRAME_MS / 1000;
+        volatile long bytes;
+        volatile boolean ended;
+        private final Object lock = new Object();
+        private Thread thread;
+        long fed;                                          // samples listened to
+        float[] rms = new float[4096]; int nf;             // loudness every 20 ms
+        private double acc; private int accN;
+        int filed;                                         // sentences filed so far
+        final List<Long> starts = new ArrayList<>();
+        long lastEnd;
+        List<AsrAligner.Word> words = new ArrayList<>();
+
+        Follow(Chapter ch, int from, List<String> texts, int part, File f, AsrAligner asr) {
+            this.ch = ch; this.from = from; this.texts = texts; this.part = part; this.f = f;
+            live = asr.new Live(rate);
+        }
+        void start() { thread = new Thread(this, "lb-gemini-follow"); thread.start(); }
+        void arrived(long b) { bytes = b; synchronized (lock) { lock.notifyAll(); } }
+        /** The recording is complete (or stopped): finish listening, at most a little while longer. */
+        void finish() {
+            ended = true;
+            synchronized (lock) { lock.notifyAll(); }
+            try { thread.join(60_000); } catch (InterruptedException ignored) { }
+        }
+        float[] rms() { return java.util.Arrays.copyOf(rms, nf); }
+
+        @Override public void run() {
+            long lastLook = 0;
+            try {
+                while (true) {
+                    long have = bytes / 2;
+                    if (have > fed) {
+                        int n = (int) Math.min(rate / 2, have - fed);
+                        float[] x = new CloudVoice.Pcm(f, 0, have * 2, rate).read(fed, n);
+                        live.feed(x);
+                        for (float v : x) {
+                            acc += v * v;
+                            if (++accN == frame) {
+                                if (nf == rms.length) rms = java.util.Arrays.copyOf(rms, nf * 2);
+                                rms[nf++] = (float) Math.sqrt(acc / frame); acc = 0; accN = 0;
+                            }
+                        }
+                        fed += x.length;
+                        if (x.length == 0) break;
+                    }
+                    boolean caughtUp = fed >= bytes / 2;
+                    if (fed - lastLook >= rate * 3 / 2 || caughtUp && ended) { lastLook = fed; look(); }
+                    if (caughtUp && ended) break;
+                    if (caughtUp) synchronized (lock) { if (bytes / 2 <= fed && !ended) lock.wait(200); }
+                }
+                live.finish();
+                words = live.words();
+            } catch (Throwable t) {
+                System.err.println("Loudbook: gemini follow: " + t);
+            } finally { live.release(); }
+        }
+
+        /** Files every sentence whose end is known now (the next one's first words were heard). */
+        private void look() {
+            words = live.words();
+            double[] st = AsrAligner.sentenceStarts(words, texts);
+            int last = -1;
+            for (int k = 0; k < st.length; k++) if (!Double.isNaN(st[k])) last = k;
+            if (last < 1 || last <= filed) return;
+            long[] cut = AsrAligner.cuts(java.util.Arrays.copyOf(st, last + 1), texts.subList(0, last + 1), Align.pausesOf(rms()), rate, new long[last + 1]);
+            if (filed == 0 && cut[0] < 0) cut[0] = 0;                      // (the first words weren't made out: it starts at the start)
+            if (filed > 0) cut[filed] = lastEnd;
+            List<Seg> add = new ArrayList<>();
+            int k = filed;
+            while (k < last && cut[k] >= 0 && cut[k + 1] > cut[k] + rate / 5) {
+                add.add(new Seg(from + k, hash(ch.chunks.get(from + k)), part, cut[k], cut[k + 1], true));
+                starts.add(cut[k]);
+                lastEnd = cut[k + 1];
+                k++;
+            }
+            if (add.isEmpty()) return;
+            filed = k;
+            synchronized (GeminiBook.this) {
+                parts.set(part, new CloudVoice.Pcm(f, 0, (fed * 2), rate));
+                all.addAll(add);
+                all.sort((a, b) -> Integer.compare(a.idx, b.idx));
+                boundTo = null; bind(ch);
+            }
+        }
     }
 
     /**

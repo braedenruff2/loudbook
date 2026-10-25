@@ -3,6 +3,7 @@ import java.util.*;
 /** A small stand-in for Android's org.json, enough for the app's classes in tests. */
 public class JSONObject {
     final Map<String, Object> m = new LinkedHashMap<>();
+    public static final Object NULL = new Object() { public String toString() { return "null"; } };
     public JSONObject() { }
     public JSONObject(String s) throws JSONException { Object o = new P(s).value(); if (!(o instanceof JSONObject)) throw new JSONException("not an object"); m.putAll(((JSONObject) o).m); }
     public JSONObject put(String k, Object v) { m.put(k, v); return this; }

@@ -34,20 +34,7 @@ final class CloudVoice {
     };
     static final String DEFAULT_STYLE = "Read this like a skilled audiobook narrator: natural and engaging, following the mood of the story and the characters' emotions.";
 
-    /**
-     * The older API takes the reading style and the text in one prompt, and Gemini sometimes read
-     * the style out loud ("natural and engaging, following the mood..."), which put every sentence
-     * after it one off. Set out the way Google's own examples do: notes for the narrator, then the
-     * transcript, marked as the only part to say.
-     */
-    static String prompt(String style, String text) {
-        String st = style == null ? "" : style.trim();
-        if (st.isEmpty()) return text;
-        return "### DIRECTOR'S NOTES (for the narrator only; never say these out loud)\n" + st
-            + "\n\n### TRANSCRIPT (say exactly this, and nothing else)\n" + text;
-    }
-
-    /** About how many letters of instructions Gemini might say before the text, if it says them (0: none sent). */
+    /** About how many letters of instructions Gemini might say before the text, if it ever says them (0: none sent). */
     static int preambleChars(String style) {
         String st = style == null ? "" : style.trim();
         return st.isEmpty() ? 0 : st.length();
@@ -56,7 +43,12 @@ final class CloudVoice {
     static final class Audio { final float[] samples; final int rate; Audio(float[] s, int r) { samples = s; rate = r; } }
 
     /** Which way of asking worked last time (Google has two APIs and has renamed models before). */
-    static volatile int lastWay = 0;
+    static volatile int lastWay = -1;
+    /** How the last recording was asked for, and what the first way that didn't work said (shown in Settings). */
+    static volatile String how = "", howProblem = "";
+
+    /** Called as audio arrives: bytes of samples saved so far. */
+    interface Progress { void on(long bytes); }
 
     /** Speech audio Google sent, saved to a file: 16-bit mono PCM starting at offset. */
     static final class Pcm {
@@ -78,42 +70,66 @@ final class CloudVoice {
     static Audio speak(String key, String model, String voice, String style, String text, int timeoutMs) throws IOException {
         java.io.File tmp = java.io.File.createTempFile("gemini", ".pcm");
         try {
-            Pcm p = speakToFile(key, model, voice, style, text, tmp, timeoutMs);
+            Pcm p = speakToFile(key, model, voice, style, text, tmp, timeoutMs, false, null);
             return new Audio(p.read(0, (int) p.samples()), p.rate);
         } finally { tmp.delete(); }
     }
 
-    /**
-     * Speech for some text, streamed straight to a file (a chapter's audio is tens of MB, too big
-     * to hold as text). One request, however long the text. Throws with Google's message.
-     */
     static Pcm speakToFile(String key, String model, String voice, String style, String text, java.io.File out, int timeoutMs) throws IOException {
+        return speakToFile(key, model, voice, style, text, out, timeoutMs, false, null);
+    }
+
+    static final String[] WAY_NAMES = {"streamed, Google's new API", "Google's new API", "Google's new API (raw audio)",
+        "streamed, Google's older API", "Google's older API", "Google's older API, older model"};
+
+    /**
+     * Speech for some text, saved straight to a file as it arrives (a chapter's audio is tens of
+     * MB). One request, however long the text. stream: ask for the audio to be sent while it's
+     * being made, so reading can start within seconds (progress hears about each piece). Throws
+     * with Google's message.
+     *
+     * The reading style goes in Google's own field for it (speech_metadata), never in the text:
+     * Gemini reads the text word for word, so a style put in front of it was read out loud too,
+     * and every sentence after it was out of step. The older API has no such field, so there the
+     * text goes alone.
+     */
+    static Pcm speakToFile(String key, String model, String voice, String style, String text, java.io.File out, int timeoutMs,
+                           boolean stream, Progress progress) throws IOException {
         String st = style == null ? "" : style.trim();
-        String withStyle = prompt(st, text);
-        String[] urls = new String[4], bodies = new String[4];
         String content = "{\"type\":\"text\",\"text\":" + PcLink.quote(text)
             + (st.isEmpty() ? "" : ",\"annotations\":[{\"type\":\"speech_metadata\",\"style\":" + PcLink.quote(st) + "}]") + "}";
         String speech = "\"generation_config\":{\"speech_config\":[{\"voice\":" + PcLink.quote(voice) + "}]}";
-        urls[0] = HOST + "interactions";                          // the Interactions API, as Google's example
-        bodies[0] = "{\"model\":" + PcLink.quote(model) + ",\"input\":[{\"type\":\"user_input\",\"content\":[" + content + "]}],"
-            + "\"response_format\":{\"type\":\"audio\"}," + speech + "}";
-        urls[1] = urls[0];                                         // the same, asking for raw 24 kHz PCM
-        bodies[1] = "{\"model\":" + PcLink.quote(model) + ",\"input\":[{\"type\":\"user_input\",\"content\":[" + content + "]}],"
-            + "\"response_format\":{\"type\":\"audio\",\"mime_type\":\"audio/l16\",\"sample_rate\":24000}," + speech + "}";
-        String legacy = "{\"contents\":[{\"parts\":[{\"text\":" + PcLink.quote(withStyle) + "}]}],"
+        String input = "\"model\":" + PcLink.quote(model) + ",\"input\":[{\"type\":\"user_input\",\"content\":[" + content + "]}],";
+        String legacy = "{\"contents\":[{\"parts\":[{\"text\":" + PcLink.quote(text) + "}]}],"
             + "\"generationConfig\":{\"responseModalities\":[\"AUDIO\"],\"speechConfig\":{\"voiceConfig\":{\"prebuiltVoiceConfig\":{\"voiceName\":" + PcLink.quote(voice) + "}}}}}";
-        urls[2] = HOST + "models/" + model + ":generateContent"; bodies[2] = legacy;          // the older API
-        urls[3] = HOST + "models/gemini-2.5-flash-preview-tts:generateContent"; bodies[3] = legacy;
+        String[] urls = new String[6], bodies = new String[6];
+        urls[0] = HOST + "interactions";                          // the Interactions API, streamed (raw 24 kHz PCM as it's made)
+        bodies[0] = "{" + input + "\"response_format\":{\"type\":\"audio\"},\"stream\":true," + speech + "}";
+        urls[1] = urls[0];                                         // the same, all at once (a WAV file)
+        bodies[1] = "{" + input + "\"response_format\":{\"type\":\"audio\"}," + speech + "}";
+        urls[2] = urls[0];                                         // all at once, as raw 24 kHz PCM
+        bodies[2] = "{" + input + "\"response_format\":{\"type\":\"audio\",\"mime_type\":\"audio/l16\",\"sample_rate\":24000}," + speech + "}";
+        urls[3] = HOST + "models/" + model + ":streamGenerateContent?alt=sse"; bodies[3] = legacy;     // the older API, streamed
+        urls[4] = HOST + "models/" + model + ":generateContent"; bodies[4] = legacy;
+        urls[5] = HOST + "models/gemini-2.5-flash-preview-tts:generateContent"; bodies[5] = legacy;
+        int[] order = stream ? new int[]{0, 3, 1, 2, 4, 5} : new int[]{1, 2, 4, 5};
+        // the way that worked last time goes first (if it's one of these)
+        int lw = lastWay;
+        for (int i = 1; i < order.length; i++) if (order[i] == lw) { System.arraycopy(order, 0, order, 1, i); order[0] = lw; break; }
 
         String firstProblem = null;
         // Only a wrong request (not a refusal of the key or the daily limit) moves on to the next
         // way of asking, so a working setup spends exactly one of the day's requests per call.
-        for (int t = 0; t < 4; t++) {
-            int w = (lastWay + t) % 4;
-            Streamed r = postToFile(urls[w], key, bodies[w], out, timeoutMs);
+        for (int w : order) {
+            Streamed r = postToFile(urls[w], key, bodies[w], out, timeoutMs, progress);
             if (r.code == 429) throw new Limited(errorOf(new Reply(r.code, r.json)), retryMs(r.json));
             if (r.code == 401 || r.code == 403) throw new IOException(errorOf(new Reply(r.code, r.json)));
-            if (r.code == 200 && r.audioBytes > 100) { lastWay = w; return wavOrPcm(out, r.audioBytes); }
+            if (r.code == 200 && r.audioBytes > 100) {
+                lastWay = w;
+                how = WAY_NAMES[w];
+                howProblem = firstProblem == null ? "" : firstProblem;
+                return new Pcm(out, 0, r.audioBytes & ~1L, r.rate);
+            }
             if (r.code == 200 && firstProblem == null) firstProblem = "no audio in Google's reply: " + outline(r.json);
             else if (firstProblem == null) firstProblem = errorOf(new Reply(r.code, r.json));
             if (r.code == 200) break;                     // it was understood (and counted): don't spend more
@@ -152,13 +168,15 @@ final class CloudVoice {
         return o.length() > 400 ? o.substring(0, 400) + "…" : o;
     }
 
-    static final class Streamed { int code; String json = ""; long audioBytes; }
+    static final class Streamed { int code; String json = ""; long audioBytes; int rate = 24000; }
 
     /**
-     * Posts, then reads the JSON reply as it arrives: the long base64 string (the audio) is
-     * decoded straight into the file; the rest of the JSON is kept (small) for errors.
+     * Posts, then reads the reply as it arrives: every base64 "data" value (the audio: one long
+     * one, or many short ones when streamed, each in its own event) is decoded straight onto the
+     * end of the file; a WAV header in front of a piece is left out. The rest of the reply is kept
+     * (small) for errors.
      */
-    static Streamed postToFile(String url, String key, String body, java.io.File out, int timeoutMs) throws IOException {
+    static Streamed postToFile(String url, String key, String body, java.io.File out, int timeoutMs, Progress progress) throws IOException {
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
         Streamed r = new Streamed();
         try {
@@ -174,27 +192,93 @@ final class CloudVoice {
             r.code = c.getResponseCode();
             InputStream in = r.code >= 400 ? c.getErrorStream() : c.getInputStream();
             if (in == null) return r;
-            try (InputStream bin = new java.io.BufferedInputStream(in, 1 << 16)) { scan(bin, out, r); }
+            try (InputStream bin = new java.io.BufferedInputStream(in, 1 << 16)) { readAudio(bin, out, r, r.code == 200 ? progress : null); }
             return r;
         } finally { c.disconnect(); }
     }
 
-    /** Streams JSON: strings longer than 2 KB of base64 go to the file (the longest one wins). */
-    static void scan(InputStream in, java.io.File out, Streamed r) throws IOException {
+    /** Where decoded audio goes: onto the end of the file, leaving out a WAV header in front of a piece. */
+    private static final class Sink {
+        final OutputStream o; final Streamed r;
+        final byte[] head = new byte[64]; int headN; boolean headDone = true;
+        long written;
+        Sink(OutputStream o, Streamed r) { this.o = o; this.r = r; }
+        void start() { headN = 0; headDone = false; }
+        void put(int b) throws IOException {
+            if (headDone) { o.write(b); written++; return; }
+            head[headN++] = (byte) b;
+            if (headN == head.length) end();
+        }
+        void end() throws IOException {
+            if (headDone) return;
+            headDone = true;
+            int from = 0;
+            if (headN >= 12 && head[0] == 'R' && head[1] == 'I' && head[2] == 'F' && head[3] == 'F') {
+                from = Math.min(headN, 44);
+                int p = 12;
+                while (p + 8 <= headN) {
+                    String id = new String(head, p, 4, StandardCharsets.US_ASCII);
+                    int size = le32(head, p + 4);
+                    if (id.equals("fmt ") && p + 16 <= headN) r.rate = le32(head, p + 12);
+                    if (id.equals("data")) { from = p + 8; break; }
+                    if (size < 0 || size > 1 << 20) break;
+                    p += 8 + size + (size & 1);
+                }
+            }
+            o.write(head, from, headN - from);
+            written += headN - from;
+        }
+    }
+
+    /** Reads a JSON (or server-sent events) reply, decoding the audio as it goes. */
+    static void readAudio(InputStream in, java.io.File out, Streamed r, Progress progress) throws IOException {
         StringBuilder small = new StringBuilder();
         StringBuilder str = new StringBuilder();
-        java.io.File tmp = new java.io.File(out.getPath() + ".b64");
-        boolean inStr = false, esc = false, blob = false;
-        long blobBytes = 0;
+        String lastKey = null;
+        boolean inStr = false, esc = false, audio = false, afterColon = false;
         int[] quad = new int[4]; int q = 0;
-        OutputStream bo = null;
-        int ch;
+        long told = 0;
+        if (out.exists()) out.delete();
+        OutputStream bo = new java.io.BufferedOutputStream(new java.io.FileOutputStream(out), 1 << 16);
+        Sink sink = new Sink(bo, r);
         try {
+            int ch;
             while ((ch = in.read()) >= 0) {
                 char cc = (char) ch;
                 if (!inStr) {
-                    if (cc == '"') { inStr = true; str.setLength(0); blob = false; blobBytes = 0; q = 0; }
-                    else if (small.length() < 8000) small.append(cc);
+                    if (cc == '"') {
+                        inStr = true; esc = false; str.setLength(0); q = 0;
+                        // the value (after a colon) of a "data" key is a piece of audio
+                        audio = afterColon && "data".equals(lastKey);
+                        if (audio) sink.start();
+                    } else {
+                        if (cc == ':') afterColon = true;
+                        else if (cc == ',' || cc == '{' || cc == '}' || cc == '[' || cc == ']' || cc == '\n') { afterColon = false; lastKey = null; }
+                        if (small.length() < 8000) small.append(cc);
+                    }
+                    continue;
+                }
+                if (audio) {
+                    if (cc == '"') {                                             // the end of a piece
+                        if (q > 1) sink.put((quad[0] << 2) | (quad[1] >> 4));
+                        if (q > 2) sink.put(((quad[1] & 15) << 4) | (quad[2] >> 2));
+                        sink.end();
+                        inStr = false; audio = false; afterColon = false; lastKey = null;
+                        if (small.length() < 8000) small.append("\"\u2026\"");
+                        bo.flush();
+                        if (progress != null && sink.written > told) { told = sink.written; progress.on(told); }
+                        continue;
+                    }
+                    int v = val(cc);
+                    if (v < 0) continue;                                         // '=' padding, escapes, line breaks
+                    quad[q++] = v;
+                    if (q == 4) {
+                        sink.put((quad[0] << 2) | (quad[1] >> 4));
+                        sink.put(((quad[1] & 15) << 4) | (quad[2] >> 2));
+                        sink.put(((quad[2] & 3) << 6) | quad[3]);
+                        q = 0;
+                        if (progress != null && sink.written - told >= 48_000) { bo.flush(); told = sink.written; progress.on(told); }
+                    }
                     continue;
                 }
                 if (esc) {
@@ -204,51 +288,19 @@ final class CloudVoice {
                 } else if (cc == '\\') { esc = true; continue; }
                 else if (cc == '"') {
                     inStr = false;
-                    if (blob) {
-                        // finish the last group (padding is fine)
-                        if (q > 1) { bo.write((quad[0] << 2) | (quad[1] >> 4)); blobBytes++; }
-                        if (q > 2) { bo.write(((quad[1] & 15) << 4) | (quad[2] >> 2)); blobBytes++; }
-                        bo.close(); bo = null;
-                        if (blobBytes > r.audioBytes) {
-                            r.audioBytes = blobBytes;
-                            if (out.exists()) out.delete();
-                            if (!tmp.renameTo(out)) throw new IOException("couldn't save the audio");
-                        } else tmp.delete();
-                        if (small.length() < 8000) small.append("\"…\"");
-                    } else if (small.length() < 8000) small.append('"').append(str).append('"');
+                    String sv = str.toString();
+                    if (afterColon) { afterColon = false; lastKey = null; } else lastKey = sv;     // a value, or a key
+                    if (small.length() < 8000) small.append('"').append(sv.length() > 200 ? sv.substring(0, 200) : sv).append('"');
                     continue;
                 }
-                if (!blob) {
-                    str.append(cc);
-                    if (str.length() > 2048) {
-                        boolean b64 = true;
-                        for (int i = 0; i < str.length() && b64; i++) b64 = val(str.charAt(i)) >= 0 || str.charAt(i) == '=';
-                        if (!b64) { if (str.length() > 20000) str.setLength(20000); continue; }
-                        blob = true;
-                        bo = new java.io.BufferedOutputStream(new java.io.FileOutputStream(tmp), 1 << 16);
-                        String pre = str.toString(); str.setLength(0);
-                        for (int i = 0; i < pre.length(); i++) {
-                            int v = val(pre.charAt(i)); if (v < 0) continue;
-                            quad[q++] = v;
-                            if (q == 4) { blobBytes += emit(bo, quad); q = 0; }
-                        }
-                    }
-                    continue;
-                }
-                int v = val(cc);
-                if (v < 0) continue;                                 // '=' padding, line breaks
-                quad[q++] = v;
-                if (q == 4) { blobBytes += emit(bo, quad); q = 0; }
+                if (str.length() < 20000) str.append(cc);
             }
-        } finally { if (bo != null) { bo.close(); tmp.delete(); } }
+        } finally { bo.close(); }
+        r.audioBytes = sink.written;
         r.json = small.toString();
+        if (progress != null && sink.written > told) progress.on(sink.written);
     }
-    private static int emit(OutputStream o, int[] q) throws IOException {
-        o.write((q[0] << 2) | (q[1] >> 4));
-        o.write(((q[1] & 15) << 4) | (q[2] >> 2));
-        o.write(((q[2] & 3) << 6) | q[3]);
-        return 3;
-    }
+
     private static int val(char c) {
         if (c >= 'A' && c <= 'Z') return c - 'A';
         if (c >= 'a' && c <= 'z') return c - 'a' + 26;

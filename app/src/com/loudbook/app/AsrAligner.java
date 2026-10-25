@@ -52,29 +52,65 @@ final class AsrAligner {
     }
 
     /** The words heard in samples [from, from+n) of a recording, with times in seconds from `from`. */
-    synchronized List<Word> words(CloudVoice.Pcm pcm, long from, long n) throws IOException {
-        OnlineStream s = rec.createStream();
-        int step = pcm.rate / 2;                                    // half a second at a time
-        double ratio = (double) pcm.rate / RATE;
-        for (long at = 0; at < n; at += step) {
-            float[] x = pcm.read(from + at, (int) Math.min(step, n - at));
+    List<Word> words(CloudVoice.Pcm pcm, long from, long n) throws IOException {
+        // (the recogniser is shared with the live listener: it's held a half second at a time)
+        Live l = new Live(pcm.rate);
+        try {
+            int step = pcm.rate / 2;                                // half a second at a time
+            for (long at = 0; at < n; at += step) l.feed(pcm.read(from + at, (int) Math.min(step, n - at)));
+            l.finish();                                             // (a little silence so the last word comes out)
+            return l.words();
+        } finally { l.release(); }
+    }
+
+    /**
+     * Listening as a recording arrives: audio is fed in as it comes, and the words heard so far
+     * (times in seconds from the start) can be asked for at any moment.
+     */
+    final class Live {
+        private final OnlineStream s;
+        private final int rate;
+        private boolean done;
+        Live(int rate) { synchronized (AsrAligner.this) { s = rec.createStream(); } this.rate = rate; }
+
+        void feed(float[] x) {
+            double ratio = (double) rate / RATE;
             int m = (int) (x.length / ratio);
             float[] y = new float[m];
             for (int i = 0; i < m; i++) {
                 double p = i * ratio; int j = (int) p; double f = p - j;
                 y[i] = (float) (x[Math.min(j, x.length - 1)] * (1 - f) + x[Math.min(j + 1, x.length - 1)] * f);
             }
-            s.acceptWaveform(y, RATE);
-            while (rec.isReady(s)) rec.decode(s);
+            synchronized (AsrAligner.this) {
+                s.acceptWaveform(y, RATE);
+                while (rec.isReady(s)) rec.decode(s);
+            }
         }
-        s.acceptWaveform(new float[RATE / 2], RATE);                // a little silence so the last word comes out
-        s.inputFinished();
-        while (rec.isReady(s)) rec.decode(s);
-        OnlineRecognizerResult r = rec.getResult(s);
-        s.release();
+
+        /** The recording is complete: the last words come out. */
+        void finish() {
+            synchronized (AsrAligner.this) {
+                if (done) return;
+                done = true;
+                s.acceptWaveform(new float[RATE / 2], RATE);
+                s.inputFinished();
+                while (rec.isReady(s)) rec.decode(s);
+            }
+        }
+
+        List<Word> words() {
+            OnlineRecognizerResult r;
+            synchronized (AsrAligner.this) { r = rec.getResult(s); }
+            return wordsOf(r.getTokens(), r.getTimestamps());
+        }
+
+        void release() { synchronized (AsrAligner.this) { s.release(); } }
+    }
+
+    boolean loaded() { return rec != null; }
+
+    static List<Word> wordsOf(String[] tok, float[] ts) {
         List<Word> out = new ArrayList<>();
-        String[] tok = r.getTokens();
-        float[] ts = r.getTimestamps();
         StringBuilder w = null; double t = 0;
         for (int i = 0; i < tok.length; i++) {
             String k = tok[i];
@@ -193,6 +229,19 @@ final class AsrAligner {
             if (Double.isNaN(at[k]) || at[k] <= last + 0.2) { out[k] = -1; continue; }
             out[k] = Math.round(at[k] * rate);
             last = at[k];
+        }
+        // any left between two known ones (a word heard out of place): shared out by length, at a pause
+        for (int k = 1; k < n - 1; k++) {
+            if (out[k] >= 0) continue;
+            int a = k - 1, b = k + 1;
+            while (b < n && out[b] < 0) b++;
+            if (out[a] < 0 || b >= n) continue;
+            double tot = 0, upto = 0;
+            for (int q = a; q < b; q++) { double l = Math.max(1, texts.get(q).length()); tot += l; if (q < k) upto += l; }
+            double ta = out[a] / (double) rate, tb = out[b] / (double) rate;
+            double guess = ta + (tb - ta) * upto / tot, c = guess, best = 0.6;
+            for (double[] p : pauses) { double d = Math.abs(p[0] - guess); if (d < best && p[0] > ta + 0.2 && p[0] < tb - 0.2) { best = d; c = p[0]; } }
+            if (c > ta + 0.2 && c < tb - 0.2) out[k] = Math.round(c * rate);
         }
         return out;
     }

@@ -37,7 +37,12 @@ final class Align {
 
     /** The pauses in a recording: {middle, length} in seconds. */
     static double[][] pauses(CloudVoice.Pcm pcm) throws IOException {
-        float[] rms = frames(pcm);
+        return pausesOf(frames(pcm));
+    }
+
+    /** The pauses in a recording's loudness (every 20 ms): {middle, length} in seconds. */
+    static double[][] pausesOf(float[] rms) {
+        if (rms.length == 0) return new double[0][];
         float quiet = quietLevel(rms);
         java.util.ArrayList<double[]> out = new java.util.ArrayList<>();
         double fs = FRAME_MS / 1000.0;

@@ -1087,10 +1087,11 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             int used = svc != null ? svc.cloudRequestsToday() : 0;
             long retry = prefs.getLong("gemRetryAt", 0);
             String wait = retry > System.currentTimeMillis() ? " Google's limit was reached; more requests from " + android.text.format.DateFormat.getTimeFormat(this).format(new java.util.Date(retry)) + "." : "";
-            gInfo.setText("Requests used today: " + used + "." + wait + " Each chapter is read with one request (two if Google stops a long one early), and recordings are kept, so going back or hearing a chapter again is free.\n"
+            gInfo.setText("Requests used today: " + used + "." + wait + " Each chapter is read with one request (two if Google stops a long one early), and recordings are kept, so going back or hearing a chapter again is free. Reading starts as soon as the first sentence arrives.\n"
                 + "Google's Gemini voice is one of the best-rated anywhere. It needs a free API key from aistudio.google.com (Get API key). "
                 + "The free tier has daily limits, and Google may use what's sent to improve its products; past that, Google charges about $0.81 per hour of listening. "
                 + "Whenever Gemini can't be reached or the limit is hit, your PC or the phone reads instead."
+                + (prefs.getString("gemHow", "").isEmpty() ? "" : "\nLast recording: " + prefs.getString("gemHow", "") + ".")
                 + (err.isEmpty() ? "" : "\nLast problem: " + err));
         };
         showG.run();

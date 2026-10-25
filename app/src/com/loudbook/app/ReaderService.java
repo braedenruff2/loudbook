@@ -453,7 +453,10 @@ public class ReaderService extends Service {
                                 if (idx == pos) main.post(() -> status("Gemini didn't record this part (you started further on). The regular voice reads it.", false));
                                 return learned(makeHere(text, want, sp), want);
                             }
-                            recording(ch, b, idx).get();          // the request that covers it
+                            // the request that covers it (its sentences are ready one by one as it arrives)
+                            Future<?> rec = recording(ch, b, idx);
+                            while (!rec.isDone() && !b.has(idx)) Thread.sleep(120);
+                            if (rec.isDone()) rec.get();
                         }
                         throw new IOException("Gemini didn't record this sentence");
                     } catch (java.util.concurrent.ExecutionException | IOException e) {
@@ -694,7 +697,7 @@ public class ReaderService extends Service {
         return prefs.getBoolean("cloudOn", false) && !prefs.getString("cloudKey", "").trim().isEmpty()
             && System.currentTimeMillis() >= cloudRetryAt;
     }
-    void cloudChanged() { cloudRetryAt = 0; cloudError = ""; dropClips(); if (playing && !paused) seek(pos); }
+    void cloudChanged() { cloudRetryAt = 0; cloudError = ""; dropClips(); if (cloudOn()) asrReady(); if (playing && !paused) seek(pos); }
     private String cVoice() { return prefs.getString("cloudVoice", "Sulafat"); }
     private String cModel() { return prefs.getString("cloudModel", "gemini-3.8-flash-tts"); }
     private String cStyle() { return prefs.getString("cloudStyle", CloudVoice.DEFAULT_STYLE); }
@@ -746,9 +749,20 @@ public class ReaderService extends Service {
         try {
             countRequest();
             double[] pace = new double[1];
+            // streamed and listened to as it arrives (reading starts in seconds), when the
+            // recogniser is ready; otherwise the whole recording first, timed afterwards
+            String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date());
+            boolean stream = !today.equals(prefs.getString("gemNoStream", ""));
+            AsrAligner live = stream ? asrReady() : null;
             made = b.fetch(ch, from, to, prefs.getString("cloudKey", ""), cModel(), cVoice(), cStyle(),
-                prefs.getFloat("gemPace:" + cVoice(), 0f), pace);
+                prefs.getFloat("gemPace:" + cVoice(), 0f), pace, live);
             got = made.count;
+            prefs.edit().putString("gemHow", CloudVoice.how + (made.timed ? "; timed by the words as it arrived" : "")
+                + (CloudVoice.howProblem.isEmpty() ? "" : " (first try: " + CloudVoice.howProblem + ")")).apply();
+            Log.i("LoudbookTest", "gemini: " + got + " of " + (to - from) + " sentences, " + CloudVoice.how + (made.timed ? ", timed live" : ""));
+            // a stream that stops early (Google sometimes cuts streamed speech off after a minute)
+            // would cost a request per minute: ask for whole recordings for the rest of the day
+            if (made.streamed && from + got < to && b.seconds(made.part) < 150) prefs.edit().putString("gemNoStream", today).apply();
             if (pace[0] > 0) prefs.edit().putFloat("gemPace:" + cVoice(), (float) pace[0]).apply();
             cloudError = "";
         } catch (CloudVoice.Limited ex) {
@@ -765,7 +779,7 @@ public class ReaderService extends Service {
             main.post(() -> status("Gemini: " + cloudError + ". Another voice reads for now.", false));
             throw ex;
         }
-        refineLater(ch, b, made);
+        if (!made.timed) refineLater(ch, b, made);
         workSecs += (System.currentTimeMillis() - t0) / 1000.0;
         GeminiBook.trim(cloudRoot(), 800L << 20);
         main.post(() -> status("", false));
@@ -779,6 +793,22 @@ public class ReaderService extends Service {
     // exact sentence timing: a recogniser listens to each new recording once, on its own thread
     private final ExecutorService asrThread = Executors.newSingleThreadExecutor();
     private final AsrAligner asr = new AsrAligner();
+    private volatile boolean asrFetching;
+
+    /** The recogniser, if exact timing is on and it's on the phone (it's fetched in the background otherwise). */
+    private AsrAligner asrReady() {
+        if (!prefs.getBoolean("gemExact", true)) return null;
+        File d = new File(getFilesDir(), "asr");
+        if (AsrAligner.downloaded(d)) {
+            try { asr.load(d); return asr; } catch (Throwable t) { Log.w(TAG, "recogniser", t); return null; }
+        }
+        if (!asrFetching) {
+            asrFetching = true;
+            asrThread.submit(() -> { try { AsrAligner.fetch(d, null); } catch (Throwable t) { Log.w(TAG, "recogniser download", t); } asrFetching = false; return null; });
+        }
+        return null;
+    }
+
     private void refineLater(Chapter ch, GeminiBook b, GeminiBook.Made m) {
         if (!prefs.getBoolean("gemExact", true)) return;
         asrThread.submit(() -> {
