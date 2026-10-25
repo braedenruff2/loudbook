@@ -555,6 +555,8 @@ function tidy(t) {
       (m, a, n, u, next) => (a || '') + n + ' ' + u + (a && next ? '-dollar' + next : ' dollars' + (next || '')))   // $1.2 million (was "one dollar.two million"), a $5 million deal
     .replace(/\b(million|billion|thousand|trillion) dollars(\s+dollars)\b/g, '$1$2')   // "$2 million dollars"
     .replace(/\$(\d+(?:\.\d+)?)\s?(k|K|m|M|bn|b|B)\b/g, (m, n, u) => n + ' ' + { k: 'thousand', m: 'million', b: 'billion', bn: 'billion' }[u.toLowerCase()] + ' dollars')
+    .replace(/([£€¥₹₩])(\d+(?:\.\d+)?)(?:(k|K|m|M|bn|b|B)\b|\s(thousand|million|billion|trillion)\b)/g, (m, c, n, u, w) =>   // €2.3B, £5 million (was "two euros.three billion")
+      n + ' ' + (w || { k: 'thousand', m: 'million', b: 'billion', bn: 'billion' }[u.toLowerCase()]) + ' ' + ({ '£': 'pounds', '¥': 'yen', '₹': 'rupees', '₩': 'won' }[c] || 'euros'))
     // races: "ran 5k", "a 10k run", "ran a half 21k" -> "five K" (not five thousand)
     .replace(/\b((?:ran|run|runs|running|jogged|walked|did|finished)\s(?:a\s|the\s|another\s)?)(\d{1,3})[kK]\b(?!\s+(?:gold|coins?|credits?|points?|dollars?|xp|exp|views|words|subs|followers|people|steps)\b)|\b(\d{1,3})k(?=\s+(?:fun\s)?(?:runs?|races?|marathons?)\b)/g,
       (m, pre, a, b) => (pre || '') + (a || b) + ' K')
@@ -581,7 +583,7 @@ function tidy(t) {
     .replace(/\b(\d+)['′]\s?(\d+)(?:"|''|”|″)/g, '$1 foot $2')   // also 6′2″ (prime marks)           // 6'2"
     .replace(/\b(\d+)\s?(am|pm|AM|PM|a\.m\.|p\.m\.)(?![\w])/g, (m, n, ap, at, all) =>
       // "at 3 a.m." ending a sentence keeps its full stop (the dots used to be dropped with it)
-      n + ' ' + ap.replace(/\./g, '').toUpperCase() + (ap.endsWith('.') && /^["'”’)\]]*(\s*$|\s+\p{Lu})/u.test(all.slice(at + m.length)) ? '.' : ''))
+      n + ' ' + ap.replace(/\./g, '').toUpperCase() + (ap.endsWith('.') && /^["'”’)\]]*(\s*$|\s+(?!(?:EST|EDT|PST|PDT|CST|CDT|MST|MDT|GMT|UTC|BST|CET)\b)\p{Lu})/u.test(all.slice(at + m.length)) ? '.' : ''))
     // rates: "+2/sec", "5 MP/min" -> "per second", "per minute"
     .replace(/(\d|\b[A-Z]{2,3})\s?\/\s?(sec|second|s|min|minute|hr|hour|h|day|turn)\b(?!\/)/g, (m, a, u) =>
       a + ' per ' + ({ sec: 'second', s: 'second', min: 'minute', hr: 'hour', h: 'hour' }[u] || u))
@@ -608,6 +610,9 @@ function tidy(t) {
       n + (/^(?:blade|knife|nails?|screen)$/.test(w) ? '-inch' : n === '1' ? ' inch' : ' inches'))
     // 5°C, 90°F, a 90° angle (the voice skipped the sign)
     .replace(/(?<![\d.])(\d+(?:\.\d+)?)\s?°(\s?[CF]\b)?/g, (m, n, u, at, all) => n + (!u && /^\s+(?:angle|turn|slope|incline|bend|arc|view|cone|rotation)\b/.test(all.slice(at + m.length)) ? '-degree' : n === '1' ? ' degree' : ' degrees') + (u ? (u.trim() === 'C' ? ' Celsius' : ' Fahrenheit') : ''))
+    .replace(/(\b(?:[Cc]ooldown|COOLDOWN|CD|[Dd]uration|[Cc]ast [Tt]ime|[Cc]ast|[Rr]echarge|[Dd]elay|[Cc]hannel(?:ing)?)\s*:?\s*)(\d+(?:\.\d+)?)\s?([smh])\b(?![\/'’]|\.\w)/g, (m, pre, n, u) =>   // Cooldown: 1.5 s, 10 m (not meters)
+      pre + n + ' ' + { s: 'second', m: 'minute', h: 'hour' }[u] + (n === '1' ? '' : 's'))
+    .replace(/(?<![\w.$])(\d+(?:\.\d+)?)[mM](?=\s+(?:views|followers|subs|subscribers|people|users|readers|players|fans|likes|downloads|copies|gold|coins|credits|souls|lives|years|troops|soldiers|monsters)\b)/g, '$1 million')   // 3.4m followers (was "meters")
     .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|ft|mi|mins|min|secs|sec|hrs|hr|pts|m|g)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
       (m, pre, n, u, at, all) => {
         // "a 10 km run", "the 5 kg bag" -> ten-kilometer run (the adjective form takes the singular)
@@ -636,10 +641,12 @@ function tidy(t) {
     .replace(/\bFig\.\s*(?=\d)/g, 'Figure ')
     .replace(/\b24\s?\/\s?7\b/g, '24 7')                                 // 24/7 (not "twenty-four of seven")
     .replace(/\b1\/2(?=\s+(?:done|full|empty|way|price|off|hour|mile|cup|dozen|inch|pound|gone|finished|asleep|dead|awake)\b)/g, 'half')   // 1/2 done
+    .replace(/(\b(?:is|was|are|were|be|'s|’s|only|about|nearly|almost|half|over|under)\s)1\/2(?=\s+(?!of\b)\p{Ll})/gu, '$1half')   // he's 1/2 elf
     // room and error numbers the way people say them: "Room 404" -> "four oh four", "Room 212" -> "two twelve"
     .replace(/\b((?:[Rr]oom|[Ee]rror|[Ss]uite|[Aa]pt\.?|[Aa]partment|[Ff]light|[Cc]ell|[Ll]ocker|[Gg]ate|[Pp]latform)\s+#?)([1-9])(\d)(\d)\b(?![\d/:-]|[.,]\d)/g,
       (m, pre, a, b, c) => pre.replace(/^([Aa])pt\.?/, '$1partment') + (b === '0' && c === '0' ? a + b + c : b === '0' ? a + ' oh ' + c : a + ' ' + b + c))
     .replace(/(^|[\s("“])\.(22|25|32|38|44|45|50|357|380)\b(?=\s+(?:caliber|cal\b|pistols?|revolvers?|rifles?|rounds?|Magnum|ACP|[Ss]pecial|handguns?|automatic|bullets?|slugs?))/g, '$1$2')   // a .45 pistol (was "dot forty-five")
+    .replace(/(^|[\s("“~])\.(\d+)(?![\d.]|,\d)(?=[\s,;!?)"”]|\.(?:\s|$)|$)/g, '$1point $2')   // the .5 mark (was ".five")
     .replace(/(?<![\d,.$\/]|Porsche )\b911\b(?![\d\/]|[.,]\d)/g, '9 1 1').replace(/\bPorsche 911\b/g, 'Porsche 9 11')   // call 911 (was "nine hundred and eleven")
     // 3/14/1995 -> March 14th, 1995 (25/12/2024, day first, -> December 25th); impossible dates as before
     .replace(/\b(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})\b/g, (m, a, b, y) => {
@@ -660,6 +667,10 @@ function tidy(t) {
     .replace(/\b(\d+):(\d|\d{3,})\b(?![\d:])/g, '$1 to $2')                  // odds of 1:1000
     .replace(/\b(\d+):(\d\d)\b(?![\d:])(?=\s+(?:ratio|odds|scale|split|mix)\b)/g, '$1 to $2')   // a 1:50 scale
     .replace(/\b((?:ratio|odds|scale)(?:\s+(?:of|is|was|were|at|are))?\s+)(\d+):(\d\d)\b(?![\d:])/gi, '$1$2 to $3')                  // a 3:1 ratio (times have two digits)
+    .replace(/(^|[\s\[(])(Ep|Vol)\s+(?=\d)/g, (m, b, w) => b + (w === 'Ep' ? 'Episode ' : 'Volume '))   // Ep 4, Vol 2 (no dot)
+    .replace(/\b(\d+(?:st|nd|rd|th))\s+fl\.(?=\s|$)/g, (m, n, at, all) => n + ' floor' + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))   // the 23rd fl.
+    .replace(/\b(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d\d))?\s?USD\b/g, (m, n, c) => n + (n === '1' ? ' dollar' : ' dollars') + (c && +c ? ' ' + +c : ''))   // 3.99 USD
+    .replace(/\b([Cc])hs\.\s*(?=\d)/g, (m, c) => (c === 'C' ? 'Chapters ' : 'chapters '))   // chs. 5-10
     .replace(/\b[Cc]h\.\s*(?=\d)/g, 'Chapter ').replace(/(^|[\s\[(])CH\s+(?=\d)/g, '$1Chapter ').replace(/\bVol\.\s*(?=\d)/g, 'Volume ').replace(/\bNo\.\s*(?=\d)/g, 'Number ').replace(/\bBk\.?\s*(?=\d)/g, 'Book ')
     .replace(/\bEp\.\s*(?=\d)/g, 'Episode ').replace(/\bpg\.\s*(?=\d)/gi, 'page ').replace(/\b[Pp]g\s+(?=\d)/g, 'page ').replace(/(^|[\s(\[])p\.\s?(?=\d)/g, '$1page ').replace(/(^|[\s(\[])c\.\s?(?=\d{3,4}\b)/g, '$1circa ').replace(/\bpp\.\s*(?=\d)/g, 'pages ')     // "pg. 45" (the voice said "P G")
     .replace(/\bPt\.?\s*(?=\d)/g, 'Part ').replace(/\bSec\.\s*(?=\d)/g, 'Section ').replace(/\b([Pp])ara\.\s*(?=\d)/g, '$1aragraph ')   // "Chapter 5 Pt. 2"
@@ -687,7 +698,7 @@ function tidy(t) {
     .replace(/\b((?:\p{Lu}\.\s){2,3})(?=\p{Lu}\p{Ll})/gu, (m) => m.replace(/\./g, ''))   // J. K. Rowling
     // gamer words the voice gets wrong: "AoE" ("ow-ee"), "DoT" ("doo-tee"), "IRL" ("url"), "idk"
     .replace(/\bAoEs?\b/g, (m) => 'AOE' + m.slice(3)).replace(/\bDoT(s?)\b/g, 'dot$1')
-    .replace(/\bIRL\b/g, 'I-R-L').replace(/\b(?:idk|IDK)\b/g, 'I-D-K').replace(/\b(?:brb|BRB)\b/g, 'be right back')
+    .replace(/\bIRL\b/g, 'I-R-L').replace(/\b(?:idk|IDK)\b/g, 'I-D-K').replace(/\b(?:brb|BRB)\b/g, 'be right back').replace(/\b(?:afk|AFK)\b/g, 'A-F-K').replace(/(^|[\s"“'‘(])np(?=[\s"”'’.,!?)]|$)/g, '$1no problem')
     .replace(/\b(omg|OMG|wtf|WTF|lmao|LMAO)\b/g, (m) => m.toUpperCase().split('').join('-')).replace(/(\d)-yrs?-old\b/g, '$1-year-old')   // O-M-G (the voice said "omg"), a 30-yr-old
     .replace(/\b(?:tbh|TBH)\b/g, 'to be honest').replace(/\b(?:imo|IMHO|imho)\b/g, (m) => (m.length > 3 ? 'in my humble opinion' : 'in my opinion'))
     .replace(/(^|[\s"“'‘(])gg(?=[\s"”'’.,!?)]|$)/g, '$1G-G')   // good game, said as letters
