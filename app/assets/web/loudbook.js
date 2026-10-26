@@ -482,7 +482,7 @@ const DAYS = { Mon: 'Monday', Tue: 'Tuesday', Tues: 'Tuesday', Wed: 'Wednesday',
   Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' };
 const UNITS = { km: ['kilometer', 'kilometers'], cm: ['centimeter', 'centimeters'], mm: ['millimeter', 'millimeters'],
   m: ['meter', 'meters'], kg: ['kilogram', 'kilograms'], g: ['gram', 'grams'], lb: ['pound', 'pounds'], lbs: ['pound', 'pounds'],
-  ft: ['foot', 'feet'], mph: ['mile per hour', 'miles per hour'], 'km/h': ['kilometer per hour', 'kilometers per hour'], 'm/s': ['meter per second', 'meters per second'],
+  ft: ['foot', 'feet'], yd: ['yard', 'yards'], yds: ['yard', 'yards'], mph: ['mile per hour', 'miles per hour'], 'km/h': ['kilometer per hour', 'kilometers per hour'], 'm/s': ['meter per second', 'meters per second'],
   kph: ['kilometer per hour', 'kilometers per hour'], mi: ['mile', 'miles'], min: ['minute', 'minutes'], mins: ['minute', 'minutes'], sec: ['second', 'seconds'], secs: ['second', 'seconds'], hr: ['hour', 'hours'], hrs: ['hour', 'hours'], oz: ['ounce', 'ounces'],
   kmh: ['kilometer per hour', 'kilometers per hour'], pts: ['point', 'points'], L: ['liter', 'liters'], ml: ['milliliter', 'milliliters'], mL: ['milliliter', 'milliliters'],
   KB: ['kilobyte', 'kilobytes'], MB: ['megabyte', 'megabytes'], GB: ['gigabyte', 'gigabytes'], TB: ['terabyte', 'terabytes'], PB: ['petabyte', 'petabytes'],
@@ -648,8 +648,11 @@ function tidy(t) {
     .replace(/(?<![\d.])(\d+(?:\.\d+)?)\s?°(\s?[CF]\b)?/g, (m, n, u, at, all) => n + (!u && /^\s+(?:angle|turn|slope|incline|bend|arc|view|cone|rotation)\b/.test(all.slice(at + m.length)) ? '-degree' : n === '1' ? ' degree' : ' degrees') + (u ? (u.trim() === 'C' ? ' Celsius' : ' Fahrenheit') : ''))
     .replace(/(\b(?:[Cc]ooldown|COOLDOWN|CD|[Dd]uration|[Cc]ast [Tt]ime|[Cc]ast|[Rr]echarge|[Dd]elay|[Cc]hannel(?:ing)?)\s*:?\s*)(\d+(?:\.\d+)?)\s?([smh])\b(?![\/'’]|\.\w)/g, (m, pre, n, u) =>   // Cooldown: 1.5 s, 10 m (not meters)
       pre + n + ' ' + { s: 'second', m: 'minute', h: 'hour' }[u] + (n === '1' ? '' : 's'))
+    .replace(/\b(\d+(?:\.\d+)?)-(ft|in|yds?|lbs?|km|cm|mm|kg|mi|oz)\b(?=\s+\p{Ll})/gu, (m, n, u) => n + '-' + ({ in: 'inch', yds: 'yard', lbs: 'pound' }[u] || UNITS[u][0]))   // a 10-ft pole (was "ten-F-T")
+    .replace(/\b(\d+)[kK](?=\s+(?:runs?|races?|walks?|fun run|marathon)\b)/g, '$1 K')   // a 10K run (not ten thousand)
+    .replace(/\b(Univ|Govt|Assn)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, a, mid) => ({ Univ: 'University', Govt: 'Government', Assn: 'Association' }[a]) + (mid !== undefined ? '' : '.'))   // Univ. of Arcana
     .replace(/(?<![\w.$])(\d+(?:\.\d+)?)[mM](?=\s+(?:views|followers|subs|subscribers|people|users|readers|players|fans|likes|downloads|copies|gold|coins|credits|souls|lives|years|troops|soldiers|monsters)\b)/g, '$1 million')   // 3.4m followers (was "meters")
-    .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|ft|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|m\/s|m|g|L|KB|MB|GB|TB|PB|kHz|MHz|GHz|Hz|Mbps|Gbps|kWh|kW)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
+    .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|ft|yds|yd|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|m\/s|m|g|L|KB|MB|GB|TB|PB|kHz|MHz|GHz|Hz|Mbps|Gbps|kWh|kW)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
       (m, pre, n, u, at, all) => {
         // "a 10 km run", "the 5 kg bag" -> ten-kilometer run (the adjective form takes the singular)
         const next = /^\s+(\p{Ll}+)/u.exec(all.slice(at + m.length));
