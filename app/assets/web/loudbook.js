@@ -679,6 +679,10 @@ function tidy(t) {
     .replace(/(?<![\d.,\/])\b([1-7])\/([2-8])\b(?![\d\/])(?=\s+(?:cups?|tsp|teaspoons?|tbsp|tablespoons?|inch(?:es)?|in\.|miles?|pounds?|lbs?|oz|ounces?|hours?|hrs?|gallons?|quarts?|pints?|lit(?:er|re)s?|feet|foot|ft|yards?|kilos?|kg|grams?|g|acres?|sticks?|teaspoonfuls?|turns?|seconds?|minutes?|mins?)\b)/g,
       (m, a, b) => +a < +b ? fracWords(+a, +b, false) : m)
     .replace(/(?<![\w.])(\d+(?:\.\d+)?|half|thirds?|quarters?|eighths?)\s?(tsp|tbsp)\b/g, (m, n, u, at, all) => n + ' ' + (u === 'tsp' ? 'teaspoon' : 'tablespoon') + (n === '1' || (/^(half|third|quarter|eighth)$/.test(n) && !/and an? $/.test(all.slice(Math.max(0, at - 6), at))) ? '' : 's'))   // 2 tsp
+    // powers: "E=mc²", "x^2", "10^6" (the voice dropped the ² and read "x^2" as "x two")
+    .replace(/\bmc(?:²|\^2\b)/g, 'm c squared').replace(/([\w)])(?:²|\^2\b)/g, '$1 squared').replace(/([\w)])(?:³|\^3\b)/g, '$1 cubed').replace(/([\w)])\^(-?\d+)\b/g, '$1 to the power of $2')
+    .replace(/(\w)\s?=\s?(?=\w)/g, (m, a, at, all) => (/[²³^]|squared|cubed|power of/.test(all) ? a + ' equals ' : m))
+    .replace(/\bCO2\b/g, 'C O 2')   // CO2 (the voice said "co two")
     // "Day 3/10 of the siege", "Chapter 2/5" -> 3 of 10 (was "three 10ths of", "Day a third of")
     .replace(/\b((?:Day|Week|Month|Year|Chapter|Ch\.|Part|Book|Episode|Ep\.|Round|Floor|Wave|Stage|Act|Phase|Turn|Game|Match|Level|Lvl|Lv\.|[dw]ay|week|chapter|episode|wave|floor|stage|level|turn)\s+)(\d+)\s?\/\s?(\d+)\b(?![\/\d]|[.,]\d)/g, '$1$2 of $3')
     .replace(/\b1\/2(?=\s+(?:of|a|an|the)\b)/g, 'half').replace(/\b1\/3(?=\s+(?:of|a|an|the)\b)/g, 'a third')
@@ -813,6 +817,8 @@ function tidy(t) {
     .replace(/\bQ([1-4])\b/g, 'Q $1').replace(/\bFY\s?(?=\d{2,4}\b)/g, 'F-Y ')   // Q1, FY2024
     .replace(/(\d)\s?¢|\b(\d+)c\b(?![\w'’+#])/g, (m, a, b) => (a || b) + ((a || b) === '1' ? ' cent' : ' cents'))   // 50c
     .replace(/\b(\d+)\s?gp\b/g, '$1 gold')                          // 5 gp (gold pieces)
+    .replace(/\b(\d+)\s?(cp|sp|ep|pp)\b(?![\w'’]|\.\w)/g, (m, n, u, at, all) => (/\b(?:gold|silver|copper|platinum|coins?)\b/i.test(all) ? n + ' ' + { cp: 'copper', sp: 'silver', ep: 'electrum', pp: 'platinum' }[u] : m))   // "10 gp, 5 sp" (was "S P")
+    .replace(/\b((?:kilo|centi|milli)?(?:meters|metres)|feet|miles|yards|inches)\s(squared|cubed)\b/g, (m, u, p) => (p === 'squared' ? 'square ' : 'cubic ') + u)   // 50 m² -> fifty square meters
     .replace(/(\d)ish\b/g, '$1-ish')                              // around 8ish
     // "a $20 bill", "a $100,000 prize": twenty-dollar bill (was "twenty dollars bill")
     .replace(/\$(\d{1,3}(?:,\d{3})+|\d+)(?:\.00)?(?=\s+(?:bill|note|coin|tip|fee|fine|bet|bounty|reward|prize|gift card|check|cheque|budget|loan|bribe|ticket|item|meal|bottle|watch|suit)s?\b)/g, '$1-dollar')
