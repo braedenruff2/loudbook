@@ -650,7 +650,13 @@ function tidy(t) {
       pre + n + ' ' + { s: 'second', m: 'minute', h: 'hour' }[u] + (n === '1' ? '' : 's'))
     .replace(/\b(\d+(?:\.\d+)?)-(ft|in|yds?|lbs?|km|cm|mm|kg|mi|oz)\b(?=\s+\p{Ll})/gu, (m, n, u) => n + '-' + ({ in: 'inch', yds: 'yard', lbs: 'pound' }[u] || UNITS[u][0]))   // a 10-ft pole (was "ten-F-T")
     .replace(/\b(\d+)[kK](?=\s+(?:runs?|races?|walks?|fun run|marathon)\b)/g, '$1 K')   // a 10K run (not ten thousand)
+    .replace(/(?<=\p{Lu}[\p{L}&-]*,?\s)(?<!\b(?:The|A|An|This|That|His|Her|Its|Their|Our|My)\s)(Inc|Corp|Ltd)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, a, mid) => ({ Inc: 'Incorporated', Corp: 'Corporation', Ltd: 'Limited' }[a]) + (mid !== undefined ? '' : '.'))   // Acme Inc. (the voice said "ink")
+    .replace(/\bDept\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, mid) => 'Department' + (mid !== undefined ? '' : '.'))   // the Dept. of Magic
+    .replace(/(?<!\b(?:The|A|An|This|That|His|Her|Its|Their|Our|My)\s)(\p{Lu}[\p{L}&-]*\s)(Inc|Ltd)\b(?![.\w])/gu, (m, w, a) => w + (a === 'Inc' ? 'Incorporated' : 'Limited'))   // Acme Inc, Initech Ltd
+    .replace(/\bBldg\.?\s*(?=\d)/g, 'Building ').replace(/\bRm\.?\s*(?=\d)/g, 'Room ').replace(/\bFl\.\s*(?=\d)/g, 'Floor ').replace(/\bTbl\.\s*(?=\d)/g, 'Table ')   // Bldg. 7, Rm. 204
+    .replace(/\b(Est|EST)\.\s*(?=1\d{3}\b|20\d\d\b)/g, 'Established ').replace(/\bPop\.\s*(?=\d{1,3}(?:,\d{3})+\b|\d{3,}\b)/g, 'Population ')   // Est. 1887. Pop. 4,500.
     .replace(/\b(Univ|Govt|Assn)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, a, mid) => ({ Univ: 'University', Govt: 'Government', Assn: 'Association' }[a]) + (mid !== undefined ? '' : '.'))   // Univ. of Arcana
+    .replace(/(?<![\w.$])(\d+(?:\.\d+)?)(?:B|bn)(?=\s+(?:views|followers|subscribers|people|users|players|dollars|years|credits|coins|gold|souls|lives|stars|galaxies|cells|neurons|parameters|tons)\b)/g, '$1 billion')   // 3B credits (Room 12B stays)
     .replace(/(?<![\w.$])(\d+(?:\.\d+)?)[mM](?=\s+(?:views|followers|subs|subscribers|people|users|readers|players|fans|likes|downloads|copies|gold|coins|credits|souls|lives|years|troops|soldiers|monsters)\b)/g, '$1 million')   // 3.4m followers (was "meters")
     .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|ft|yds|yd|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|m\/s|m|g|L|KB|MB|GB|TB|PB|kHz|MHz|GHz|Hz|Mbps|Gbps|kWh|kW)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
       (m, pre, n, u, at, all) => {
@@ -730,7 +736,8 @@ function tidy(t) {
     .replace(/\b([Cc])hs\.\s*(?=\d)/g, (m, c) => (c === 'C' ? 'Chapters ' : 'chapters '))   // chs. 5-10
     .replace(/\b[Cc]h\.\s*(?=\d)/g, 'Chapter ').replace(/(^|[\s\[(])CH\s+(?=\d)/g, '$1Chapter ').replace(/\bVol\.\s*(?=\d)/g, 'Volume ').replace(/\bNo\.\s*(?=\d)/g, 'Number ').replace(/\bBk\.?\s*(?=\d)/g, 'Book ')
     .replace(/\bEp\.\s*(?=\d)/g, 'Episode ').replace(/\bpg\.\s*(?=\d)/gi, 'page ').replace(/\b[Pp]g\s+(?=\d)/g, 'page ').replace(/(^|[\s(\[])p\.\s?(?=\d)/g, '$1page ').replace(/(^|[\s(\[])(?:c|ca)\.\s?(?=\d{3,4}\b)/g, '$1circa ').replace(/\bpp\.\s*(?=\d)/g, 'pages ')     // "pg. 45" (the voice said "P G")
-    .replace(/\bPt\.?\s*(?=\d)/g, 'Part ').replace(/\bSec\.\s*(?=\d)/g, 'Section ').replace(/\b([Pp])ara\.\s*(?=\d)/g, '$1aragraph ')   // "Chapter 5 Pt. 2"
+    .replace(/\b(\d{1,2}(?:st|nd|rd|th))\s?c\.(?=(\s+(?:BC|AD|BCE|CE)\b|\s*[,;:)]|\s+\p{Ll})?)/gu, (m, n, mid) => n + ' century' + (mid !== undefined ? '' : '.'))   // the 12th c. (was "twelfth C")
+    .replace(/\bPt\.?\s*(?=\d)/g, 'Part ').replace(/(?<!\b(?:[Aa]|[Oo]ne|[Hh]alf a|[Tt]his|[Tt]hat)\s)\b([Ss])ec\.\s*(?=\d)/g, (m, c) => (c === 'S' ? 'Section ' : 'section ')).replace(/\b([Pp])ara\.\s*(?=\d)/g, '$1aragraph ')   // "Chapter 5 Pt. 2"
     .replace(/\b([CF])#(?![\w#])/g, '$1 sharp')                     // C#, F# (languages, notes)
     .replace(/\b([Aa])pprox\.(?=\s)|\b([Aa])pprox\b(?=\s+[~\d])/g, (m, a, b) => (a || b) + 'pproximately')
     .replace(/(^|\s)w\/o(?=[\s,.!?]|$)/g, '$1without').replace(/(^|\s)([Ww])\/(?=\s)/g, (m, sp, w) => sp + (w === 'W' ? 'With' : 'with')).replace(/\bb\/c\b/g, 'because')
