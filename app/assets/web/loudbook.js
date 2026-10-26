@@ -699,8 +699,14 @@ function tidy(t) {
     .replace(/\b([Pp]orts?\s+)([1-9]\d)([1-9]\d)\b(?![\d:\/-]|[.,]\d)/g, '$1$2 $3')   // port 8080 -> eighty eighty
     .replace(/\b(\d+)\s+x\s+(\d+)\b(?!\s*[x×*])(?![.,]\d)/g, (m, a, b, at, all) => a + (/^\s*(?:=|equals\b)/.test(all.slice(at + m.length)) ? ' times ' : ' by ') + b)   // 3 x 5 cards -> by, 2 x 3 = 6 -> times (was "x")
     .replace(/(^|[\s("“])\.(22|25|32|38|44|45|50|357|380)\b(?=\s+(?:caliber|cal\b|pistols?|revolvers?|rifles?|rounds?|Magnum|ACP|[Ss]pecial|handguns?|automatic|bullets?|slugs?))/g, '$1$2')   // a .45 pistol (was "dot forty-five")
+    .replace(/(\b(?:Colt|Glock|Ruger|Magnum|[Aa]|[Hh]is|[Hh]er|[Tt]he|[Mm]y|[Yy]our|[Tt]heir)\s)\.(22|38|44|45|357)\b(?=\s*(?:[,.;:!?)"'’”—]|$|(?:and|in|at|from|was|fired|jammed|kicked|barked)\b))/g, '$1$2')   // a Colt .45 (was "point forty-five")
     .replace(/(^|[\s("“~])\.(\d+)(?![\d.]|,\d)(?=[\s,;!?)"”]|\.(?:\s|$)|$)/g, '$1point $2')   // the .5 mark (was ".five")
     .replace(/(?<![\d,.$\/]|Porsche )\b911\b(?![\d\/]|[.,]\d)/g, '9 1 1').replace(/\bPorsche 911\b/g, 'Porsche 9 11')
+    .replace(/\b((?:[Aa]|[Ff]ull|[Cc]omplete|[Qq]uick|[Ss]harp|[Hh]ard|[Tt]otal|[Pp]erfect)\s)(180|360|540|720)\b(?=\s*(?:[,.;:!?)"'’”—–]|$|(?:and|then|turn|spin|flip|view|no-?scope|noscope|degrees?|around|on|in|as|before|to)\b))|\b(Xbox\s)(360)\b/g, (m, a, n, b, x) =>   // a 180, a full 360 (was "three hundred and sixty"), Xbox 360
+      (a || b) + { 180: 'one-eighty', 360: 'three-sixty', 540: 'five-forty', 720: 'seven-twenty' }[n || x])
+    .replace(/\b(Boeing\s|Airbus\sA)([37])([0-9]\d)\b/g, (m, a, b, c) => a + (a === 'Boeing ' ? '' : ' ') + b + ' ' + c)   // Boeing 747 -> seven forty-seven, Airbus A380 -> A three eighty
+    .replace(/(?<![\d\/])\b9\/11\b(?![\d\/])/g, 'nine eleven').replace(/(?<![\d\/])\b20\/20\b(?![\d\/])(?=\s+(?:vision|eyesight|hindsight)\b|(?<=\b(?:[Vv]ision|[Hh]indsight|[Ee]yesight)(?: is| was| of)?\s+20\/20))/g, 'twenty-twenty')   // 9/11, 20/20 vision (was "of")
+    .replace(/\b1-2(?=\s+(?:punch|combo|combination|step|knockout))/g, 'one-two')   // the 1-2 punch (was "one to two")
     .replace(/\b((?:[Cc]all|[Dd]ial|[Dd]ialed|[Dd]ialled|[Rr]ing|[Rr]ang|[Pp]honed)\s+)(999|112|000|111)\b(?![\d\/]|[.,]\d)/g, (m, pre, n) => pre + n.split('').join(' '))   // call 999 (UK, EU, Australia)
     .replace(/(\S)\s+(<=|>=|≤|≥|<|>)\s+(?=[-+]?\d)/g, (m, a, op) => a + ' ' + { '<': 'less than', '>': 'more than', '<=': 'at most', '≤': 'at most', '>=': 'at least', '≥': 'at least' }[op] + ' ')   // "Mana < 10%" (the voice skipped the sign)   // call 911 (was "nine hundred and eleven")
     // 3/14/1995 -> March 14th, 1995 (25/12/2024, day first, -> December 25th); impossible dates as before
