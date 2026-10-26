@@ -489,9 +489,13 @@ const UNITS = { km: ['kilometer', 'kilometers'], cm: ['centimeter', 'centimeters
   Hz: ['hertz', 'hertz'], kHz: ['kilohertz', 'kilohertz'], MHz: ['megahertz', 'megahertz'], GHz: ['gigahertz', 'gigahertz'],
   Mbps: ['megabit per second', 'megabits per second'], Gbps: ['gigabit per second', 'gigabits per second'], kW: ['kilowatt', 'kilowatts'], kWh: ['kilowatt-hour', 'kilowatt-hours'] };
 
-const GRUNTS = [[/^[Hh](m+p+h|m+f)$/, 'humph'], [/^[Hh]m$/, 'hmm'], [/^([Mm]hm+|[Mm]m-?hm+)$/, 'mm-hmm'], [/^[Mm]m+$/, 'hmm'],
-  [/^[Ss]hh+$/, 'shush'], [/^[Pp]f+t?$/, 'puh'], [/^[Gg]rr+$/, 'grur'], [/^[Bb]rr+$/, 'burr'], [/^[Nn]+g+h$|^[Nn]n+g$|^[Nn]+h$/, 'ungh'],
-  [/^[Tt]ch$/, 'tsk'], [/^[Hh]r+m+$/, 'hmm'], [/^[Uu]hh+$/, 'uh'], [/^[Ee]rr+$/, 'er'], [/^[Pp]s+t$/, 'psst'],
+const GRUNTS = [[/^[Hh](m+p+h|m+f)$/, 'humph'], [/^[Hh]mn?$/, 'hmm'], [/^([Mm]hm+|[Mm]m-?hm+)$/, 'mm-hmm'], [/^[Mm]m+$/, 'hmm'],
+  [/^[Ss]hh+$/, 'shush'], [/^[Pp]+f+t?$/, 'puh'], [/^[Gg]rr+$/, 'grur'], [/^[Bb]rr+$/, 'burr'], [/^[Nn]+g+h$|^[Nn]n+g$|^[Nn]+h$/, 'ungh'],
+  [/^[Tt]s?ch$/, 'tsk'], [/^[Hh]r+m+$/, 'hmm'], [/^[Uu]hh+$/, 'uh'], [/^[Ee]rr+$/, 'er'], [/^[Pp]s+t$/, 'psst'],
+  // more the phone voice spelled out letter by letter ("Hnng" -> "H N N G", "Bzzt" -> "B Z Z T")
+  [/^[Ss]h$/, 'shush'], [/^[Pp]s+h+t?$/, 'pish'], [/^[Hh]n+g+h?$|^[Hh]n+h$/, 'ungh'], [/^[Hh]r+k$|^[Gg]h?k$/, 'urk'], [/^[Gg]r+k$/, 'gurk'],
+  [/^[Bb]z+t$/, 'buzzt'], [/^[Bb]z+$/, 'buzz'], [/^[Zz]z+t$/, 'zit'], [/^[Zz]z+$/, 'zzz'], [/^[Vv]r+$/, 'vurr'], [/^[Vv]r+m+$/, 'vroom'],
+  [/^[Rr]+g+h+$/, 'urgh'], [/^[Mm]r+p$/, 'murp'], [/^[Mm]+p+h$|^[Mm]r+p+h$/, 'mumph'], [/^[Ss]s+$/, 'hiss'],
   [/^[Mm](?:w|u)ah?(?:-?ha)+h?$/, 'moo-ah-ha-ha'], [/^[Bb](?:w|u)ah?(?:-?ha)+h?$/, 'boo-ah-ha-ha'],
   [/^[Ee]ww+$/, 'ew'], [/^[Aa]ww+$/, 'aw'], [/^[Oo]w+$/, 'ouw']];
 
@@ -570,6 +574,7 @@ function tidy(t) {
     .replace(/(\d)\s?\+\s?(?=\d)|(\d)\+(?=[\s.,!?)\]]|$)/g, (m, a, b) => (a ? a + ' plus ' : b + ' plus'))   // 1d20+5, 2+2, 18+                  // -5 degrees
     .replace(/\b(\d{3,4})x(\d{3,4})\b/g, (m, a, b) => [a, b].map(pairs).join(' by '))   // 1920x1080 -> "19 20 by 10 80"
     .replace(/\b(\d+)\s?fps\b/gi, '$1 frames per second')
+    .replace(/\b(480|720|1080|1440|2160)p\b/g, (m, n) => pairs(n) + ' p')   // 1080p video (was "one thousand eighty p")
     .replace(/\b(\d+)x(\d+)\b/g, '$1 by $2')                       // a 2x2 grid, 1920x1080
     .replace(/#(?=\d)/g, 'number ').replace(/(^|\s)#(?=\p{L})/gu, '$1')   // #hashtag (was "hash hashtag")                                // Rank #1
     .replace(/\b(\d+)\s?×(?=\s|$)/g, '$1 times').replace(/(^|\s)×\s?(?=\d)/g, '$1times ')   // 3× damage, ×3
@@ -786,6 +791,7 @@ function tidy(t) {
     // born '98, the '90s (not an opening quote: "'10 more,' she said")
     .replace(/(\b\p{L}+\s)['’](\d\d)(s?)\b(?![\d'’%])(?![^'’\n]*['’](?:[\s,.!?;:]|$))/gu, (m, w, d, s) => w + (d === '00' ? '2000' : d) + s)   // class of '00 -> two thousand
     .replace(/\bMt\.?(?=\s+[A-Z][a-z])/g, 'Mount').replace(/\bFt\.(?=\s+[A-Z])/g, 'Fort').replace(/(\d)\s?pct\b/g, '$1 percent')                     // the voice says "M T." and stops
+    .replace(/\b([Tt]he|[Hh]is|[Hh]er|[Tt]heir|[Oo]ur|[Mm]y|[Yy]our|[Tt]hose|[Tt]hese)\s~\s?(?=\d)/g, '$1 roughly ')   // the ~200 goblins (was "the about")
     .replace(/(^|\s)~\s?(?=\d)/g, '$1about ')                     // ~5 minutes (the voice says "tilde")
     .replace(/\b(\d+(?:st|nd|rd|th))\s+St\.(?!\w)/g, '$1 Street')                          // 42nd St.
     .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/(?<!\b(?:\d+\w*|[A-Z][a-z]+)\s)\bSt\s+(?=[A-Z][a-z])/g, 'Saint ').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, w, mid) => w + ' Street' + (mid !== undefined ? '' : '.'))   // "on Patrick St." keeps its full stop
@@ -798,7 +804,7 @@ function tidy(t) {
     .replace(/\b([4-7])'(\d|1[01])(?![\d'"”])/g, '$1 foot $2')         // a 5'2 girl
     .replace(/(\b(?:was|is|'s|’s|stood|stands|about|nearly|almost|over|under|barely|just)\s+)([4-7])['′](?![\w'"”′″])/g, (m, pre, n, at, all) => /(?:^|[\s(“"])['‘][^'’]*$/.test(all.slice(0, at)) ? m : pre + n + ' feet')   // he was 6'., she's 5' (not inside 'I was 5' quotes)
     // sounds the voice would spell out ("Hmph" -> "H M P H"): the nearest word it says right
-    .replace(/(?<![\p{L}\d]\s?)\b([HhMmSsPpGgBbNnTtUuEeAaOo][a-z-]{0,10})\b(?![-'’]\p{L})/gu, (m) => {
+    .replace(/(?<![\p{L}\d]\s?)\b([HhMmSsPpGgBbNnTtUuEeAaOoZzVvRr][a-z-]{0,10})\b(?![-'’]\p{L})/gu, (m) => {
       const w = GRUNTS.find(([re]) => re.test(m));
       return w ? (m[0] === m[0].toUpperCase() ? w[1][0].toUpperCase() + w[1].slice(1) : w[1]) : m;
     });
