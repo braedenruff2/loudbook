@@ -457,6 +457,9 @@ function romans(t) {
     return m;
   });
 }
+const CHAT = { btw: 'by the way', jk: 'just kidding', nvm: 'never mind', ofc: 'of course', thx: 'thanks', pls: 'please', plz: 'please',
+  ikr: 'I know, right', ngl: 'not gonna lie', smh: 'S-M-H', ttyl: 'talk to you later', lmk: 'let me know', cya: 'see ya', wyd: 'what you doing',
+  gtg: 'got to go', ty: 'thank you', rn: 'right now', u: 'you', ez: 'easy', 'gl hf': 'good luck, have fun' };
 const ord = (n) => (n % 100 >= 11 && n % 100 <= 13) ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th';
 
 // LitRPG stat names, said in full when they're clearly stats ("STR: 12", "AGI +3")
@@ -748,6 +751,9 @@ function tidy(t) {
     .replace(/\b(omg|OMG|wtf|WTF|lmao|LMAO)\b/g, (m) => m.toUpperCase().split('').join('-')).replace(/(\d)-yrs?-old\b/g, '$1-year-old')   // O-M-G (the voice said "omg"), a 30-yr-old
     .replace(/\b(?:tbh|TBH)\b/g, 'to be honest').replace(/\b(?:imo|IMHO|imho)\b/g, (m) => (m.length > 3 ? 'in my humble opinion' : 'in my opinion'))
     .replace(/(^|[\s"“'‘(])gg(?=[\s"”'’.,!?)]|$)/g, '$1G-G')   // good game, said as letters
+    // chat shorthand in messages and system logs (the voice read them as one word: "nvm", "thx")
+    .replace(/(^|[\s"“'‘(])(btw|BTW|jk|JK|nvm|NVM|ofc|OFC|thx|THX|pls|PLS|plz|PLZ|ikr|IKR|ngl|NGL|smh|SMH|ttyl|TTYL|lmk|LMK|cya|wyd|WYD|gtg|GTG|ty|rn|u|ez|gl hf|GL HF)(?=[\s"”'’.,!?)]|$)/g,
+      (m, pre, w, at, all) => (w === 'u' && /\b(?:letters?|[a-z])\s$/i.test(all.slice(Math.max(0, at - 9), at + pre.length)) ? m : pre + CHAT[w.toLowerCase()]))   // not "the letter u"
     .replace(/\b(\d+)\s?doz\.?(?=\s|$)/g, (m, n) => n + ' dozen')
     // day lists: "Mon, Tue and Wed", "Sat or Sun", "Mon/Wed/Fri" -> full names (a lone "Sun" stays as written)
     .replace(/\b(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b\.?(?:,\s*(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b\.?)*,?\s+(?:and|or|&)\s+(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b\.?(?![\w'’])/gu,
