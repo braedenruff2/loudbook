@@ -606,6 +606,8 @@ function tidy(t) {
     .replace(/\b(\d+)\s?(am|pm|AM|PM|a\.m\.|p\.m\.)(?![\w])/g, (m, n, ap, at, all) =>
       // "at 3 a.m." ending a sentence keeps its full stop (the dots used to be dropped with it)
       n + ' ' + ap.replace(/\./g, '').toUpperCase() + (ap.endsWith('.') && /^["'”’)\]]*(\s*$|\s+(?!(?:EST|EDT|PST|PDT|CST|CDT|MST|MDT|GMT|UTC|BST|CET)\b)\p{Lu})/u.test(all.slice(at + m.length)) ? '.' : ''))
+    .replace(/\b(AM|PM)\s?[-–]\s?(?=\d)/g, '$1 to ')   // 9am-5pm (was "nine AM-five PM")
+    .replace(/\b((?:19|20)\d\d)\s?[\/\-–]\s?(\d\d)\b(?![\/\-–]?\d)/g, (m, y, b) => (+y + 1) % 100 === +b ? y + ' ' + b : m)   // the 2023/24 season -> twenty twenty-three twenty-four
     // rates: "+2/sec", "5 MP/min" -> "per second", "per minute"
     .replace(/(\d|\b[A-Z]{2,3})\s?\/\s?(sec|second|s|min|minute|hr|hour|h|day|turn)\b(?!\/)/g, (m, a, u) =>
       a + ' per ' + ({ sec: 'second', s: 'second', min: 'minute', hr: 'hour', h: 'hour' }[u] || u))
@@ -715,7 +717,7 @@ function tidy(t) {
     .replace(/\bPt\.?\s*(?=\d)/g, 'Part ').replace(/\bSec\.\s*(?=\d)/g, 'Section ').replace(/\b([Pp])ara\.\s*(?=\d)/g, '$1aragraph ')   // "Chapter 5 Pt. 2"
     .replace(/\b([CF])#(?![\w#])/g, '$1 sharp')                     // C#, F# (languages, notes)
     .replace(/\b([Aa])pprox\.(?=\s)|\b([Aa])pprox\b(?=\s+[~\d])/g, (m, a, b) => (a || b) + 'pproximately')
-    .replace(/(^|\s)w\/o(?=[\s,.!?]|$)/g, '$1without').replace(/(^|\s)w\/(?=\s)/g, '$1with').replace(/\bb\/c\b/g, 'because')
+    .replace(/(^|\s)w\/o(?=[\s,.!?]|$)/g, '$1without').replace(/(^|\s)([Ww])\/(?=\s)/g, (m, sp, w) => sp + (w === 'W' ? 'With' : 'with')).replace(/\bb\/c\b/g, 'because')
     .replace(/([£€¥₹₩])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d\d))?\b/g, (m, c, n, p) => {   // £1,000, ¥10,000, ₹500, ₩10,000
       const [one, many] = { '£': ['pound', 'pounds'], '¥': ['yen', 'yen'], '₹': ['rupee', 'rupees'], '₩': ['won', 'won'] }[c] || ['euro', 'euros'];
       return n + ' ' + (n === '1' ? one : many) + (p && +p ? ' ' + (+p) : '');
@@ -775,7 +777,7 @@ function tidy(t) {
     .replace(/\bMt\.?(?=\s+[A-Z][a-z])/g, 'Mount').replace(/\bFt\.(?=\s+[A-Z])/g, 'Fort').replace(/(\d)\s?pct\b/g, '$1 percent')                     // the voice says "M T." and stops
     .replace(/(^|\s)~\s?(?=\d)/g, '$1about ')                     // ~5 minutes (the voice says "tilde")
     .replace(/\b(\d+(?:st|nd|rd|th))\s+St\.(?!\w)/g, '$1 Street')                          // 42nd St.
-    .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, w, mid) => w + ' Street' + (mid !== undefined ? '' : '.'))   // "on Patrick St." keeps its full stop
+    .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/(?<!\b(?:\d+\w*|[A-Z][a-z]+)\s)\bSt\s+(?=[A-Z][a-z])/g, 'Saint ').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, w, mid) => w + ' Street' + (mid !== undefined ? '' : '.'))   // "on Patrick St." keeps its full stop
     .replace(/\b(\p{Lu}\p{Ll}+\s+)(Rd|Ln)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, w, a, mid) => w + (a === 'Rd' ? 'Road' : 'Lane') + (mid !== undefined ? '' : '.'))   // Elm Rd., Oak Ln.
     .replace(/\bHwy\.?\s*(?=\d)/g, 'Highway ').replace(/\bGr\.\s*(?=\d)/g, 'Grade ')
     .replace(/\b(Ave|Blvd)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, a, mid) => (a === 'Ave' ? 'Avenue' : 'Boulevard') + (mid !== undefined ? '' : '.'))          // 5th Ave.
