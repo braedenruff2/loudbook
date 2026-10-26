@@ -1,3 +1,4 @@
+Pauses after bracketed system labels that start a line ("[Skill Acquired] Fireball", "<<System Alert>> Quest complete!"); says "a 10/10" and "10/10 would recommend" as "out of", "Day 3/10" as "day three of ten", "1/5 of" as "one fifth", "3/10 of" as "three tenths" (was "three 10ths"), "Alt+F4" / "Ctrl+C" as keys, and "@ noon" as "at".
 Says "a 180" and "a full 360" as one-eighty and three-sixty, "Xbox 360", "Boeing 747" as seven forty-seven, "9/11", "20/20 vision", "a 1-2 punch" and "a Colt .45" the way people say them.
 Says "the 12th c." as the twelfth century, "Acme Inc." / "Corp." / "Ltd." in full (the voice said "ink"), "Bldg. 7, Rm. 204, Tbl. 3, sec. 2", "Est. 1887", "Pop. 4,500" and "3B credits" as three billion.
 Says "a 10-ft pole" as "ten-foot", "100 yds" as yards, "a 5K race" as "five K" (not five thousand), and "Univ.", "Govt." and "Assn." in full.

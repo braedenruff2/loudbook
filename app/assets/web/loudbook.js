@@ -679,11 +679,14 @@ function tidy(t) {
     .replace(/(?<![\d.,\/])\b([1-7])\/([2-8])\b(?![\d\/])(?=\s+(?:cups?|tsp|teaspoons?|tbsp|tablespoons?|inch(?:es)?|in\.|miles?|pounds?|lbs?|oz|ounces?|hours?|hrs?|gallons?|quarts?|pints?|lit(?:er|re)s?|feet|foot|ft|yards?|kilos?|kg|grams?|g|acres?|sticks?|teaspoonfuls?|turns?|seconds?|minutes?|mins?)\b)/g,
       (m, a, b) => +a < +b ? fracWords(+a, +b, false) : m)
     .replace(/(?<![\w.])(\d+(?:\.\d+)?|half|thirds?|quarters?|eighths?)\s?(tsp|tbsp)\b/g, (m, n, u, at, all) => n + ' ' + (u === 'tsp' ? 'teaspoon' : 'tablespoon') + (n === '1' || (/^(half|third|quarter|eighth)$/.test(n) && !/and an? $/.test(all.slice(Math.max(0, at - 6), at))) ? '' : 's'))   // 2 tsp
+    // "Day 3/10 of the siege", "Chapter 2/5" -> 3 of 10 (was "three 10ths of", "Day a third of")
+    .replace(/\b((?:Day|Week|Month|Year|Chapter|Ch\.|Part|Book|Episode|Ep\.|Round|Floor|Wave|Stage|Act|Phase|Turn|Game|Match|Level|Lvl|Lv\.|[dw]ay|week|chapter|episode|wave|floor|stage|level|turn)\s+)(\d+)\s?\/\s?(\d+)\b(?![\/\d]|[.,]\d)/g, '$1$2 of $3')
     .replace(/\b1\/2(?=\s+(?:of|a|an|the)\b)/g, 'half').replace(/\b1\/3(?=\s+(?:of|a|an|the)\b)/g, 'a third')
     .replace(/\b1\/4(?=\s+(?:of|a|an|the)\b)/g, 'a quarter').replace(/\b1\/3(?=\s+off\b)/g, 'a third').replace(/\b1\/4(?=\s+off\b)/g, 'a quarter')
     .replace(/\b([2-7])\/([3-8])(?:rds|ths)\b/g, (m, a, b) => (+a < +b ? a + ' ' + FRAC[b][1] : m))   // 2/3rds of the army (was "two of 3rds")
     .replace(/\b1\/(\d+)(?:st|nd|rd|th)\b/g, (m, d) => ({ 2: 'half', 3: 'a third', 4: 'a quarter' }[d] || (/^10+$/.test(d) && d.length > 2 ? d + 'th' : 'one ' + d + 'th')))   // 1/3rd, 1/10th, 1/100th
-    .replace(/\b([2-9])\/([3-9]|10)(?=\s+of\b)/g, (m, a, b) => a + ' ' + ({ 3: 'thirds', 4: 'quarters', 5: 'fifths' }[b] || b + 'ths'))   // 3/4 of
+    .replace(/\b([2-9])\/([3-9]|10)(?=\s+of\b)/g, (m, a, b) => (+a < +b ? a + ' ' + (FRAC[b] ? FRAC[b][1] : { 9: 'ninths', 10: 'tenths' }[b]) : m))   // 3/4 of, 3/10 of (was "three 10ths")
+    .replace(/\b1\/([5-9]|10)(?=\s+of\b)/g, (m, b) => 'one ' + (FRAC[b] ? FRAC[b][0] : { 9: 'ninth', 10: 'tenth' }[b]))   // 1/5 of the bottle (was "one of five of")
     // military time: "0300 hours" -> "oh three hundred hours", "1430 hours" -> "fourteen thirty hours"
     .replace(/\b([01]\d|2[0-4])([0-5]\d)(?=\s+hours\b)/g, (m, h, n) =>
       (h === '00' ? 'zero' : h[0] === '0' ? 'oh ' + h[1] : h) + (n === '00' ? ' hundred' : n[0] === '0' ? ' oh ' + n[1] : ' ' + n))
@@ -722,6 +725,9 @@ function tidy(t) {
     // scores and ratings: "98/100 on the test", "rated 4.5/5 stars", "a 9/10" -> out of (stats stay "120 of 150")
     .replace(/\b(\d+(?:\.\d+)?)\s?\/\s?(\d+)\b(?![\/\d])(?=\s+(?:stars?\b|on\s+(?:the|a|an|his|her|my|their|our|your|that|this)\s+(?:\w+\s)?(?:tests?|exams?|quiz(?:zes)?|finals?|midterms?|essays?|papers?|assignments?|SATs?|ACTs?)\b))|(\b(?:scored|rated|rating|grade[ds]?|marks?|score:?|rating:?|(?:gave|gives?|giving)\s(?:it|him|her|them|this|that)(?:\sa)?)\s(?:of\s|a\s|an\s)?)(\d+(?:\.\d+)?)\s?\/\s?(\d+)\b(?![\/\d])/gi,
       (m, a, b, pre, c, d) => pre ? pre + c + ' out of ' + d : a + ' out of ' + b)
+    // "she's a 10/10", "a solid 8/10", "10/10 would recommend" -> out of (not "a 120/150 HP pool")
+    .replace(/(\b(?:a|an)\s+(?:(?:solid|perfect|strong|easy|clear|flat|respectable|measly|mere|good|decent|straight|hard|firm|generous|low|high|weak|shaky|real|true)\s+)?)(\d+(?:\.\d+)?)\s?\/\s?(10|5|100)\b(?![\/\d.,]\d)(?!\s*(?:HP|MP|SP|EP|XP|hp|mp|health|mana|stamina|hit points)\b)/gi, '$1$2 out of $3')
+    .replace(/(^|[\s"“(])(\d+(?:\.\d+)?)\/(10|5)(?=,?\s+(?:would|will|recommend|stars?|again)\b)/g, '$1$2 out of $3')
     .replace(/(\d|\bthousand|\bmillion|\bbillion)\s*\/\s*(\d)/g, '$1 of $2')   // 120/150 -> 120 of 150, 1.2k/3k
     .replace(/\b1-(\d{3})-(\d{3})-(\d{4})\b(?![-–\/]\d)/g, (m, a, b, c) => 'one, ' + (/^8(00|88|77|66|55|44|33)$/.test(a) ? (a === '800' ? 'eight hundred' : a.split('').join(' ')) : a.split('').join(' ')) + ', ' + b.split('').join(' ') + ', ' + c.split('').join(' '))   // 1-800-555-0199
     // phone numbers digit by digit: "555-1234", "(555) 123-4567" (not "five hundred and fifty-five to...")
@@ -734,6 +740,14 @@ function tidy(t) {
     .replace(/(^|[\s\[(])(Ep|Vol)\s+(?=\d)/g, (m, b, w) => b + (w === 'Ep' ? 'Episode ' : 'Volume '))   // Ep 4, Vol 2 (no dot)
     .replace(/(^|[\s\[(])EP\s+(?=\d)/g, '$1Episode ')                       // "EP 140 – Return" (the voice said "ep")
     .replace(/\b([Aa])pt\.?(?=\s+#?\d)/g, '$1partment')                       // Apt 4C (the voice said "apt")
+    // bracketed system labels leading the line: "[Skill Acquired] Fireball", "<<System Alert>> Quest complete!" -> a pause after each
+    // label (the voice ran them together); "[Strength +5] [Agility +2]" too. "He cast [Fireball] at it" is untouched.
+    .replace(/^(\s*)((?:(?:\[|<<|«|【)[^\[\]<>«»【】\n]{1,60}?(?:\]|>>|»|】)\s+)+)(?=[\[«【"“\p{Lu}\d]|<<)/u, (m, sp, labels) =>
+      sp + labels.replace(/(?:\[|<<|«|【)\s*([^\[\]<>«»【】\n]*?)\s*(?:\]|>>|»|】)(\s+)/gu, (x, t, ws) => t + (/[.!?:]$/.test(t) ? '' : '.') + ws))
+    // keyboard shortcuts: "Alt+F4", "Ctrl+Alt+Del" (the voice said "Ctrl plus...") -> Alt F 4, Control Alt Delete
+    .replace(/\b(?:Ctrl|Alt|Shift|Cmd|Win|Fn)(?:\s?\+\s?(?:Ctrl|Alt|Shift|Cmd|Win|Del|Delete|Esc|Tab|Enter|Space|Home|End|F\d{1,2}|[A-Z0-9])\b)+/g, (m) =>
+      m.split(/\s?\+\s?/).map((k) => ({ Ctrl: 'Control', Cmd: 'Command', Win: 'Windows', Del: 'Delete', Esc: 'Escape' }[k] || k.replace(/^F(\d+)$/, 'F $1'))).join(' '))
+    .replace(/(\s)@(?=\s+[A-Za-z])/g, '$1at')   // "meet me @ noon" (emails like bob@mail.com untouched)
     .replace(/\bGG,? EZ\b/g, (m) => m.replace('EZ', 'easy')).replace(/\bK\/D(?= ratio\b| of\b|\s+(?:is|was)\b)/g, 'K D')   // "GG, EZ" (the voice said "ez"), K/D ratio ("K slash D")
     .replace(/\bAK-?47s?\b/g, (m) => 'AK forty-seven' + (m.endsWith('s') ? 's' : ''))   // AK47 (the voice said "ack")
     .replace(/(\d)['′](?=\s+(?:wide|tall|long|high|deep|across|thick|away|square|by)\b)/g, (m, d, at, all) => d + (/\b[Aa]n?\s+\d*$/.test(all.slice(Math.max(0, at - 8), at + 1)) ? '-foot' : ' feet'))   // a 3' wide door (the voice dropped the foot mark)
