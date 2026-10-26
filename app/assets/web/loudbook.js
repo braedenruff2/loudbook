@@ -553,6 +553,9 @@ function tidy(t) {
     .replace(/\b(\p{L})(?:-\1)*-(\1)/giu, (m, a, b) => (a === a.toUpperCase() ? b.toUpperCase() : b))   // also "W-w-wait"
     // arrows in stat changes: "15 → 17"
     .replace(/\s*(?:→|->|⟶|=>)\s*/g, ' to ')
+    .replace(/\b([Bb]etween\s+[$£€]?\d[\d:.,]*(?:\s?[ap]\.?m\.?)?)\s?[-–]\s?(?=[$£€]?\d)/g, '$1 and ')   // between 1:00-2:30 (was "between one o'clock to two thirty")
+    .replace(/([$£€])(\d[\d,.]*[kKmMbB]?)\s?[-–]\s?(?=\1\d)/g, '$1$2 to ')   // $10-$20 (was "ten dollars-twenty dollars")
+    .replace(/(?<![\w-])(49|76)ers\b/g, (m, n) => (n === '49' ? 'Forty-Niners' : 'Seventy-Sixers'))   // the 49ers (was read as digits)
     .replace(/\b(?:Lv|Lvl|LVL|LV|lvl|lv)\.?\s*(?=\d|(?:MAX|Max|max)\b)/g, 'Level ')   // also Lv. MAX
     .replace(/(\w)\s@\s(?=[\d$£€])/g, '$1 at ')   // 12 potions @ 5g each
     .replace(/\b(HP|MP|SP|XP|EXP|EP|AP)\/(HP|MP|SP|XP|EXP|EP|AP)\b/g, '$1 and $2')   // HP/MP (not "slash")
@@ -661,18 +664,20 @@ function tidy(t) {
     .replace(/(?<![\w.])(\d+(?:\.\d+)?|half|thirds?|quarters?|eighths?)\s?(tsp|tbsp)\b/g, (m, n, u, at, all) => n + ' ' + (u === 'tsp' ? 'teaspoon' : 'tablespoon') + (n === '1' || (/^(half|third|quarter|eighth)$/.test(n) && !/and an? $/.test(all.slice(Math.max(0, at - 6), at))) ? '' : 's'))   // 2 tsp
     .replace(/\b1\/2(?=\s+(?:of|a|an|the)\b)/g, 'half').replace(/\b1\/3(?=\s+(?:of|a|an|the)\b)/g, 'a third')
     .replace(/\b1\/4(?=\s+(?:of|a|an|the)\b)/g, 'a quarter').replace(/\b1\/3(?=\s+off\b)/g, 'a third').replace(/\b1\/4(?=\s+off\b)/g, 'a quarter')
+    .replace(/\b([2-7])\/([3-8])(?:rds|ths)\b/g, (m, a, b) => (+a < +b ? a + ' ' + FRAC[b][1] : m))   // 2/3rds of the army (was "two of 3rds")
     .replace(/\b1\/(\d+)(?:st|nd|rd|th)\b/g, (m, d) => ({ 2: 'half', 3: 'a third', 4: 'a quarter' }[d] || (/^10+$/.test(d) && d.length > 2 ? d + 'th' : 'one ' + d + 'th')))   // 1/3rd, 1/10th, 1/100th
     .replace(/\b([2-9])\/([3-9]|10)(?=\s+of\b)/g, (m, a, b) => a + ' ' + ({ 3: 'thirds', 4: 'quarters', 5: 'fifths' }[b] || b + 'ths'))   // 3/4 of
     // military time: "0300 hours" -> "oh three hundred hours", "1430 hours" -> "fourteen thirty hours"
     .replace(/\b([01]\d|2[0-4])([0-5]\d)(?=\s+hours\b)/g, (m, h, n) =>
       (h === '00' ? 'zero' : h[0] === '0' ? 'oh ' + h[1] : h) + (n === '00' ? ' hundred' : n[0] === '0' ? ' oh ' + n[1] : ' ' + n))
     .replace(/\bFig\.\s*(?=\d)/g, 'Figure ')
+    .replace(/(\b(?:[Oo]rder|[Ii]tem|[Cc]ase|[Tt]icket|[Ii]nvoice|[Ss]erial|[Mm]odel|[Pp]art|[Ff]ile|[Pp]atient|[Ss]ubject|[Ee]xperiment|[Bb]ox|[Ll]ot|[Ii]ssue)\s+)no\.\s*(?=\d)/g, '$1number ')   // Order no. 5 (was "no five")
     .replace(/\b24\s?\/\s?7\b/g, '24 7')                                 // 24/7 (not "twenty-four of seven")
     .replace(/\b1\/2(?=\s+(?:done|full|empty|way|price|off|hour|mile|cup|dozen|inch|pound|gone|finished|asleep|dead|awake)\b)/g, 'half')   // 1/2 done
     .replace(/(\b(?:is|was|are|were|be|'s|’s|only|about|nearly|almost|half|over|under)\s)1\/2(?=\s+(?!of\b)\p{Ll})/gu, '$1half')   // he's 1/2 elf
     // room and error numbers the way people say them: "Room 404" -> "four oh four", "Room 212" -> "two twelve"
-    .replace(/\b((?:[Rr]oom|[Ee]rror|[Ss]uite|[Aa]pt\.?|[Aa]partment|[Ff]light|[Cc]ell|[Ll]ocker|[Gg]ate|[Pp]latform)\s+#?)([1-9])(\d)(\d)\b(?![\d/:-]|[.,]\d)/g,
-      (m, pre, a, b, c) => pre.replace(/^([Aa])pt\.?/, '$1partment') + (b === '0' && c === '0' ? a + b + c : b === '0' ? a + ' oh ' + c : a + ' ' + b + c))
+    .replace(/\b((?:[Rr]oom|[Ee]rror|[Ss]uite|[Aa]pt\.?|[Aa]partment|[Ff]light|[Cc]ell|[Ll]ocker|[Gg]ate|[Pp]latform|[Hh]ighway|Hwy\.?|[Rr]oute|[Ii]nterstate)\s+#?)([1-9])(\d)(\d)\b(?![\d/:-]|[.,]\d)/g,
+      (m, pre, a, b, c) => pre.replace(/^([Aa])pt\.?/, '$1partment').replace(/^Hwy\.?/, 'Highway') + (b === '0' && c === '0' ? a + b + c : b === '0' ? a + ' oh ' + c : a + ' ' + b + c))
     .replace(/\b([45])0([1-9])(?=\s*(?:errors?|pages?|codes?|responses?|[Nn]ot [Ff]ound|[Ff]orbidden|[Uu]nauthori[sz]ed|[Bb]ad [Gg]ateway|[Ss]ervice [Uu]navailable)\b)/g, '$1 oh $2')   // a 404 error -> four oh four (was "four hundred and four")
     .replace(/\b([Pp]orts?\s+)([1-9]\d)([1-9]\d)\b(?![\d:\/-]|[.,]\d)/g, '$1$2 $3')   // port 8080 -> eighty eighty
     .replace(/\b(\d+)\s+x\s+(\d+)\b(?!\s*[x×*])(?![.,]\d)/g, (m, a, b, at, all) => a + (/^\s*(?:=|equals\b)/.test(all.slice(at + m.length)) ? ' times ' : ' by ') + b)   // 3 x 5 cards -> by, 2 x 3 = 6 -> times (was "x")
@@ -865,8 +870,8 @@ return { parseFixes, makeSayer, tidy };
       // 9:00 -> nine o'clock, 15:00 -> fifteen hundred, but "10:00 o'clock" and "3:00 AM" don't get a second o'clock
       .replace(/\b(\d{1,2}):(\d{2})\b/g, (_, h, m, at, all) => (+h === 0 && +m === 0 ? (/(?:\b(?:at|past|after|until|till|before|by|around|about|since)\s+)$/i.test(all.slice(Math.max(0, at - 9), at)) ? 'midnight' : 'zero zero') : words(+h) + (+m === 0 && +h >= 13 && +h <= 24 ? ' hundred' : +m === 0 ? (/^\s*(o'clock|o’clock|[ap]\.?m\b|[AP]M\b)/i.test(all.slice(at + 3 + h.length)) ? '' : " o'clock") : +m < 10 ? ' oh ' + words(+m) : ' ' + words(+m))))
       .replace(/\b(\d+)(st|nd|rd|th)\b/gi, (_, d) => ordinal(+d))
-      // years before 1100, where it's clearly a year: "the year 1066", "in 1066.", "800 AD" -> ten sixty-six, eight hundred AD
-      .replace(/\b([Yy]ear\s+)(10\d\d)\b(?![.,]?\d)|\b((?:[Ii]n|[Ss]ince|[Uu]ntil|[Cc]irca|[Bb]y)\s+)(10\d\d)(?=\s*(?:[,;:!?)]|\.(?!\d)|$)|\s+(?:the|a|an|he|she|they|it|we|I|his|her|their|there|when|after|before)\b)|\b(\d{3,4})(?=\s?(?:AD|BC|BCE|CE|A\.D\.|B\.C\.)(?!\w))|((?:\bAD|\bA\.D\.)\s?)(\d{3,4})\b(?![.,]?\d)/g,
+      // years before 1100 or after 2099, where it's clearly a year: "the year 1066", "the year 2525", "in 1066.", "800 AD" -> ten sixty-six, eight hundred AD
+      .replace(/\b([Yy]ear\s+)(10\d\d|2[1-9]\d\d|[3-9]\d\d\d)\b(?![.,]?\d)|\b((?:[Ii]n|[Ss]ince|[Uu]ntil|[Cc]irca|[Bb]y)\s+)(10\d\d)(?=\s*(?:[,;:!?)]|\.(?!\d)|$)|\s+(?:the|a|an|he|she|they|it|we|I|his|her|their|there|when|after|before)\b)|\b(\d{3,4})(?=\s?(?:AD|BC|BCE|CE|A\.D\.|B\.C\.)(?!\w))|((?:\bAD|\bA\.D\.)\s?)(\d{3,4})\b(?![.,]?\d)/g,
         (m, p1, y1, p2, y2, y3, p4, y4) => { const y = +(y1 || y2 || y3 || y4); return (p1 || p2 || p4 || '') + (y % 1000 === 0 || (y < 1000 && y % 100 === 0) ? words(y) : yearWords(y)); })
       .replace(/\b(1[1-9]\d\d|20\d\d)s?\b/g, (m, y) => { const w = yearWords(+y); return m.endsWith('s') ? (w.endsWith('y') ? w.slice(0, -1) + 'ies' : w + 's') : w; })
       .replace(/\b(\d)0['’]?s\b/g, (m, d) => (TENS[+d] || 'ten').replace(/y$/, 'ies') + (d === '1' ? 's' : ''))   // the 80s, the 70's
