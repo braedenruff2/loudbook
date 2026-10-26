@@ -481,7 +481,10 @@ const UNITS = { km: ['kilometer', 'kilometers'], cm: ['centimeter', 'centimeters
   m: ['meter', 'meters'], kg: ['kilogram', 'kilograms'], g: ['gram', 'grams'], lb: ['pound', 'pounds'], lbs: ['pound', 'pounds'],
   ft: ['foot', 'feet'], mph: ['mile per hour', 'miles per hour'], 'km/h': ['kilometer per hour', 'kilometers per hour'], 'm/s': ['meter per second', 'meters per second'],
   kph: ['kilometer per hour', 'kilometers per hour'], mi: ['mile', 'miles'], min: ['minute', 'minutes'], mins: ['minute', 'minutes'], sec: ['second', 'seconds'], secs: ['second', 'seconds'], hr: ['hour', 'hours'], hrs: ['hour', 'hours'], oz: ['ounce', 'ounces'],
-  kmh: ['kilometer per hour', 'kilometers per hour'], pts: ['point', 'points'], L: ['liter', 'liters'], ml: ['milliliter', 'milliliters'], mL: ['milliliter', 'milliliters'] };
+  kmh: ['kilometer per hour', 'kilometers per hour'], pts: ['point', 'points'], L: ['liter', 'liters'], ml: ['milliliter', 'milliliters'], mL: ['milliliter', 'milliliters'],
+  KB: ['kilobyte', 'kilobytes'], MB: ['megabyte', 'megabytes'], GB: ['gigabyte', 'gigabytes'], TB: ['terabyte', 'terabytes'], PB: ['petabyte', 'petabytes'],
+  Hz: ['hertz', 'hertz'], kHz: ['kilohertz', 'kilohertz'], MHz: ['megahertz', 'megahertz'], GHz: ['gigahertz', 'gigahertz'],
+  Mbps: ['megabit per second', 'megabits per second'], Gbps: ['gigabit per second', 'gigabits per second'], kW: ['kilowatt', 'kilowatts'], kWh: ['kilowatt-hour', 'kilowatt-hours'] };
 
 const GRUNTS = [[/^[Hh](m+p+h|m+f)$/, 'humph'], [/^[Hh]m$/, 'hmm'], [/^([Mm]hm+|[Mm]m-?hm+)$/, 'mm-hmm'], [/^[Mm]m+$/, 'hmm'],
   [/^[Ss]hh+$/, 'shush'], [/^[Pp]f+t?$/, 'puh'], [/^[Gg]rr+$/, 'grur'], [/^[Bb]rr+$/, 'burr'], [/^[Nn]+g+h$|^[Nn]n+g$|^[Nn]+h$/, 'ungh'],
@@ -514,7 +517,9 @@ function tidy(t) {
     .replace(/(\p{L}[!?.]*)~+(?=[\s.,!?"'”’)]|$)/gu, '$1')                 // "Hello~" (the voice said "tilde")
     .replace(/(^|[\s"“'‘(\[])~+(?=\p{L})/gu, '$1')                    // "~Ding~", "~Level up!~" (the opening tilde)
     // emoticons: ":)", ";)", ":D", "xD", "^_^", "T_T" (the voice says "colon", "ex dee")
-    .replace(/(^|\s)(?:[:;=]-?[)(DPpO3\]\[|\/]|xD+|XD+(?=[\s.!?]*$)|\^_*\^|T_T|>_<|-_-|o_O|O_o|:'\()(?=[\s.,!?"'”’)]|$)/g, '$1');
+    .replace(/(^|\s)(?:[:;=]-?[)(DPpO3\]\[|\/]|xD+|XD+(?=[\s.!?]*$)|\^_*\^|T_T|>_<|-_-|o_O|O_o|:'\(|\\o\/|¯\\_\(ツ\)_\/¯|o7(?=\s*(?:[.,!]|$)))(?=[\s.,!?"'”’)]|$)/g, '$1')
+    .replace(/(^|[.!?]\s+)o7\s+(?=\p{L})/gu, '$1')   // "o7" salute, "\o/", the shrug (the voice said "o seven")
+    .replace(/(?<![\w])(?:\+\/-|±)\s?(?=\d)/g, 'plus or minus ').replace(/(\d)\s+(?:\+\/-|±)\s+(?=\d)/g, '$1 plus or minus ');   // ±5% (was dropped)
   if (!/[\p{L}\p{N}]/u.test(t)) return '';
   // links: just the site's name ("https://www.royalroad.com/fiction/1" -> "royalroad.com"; "www" became "ww")
   t = t.replace(/\bhttps?:\/\/(?:www\.)?([^\s\/?#]+)\S*?(?=[.,!?;:)\]"'”’]*(?:\s|$))/gi, '$1').replace(/\bwww\.(?=\w)/gi, '');
@@ -578,7 +583,7 @@ function tidy(t) {
     // 1.5M credits, 10M gold, 2.5B people (not "room 12B is": B only with a decimal, M before a noun)
     .replace(/\b(\d+(?:\.\d+)?)(M|bn)\b(?=\s+(?!(?:is|was|and|or|on|in|at|to|of|for|with|had|has)\b)\p{Ll})|\b(\d+\.\d+)(M|B|bn|K)\b/gu, (m, a, u, b, v) =>
       (a || b) + ' ' + { m: 'million', b: 'billion', bn: 'billion', k: 'thousand' }[(u || v).toLowerCase()])
-    .replace(/\b(\d+)v(\d+)\b/g, '$1 versus $2')                  // a 1v1
+    .replace(/\b(\d+)(?:v| v )(\d+)\b/g, '$1 versus $2')                  // a 1v1
     // ISO dates "2024-03-15" -> March 15th, 2024 (was "twenty twenty-four-oh three-fifteen")
     .replace(/\b(1[5-9]\d\d|20\d\d)-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\b(?![-\d])/g,
       (m, y, mo, d) => MONTH_NAMES[+mo - 1] + ' ' + +d + ({ 1: 'st', 2: 'nd', 3: 'rd' }[+d % 10 && (+d < 11 || +d > 13) ? +d % 10 : 0] || 'th') + ', ' + y)
@@ -590,6 +595,10 @@ function tidy(t) {
     .replace(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\.?\s+(3[01]|[12]\d|0?[1-9])(st|nd|rd|th)?\b(?![:.\/]?\d)/g,   // Jan. 5, 2024 -> January 5th
       (m, mo, d, th) => (MONTHS[mo] || mo) + ' ' + +d + (th || ({ 1: 'st', 2: 'nd', 3: 'rd' }[+d % 10 && (+d < 11 || +d > 13) ? +d % 10 : 0] || 'th')))
     .replace(/\b(\d+)\s?(?:y\/o|yo|y\.o\.)(?![\w\/])/g, (m, n) => n + (n === '1' ? ' year old' : ' years old'))   // 25 y/o
+    .replace(/\b(\d{1,3}(?:,\d{3})+)(st|nd|rd|th)\b/g, (m, n, t) => n.replace(/,/g, '') + t)   // the 10,000th visitor (was "ten,zeroth")
+    .replace(/(?<![\d,.])((?:1\d|20)\d0|['’]\d0)['’]s\b/g, '$1s')   // the 1990's, the '90's -> nineties (was "ninety's")
+    .replace(/\b(\d{1,2}(?:st|nd|rd|th)\s+(?:of\s+)?)(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)(?:\.(?=\s+\p{Ll}|,))?(?=[\s.,;]|$)/gu, (m, d, mo) => d + (MONTHS[mo] || 'September'))   // 1st Jan 2020
+    .replace(/\bS(\d{1,2})\s?E(\d{1,3})\b/g, (m, a, b) => 'Season ' + +a + ', Episode ' + +b)   // S2E3
     .replace(/(?<!\b[A-Za-z]{2,}:\s?|\b(?:[A-Z]{2,4}|Mana|Health|Stamina|Energy|Ammo|Charges?|Slots?|Uses)\s)\b50\s?\/\s?50\b/g, 'fifty-fifty')   // not "MP 50/50" (a stat)
     .replace(/(?<!\b[A-Za-z]{2,}:\s?)\b50[-–]50\b(?![-–\d])/g, 'fifty-fifty')   // a 50-50 chance (was "fifty to fifty")
     .replace(/\b(\d+(?:st|nd|rd|th))\/(?=\d+(?:st|nd|rd|th)\b)/g, '$1 or ')   // the 1st/2nd floor   // not "MP: 50/50\"
@@ -627,16 +636,16 @@ function tidy(t) {
     .replace(/(\b(?:[Cc]ooldown|COOLDOWN|CD|[Dd]uration|[Cc]ast [Tt]ime|[Cc]ast|[Rr]echarge|[Dd]elay|[Cc]hannel(?:ing)?)\s*:?\s*)(\d+(?:\.\d+)?)\s?([smh])\b(?![\/'’]|\.\w)/g, (m, pre, n, u) =>   // Cooldown: 1.5 s, 10 m (not meters)
       pre + n + ' ' + { s: 'second', m: 'minute', h: 'hour' }[u] + (n === '1' ? '' : 's'))
     .replace(/(?<![\w.$])(\d+(?:\.\d+)?)[mM](?=\s+(?:views|followers|subs|subscribers|people|users|readers|players|fans|likes|downloads|copies|gold|coins|credits|souls|lives|years|troops|soldiers|monsters)\b)/g, '$1 million')   // 3.4m followers (was "meters")
-    .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|ft|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|m\/s|m|g|L)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
+    .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|ft|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|m\/s|m|g|L|KB|MB|GB|TB|PB|kHz|MHz|GHz|Hz|Mbps|Gbps|kWh|kW)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
       (m, pre, n, u, at, all) => {
         // "a 10 km run", "the 5 kg bag" -> ten-kilometer run (the adjective form takes the singular)
         const next = /^\s+(\p{Ll}+)/u.exec(all.slice(at + m.length));
-        if (u === 'g' && ((next && /^(?:each|apiece)$/.test(next[1])) || /\b(?:for|costs?|paid|sold|bought|at|worth|earned|price:?|fee:?|reward:?)\s$/i.test(all.slice(0, at) + pre)))
+        if (u === 'g' && ((next && /^(?:each|apiece)$/.test(next[1])) || /\b(?:for|costs?|paid|sold|bought|at|worth|earned|price:?|fee:?|reward:?|gold:|coins:|money:|funds:|balance:|wallet:|bounty:|loot:)\s(?:\d{1,3},)*$/i.test(all.slice(0, at) + pre)))
           return pre + n + ' gold';   // "@ 5g each", "sold for 50g" (LitRPG gold, not grams)
         if (u === 'L' && /\b(?:[Ll]evel|[Ff]loor|[Rr]oom|[Aa]pt|[Ss]eat|[Rr]ow|[Gg]ate|[Uu]nit|[Bb]lock|[Ss]ize)\s$/.test(all.slice(0, at) + pre)) return m;   // Room 2L, size 3L
-        if (!/[\/h]$/.test(u) && /(?:^|\s)(?:[Aa]n?|[Tt]he|[Hh]is|[Hh]er|[Tt]heir|[Mm]y|[Yy]our|[Oo]ur)\s$/.test(all.slice(0, at) + pre) && next &&
+        if ((u === 'kWh' || !/[\/h]$|ps$/.test(u)) && /(?:^|\s)(?:[Aa]n?|[Tt]he|[Hh]is|[Hh]er|[Tt]heir|[Mm]y|[Yy]our|[Oo]ur)\s$/.test(all.slice(0, at) + pre) && next &&
             !/^(?:away|long|tall|wide|high|deep|thick|off|of|from|to|and|or|per|in|on|at|by|for|ahead|behind|down|up|later|ago|left|more|less|each|apiece|north|south|east|west|he|she|it|they|we|you|that|which|who|was|were|is|are|had|has|felt|seemed|took|went)$/.test(next[1]))
-          return pre + n + '-' + UNITS[u][0];
+          return pre + n + (n.includes('.') ? ' ' : '-') + UNITS[u][0];   // "a 3.2 GHz chip": no hyphen after "point two"
         // guns: "a 9mm," "5.56mm rounds" -> nine millimeter (not "nine millimeters")
         if (u === 'mm' && ((next && /^(?:rounds?|pistols?|handguns?|guns?|cannons?|shells?|bullets?|ammo|cartridges?|rifles?|caliber|barrel)$/.test(next[1])) ||
             (/(?:^|\s)(?:[Aa]n?|[Tt]he|[Hh]is|[Hh]er|[Mm]y)\s$/.test(all.slice(0, at) + pre) && /^\s*(?:[,.;:!?)"'’”]|$|(?:was|is|had|has|jammed|fired|kicked|barked|went|sat|lay|felt|in|from|and|at|on|with)\b)/.test(all.slice(at + m.length)))))
@@ -702,7 +711,7 @@ function tidy(t) {
     .replace(/\b(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d\d))?\s?USD\b/g, (m, n, c) => n + (n === '1' ? ' dollar' : ' dollars') + (c && +c ? ' ' + +c : ''))   // 3.99 USD
     .replace(/\b([Cc])hs\.\s*(?=\d)/g, (m, c) => (c === 'C' ? 'Chapters ' : 'chapters '))   // chs. 5-10
     .replace(/\b[Cc]h\.\s*(?=\d)/g, 'Chapter ').replace(/(^|[\s\[(])CH\s+(?=\d)/g, '$1Chapter ').replace(/\bVol\.\s*(?=\d)/g, 'Volume ').replace(/\bNo\.\s*(?=\d)/g, 'Number ').replace(/\bBk\.?\s*(?=\d)/g, 'Book ')
-    .replace(/\bEp\.\s*(?=\d)/g, 'Episode ').replace(/\bpg\.\s*(?=\d)/gi, 'page ').replace(/\b[Pp]g\s+(?=\d)/g, 'page ').replace(/(^|[\s(\[])p\.\s?(?=\d)/g, '$1page ').replace(/(^|[\s(\[])c\.\s?(?=\d{3,4}\b)/g, '$1circa ').replace(/\bpp\.\s*(?=\d)/g, 'pages ')     // "pg. 45" (the voice said "P G")
+    .replace(/\bEp\.\s*(?=\d)/g, 'Episode ').replace(/\bpg\.\s*(?=\d)/gi, 'page ').replace(/\b[Pp]g\s+(?=\d)/g, 'page ').replace(/(^|[\s(\[])p\.\s?(?=\d)/g, '$1page ').replace(/(^|[\s(\[])(?:c|ca)\.\s?(?=\d{3,4}\b)/g, '$1circa ').replace(/\bpp\.\s*(?=\d)/g, 'pages ')     // "pg. 45" (the voice said "P G")
     .replace(/\bPt\.?\s*(?=\d)/g, 'Part ').replace(/\bSec\.\s*(?=\d)/g, 'Section ').replace(/\b([Pp])ara\.\s*(?=\d)/g, '$1aragraph ')   // "Chapter 5 Pt. 2"
     .replace(/\b([CF])#(?![\w#])/g, '$1 sharp')                     // C#, F# (languages, notes)
     .replace(/\b([Aa])pprox\.(?=\s)|\b([Aa])pprox\b(?=\s+[~\d])/g, (m, a, b) => (a || b) + 'pproximately')
@@ -774,7 +783,7 @@ function tidy(t) {
     .replace(/\b(Lt|Sgt|Capt|Cpl|Pvt|Cmdr|Jr|Sr)\.(?=\s+\p{Ll}|\s*$)/gu, (m, t, at, all) => TITLES[t] + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))   // "the Lt. arrived"
     .replace(/\ba\.k\.a\.?(?=\s)/gi, 'also known as').replace(/\bCh\s+(?=\d)/g, 'Chapter ')
     .replace(/\b([4-7])'(\d|1[01])(?![\d'"”])/g, '$1 foot $2')         // a 5'2 girl
-    .replace(/\b(was|is|stood|stands|about|nearly|almost|over|under|barely|just)\s+([4-7])['′](?![\w'"”′″])/g, '$1 $2 feet')   // he was 6'.
+    .replace(/(\b(?:was|is|'s|’s|stood|stands|about|nearly|almost|over|under|barely|just)\s+)([4-7])['′](?![\w'"”′″])/g, (m, pre, n, at, all) => /(?:^|[\s(“"])['‘][^'’]*$/.test(all.slice(0, at)) ? m : pre + n + ' feet')   // he was 6'., she's 5' (not inside 'I was 5' quotes)
     // sounds the voice would spell out ("Hmph" -> "H M P H"): the nearest word it says right
     .replace(/(?<![\p{L}\d]\s?)\b([HhMmSsPpGgBbNnTtUuEeAaOo][a-z-]{0,10})\b(?![-'’]\p{L})/gu, (m) => {
       const w = GRUNTS.find(([re]) => re.test(m));
