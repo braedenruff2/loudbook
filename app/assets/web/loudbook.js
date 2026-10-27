@@ -622,6 +622,12 @@ function tidy(t) {
     // rates: "+2/sec", "5 MP/min" -> "per second", "per minute"
     .replace(/(\d|\b[A-Z]{2,3})\s?\/\s?(sec|second|s|min|minute|hr|hour|h|day|turn)\b(?!\/)/g, (m, a, u) =>
       a + ' per ' + ({ sec: 'second', s: 'second', min: 'minute', hr: 'hour', h: 'hour' }[u] || u))
+    // "100 gold/day", "3 attacks/turn", "dmg/sec", "2 gold/each" (the voice said "slash")
+    .replace(/(\d\s?\p{Ll}{2,}|\b(?:dmg|damage|mana|gold|exp|xp))\s?\/\s?(sec|second|min|minute|hr|hour|day|night|week|month|year|turn|round|level|floor|kill|person|head|each)\b(?!\/)/gu, (m, a, u) =>
+      a + (u === 'each' ? ' ' : ' per ') + ({ sec: 'second', min: 'minute', hr: 'hour' }[u] || u))
+    .replace(/\b(he|she|his|her|him|hers|himself|herself)\/(he|she|his|her|him|hers|himself|herself)\b(?!\/)/gi, (m, a, b) =>
+      /^(he|his|him|himself)$/i.test(a) !== /^(he|his|him|himself)$/i.test(b) ? a + ' or ' + b : m)   // he/she, his/her (not "she/her pronouns")
+    .replace(/\band\/or\b(?!\/)/g, 'and or')
     .replace(/(?<![\d.,])\b10s(?=\s+of\s+(?:thousands|millions|billions|hundreds|people|men|soldiers|monsters|years|times)\b)/g, 'tens')   // 10s of thousands (was "ten seconds")
     .replace(/(?<!\b[A-Za-z]{2,}:\s?)(?<![\d.,])\b(100|1,?000)s(?![\w'’])/g, (m, n) => (n === '100' ? 'hundreds' : 'thousands'))   // 1000s of people (not "Cooldown: 100s")
     // timers "00:05:30" -> "5 minutes 30 seconds" (was "zero oh five:thirty")
@@ -780,6 +786,8 @@ function tidy(t) {
     .replace(/(\b(?:[Aa]n?|got|gets|get|earned|scored)\s)([A-F])-(?=[\s.,!?)\]]|$)|\b([SABCDEF]{1,3})-(?=\s+(?:rank|grade|tier|class|student|average|level)\b)/g, (m, a, g, h) => (a ? a + g : h) + '-minus')   // a C-, a B- rank
     .replace(/\bvs\.?(?=\s)/gi, 'versus').replace(/(?<![\w.'’-])(ok|Ok|OK)(?![\w'’-]|\.\w)/g, (m) => (m[0] === 'o' ? 'okay' : 'Okay'))   // "ok" (the voice could say "ock")
     .replace(/\bi\.e\.(?=[\s,])/gi, (m) => m[0] === 'I' ? 'That is' : 'that is')   // "I.e., nothing" at a sentence start
+    .replace(/\b([Ii])ncl\.(?=\s)/g, '$1ncluding').replace(/\b([Ee])sp\.(?=\s)/g, '$1specially')   // "incl. 40 archers", "esp. the elves"
+    .replace(/\b(min|max)\.(?=\s+[~+]?\d)/g, (m, w) => w === 'min' ? 'minimum' : 'maximum')         // "min. 5 people", "max. 10"
     .replace(/\bPh\.D\./g, (m, at, all) => 'PhD' + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))
     // U.S., J.R.R., Ph.D.: letters with no dots (each dot was a full stop: "J R R. | Tolkien", "P H dot D dot")
     .replace(/(?<![\p{L}.])(?:\p{Lu}\.){2,4}(?![\p{L}])/gu, (m, at, all) => m.replace(/\./g, '') + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))
