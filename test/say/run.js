@@ -16,4 +16,17 @@ for (const line of fs.readFileSync(path.join(__dirname, 'cases.tsv'), 'utf8').sp
   if (got !== want) { bad++; console.log(`FAIL ${text}\n  want ${want}\n  got  ${got}`); }
 }
 console.log(`${n - bad} of ${n} pronunciation cases right`);
+// Royal Road's hidden anti-theft lines (test/say/antitheft.tsv: skip or keep, then the line): the
+// skipped ones are never read, story lines that share their words still are.
+const rr = window.LB_SITES && window.LB_SITES.SITES.find(s => s.id === 'royalroad');
+let rrBad = 0, rrN = 0;
+for (const line of fs.readFileSync(path.join(__dirname, 'antitheft.tsv'), 'utf8').split('\n')) {
+  if (!line.trim()) continue;
+  const [want, text] = line.split('\t');
+  rrN++;
+  const got = rr && rr.skipText.test(text) ? 'skip' : 'keep';
+  if (got !== want) { rrBad++; console.log(`FAIL anti-theft: want ${want}, got ${got}: ${text}`); }
+}
+console.log(`${rrN - rrBad} of ${rrN} Royal Road anti-theft lines right`);
+bad += rrBad;
 process.exit(bad ? 1 : 0);
