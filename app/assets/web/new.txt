@@ -1,3 +1,5 @@
+More chat shorthand said as words: "omw", "idc", "tbf", "hbu", "g2g", "ily", "ppl", "smth", "rly", "prolly", "obv", "yw" and "GG WP".
+Says "1½ hours", "¾ of it" and "½ the bottle" as words, and "a 401(k)" as four oh one K.
 Says "incl." and "esp." in full, "min. 5" / "max. 10" as minimum / maximum, "100 gold/day", "3 attacks/turn" and "dmg/sec" with "per" (the voice said "slash"), and "he/she", "his/her" as "he or she".
 Gemini: requests are packed full. When a chapter's end leaves room in a request, the next chapter's start goes in too, and recording runs ahead of your reading (on by default), so chapter turns don't wait. How much a request holds is learned from Google's replies.
 Kindle: on phones whose screen runs at a lower resolution than the panel (Pixel's "High resolution" setting), the highlight's places are scaled to match; "Copy what Loudbook sees" now also says how the highlight was placed.

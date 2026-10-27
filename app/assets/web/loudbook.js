@@ -459,7 +459,10 @@ function romans(t) {
 }
 const CHAT = { btw: 'by the way', jk: 'just kidding', nvm: 'never mind', ofc: 'of course', thx: 'thanks', pls: 'please', plz: 'please',
   ikr: 'I know, right', ngl: 'not gonna lie', smh: 'S-M-H', ttyl: 'talk to you later', lmk: 'let me know', cya: 'see ya', wyd: 'what you doing',
-  gtg: 'got to go', ty: 'thank you', rn: 'right now', u: 'you', ez: 'easy', 'gl hf': 'good luck, have fun' };
+  gtg: 'got to go', ty: 'thank you', rn: 'right now', u: 'you', ez: 'easy', 'gl hf': 'good luck, have fun',
+  omw: 'on my way', idc: "I don't care", tbf: 'to be fair', hbu: 'how about you', wbu: 'what about you', g2g: 'got to go', ily: 'I love you',
+  tmi: 'T-M-I', bff: 'B-F-F', ppl: 'people', smth: 'something', sth: 'something', rly: 'really', prolly: 'probably', obv: 'obviously',
+  yw: "you're welcome", lmfao: 'L-M-F-A-O', 'gg wp': 'G-G, well played' };
 const ord = (n) => (n % 100 >= 11 && n % 100 <= 13) ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th';
 
 // LitRPG stat names, said in full when they're clearly stats ("STR: 12", "AGI +3")
@@ -589,6 +592,7 @@ function tidy(t) {
     // races: "ran 5k", "a 10k run", "ran a half 21k" -> "five K" (not five thousand)
     .replace(/\b((?:ran|run|runs|running|jogged|walked|did|finished)\s(?:a\s|the\s|another\s)?)(\d{1,3})[kK]\b(?!\s+(?:gold|coins?|credits?|points?|dollars?|xp|exp|views|words|subs|followers|people|steps)\b)|\b(\d{1,3})k(?=\s+(?:fun\s)?(?:runs?|races?|marathons?)\b)/g,
       (m, pre, a, b) => (pre || '') + (a || b) + ' K')
+    .replace(/\b401(?:\([kK]\)|[kK](?=s?\s+(?:plans?|accounts?|match)\b))(s?)/g, 'four oh one K$1')   // a 401(k) (was "four hundred and one(k)")
     .replace(/\b(\d+(?:\.\d+)?)\s?k\b/g, '$1 thousand')            // 10k
     .replace(/\b(\d+)K\b(?=\s+(?!(?:runs?|races?|is|was|and|or|on|in|at|to|of|for|with|had|has|resolution|screens?|monitors?|gold\b(?=\s+(?:ring|chain|coin)))\b)\p{Ll})/gu, '$1 thousand')   // 10K subs, 50K gold (not a 10K run)
     // 1.5M credits, 10M gold, 2.5B people (not "room 12B is": B only with a decimal, M before a noun)
@@ -680,6 +684,11 @@ function tidy(t) {
           return pre + n + ' ' + UNITS.mm[0];
         return pre + n + ' ' + UNITS[u][n === '1' ? 0 : 1];
       })
+    // "1½ hours", "¾ of it" (the voice dropped the ½ or said "one½")
+    .replace(/(?<![\d.,])(\d{1,3})?([½¼¾⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])/g, (m, w, f) => {
+      const [a, b] = { '½': [1, 2], '¼': [1, 4], '¾': [3, 4], '⅓': [1, 3], '⅔': [2, 3], '⅕': [1, 5], '⅖': [2, 5], '⅗': [3, 5], '⅘': [4, 5],
+        '⅙': [1, 6], '⅚': [5, 6], '⅛': [1, 8], '⅜': [3, 8], '⅝': [5, 8], '⅞': [7, 8] }[f];
+      return w ? w + ' and ' + fracWords(a, b, true) : a === 1 && b === 2 ? 'half' : fracWords(a, b, false); })
     // fractions said as fractions: "2 1/2 hours" -> two and a half hours, "1/4 cup" -> one quarter cup (not "one of four")
     .replace(/(?<![\d.,\/])\b(\d{1,3}) ([1-7])\/([2-8])\b(?![\d\/:.]\d|\/)/g, (m, w, a, b) => +a < +b ? w + ' and ' + fracWords(+a, +b, true) : m)
     .replace(/(?<![\d.,\/])\b([1-7])\/([2-8])\b(?![\d\/])(?=\s+(?:cups?|tsp|teaspoons?|tbsp|tablespoons?|inch(?:es)?|in\.|miles?|pounds?|lbs?|oz|ounces?|hours?|hrs?|gallons?|quarts?|pints?|lit(?:er|re)s?|feet|foot|ft|yards?|kilos?|kg|grams?|g|acres?|sticks?|teaspoonfuls?|turns?|seconds?|minutes?|mins?)\b)/g,
@@ -799,7 +808,7 @@ function tidy(t) {
     .replace(/\b(?:tbh|TBH)\b/g, 'to be honest').replace(/\b(?:imo|IMHO|imho)\b/g, (m) => (m.length > 3 ? 'in my humble opinion' : 'in my opinion'))
     .replace(/(^|[\s"“'‘(])gg(?=[\s"”'’.,!?)]|$)/g, '$1G-G')   // good game, said as letters
     // chat shorthand in messages and system logs (the voice read them as one word: "nvm", "thx")
-    .replace(/(^|[\s"“'‘(])(btw|BTW|jk|JK|nvm|NVM|ofc|OFC|thx|THX|pls|PLS|plz|PLZ|ikr|IKR|ngl|NGL|smh|SMH|ttyl|TTYL|lmk|LMK|cya|wyd|WYD|gtg|GTG|ty|rn|u|ez|gl hf|GL HF)(?=[\s"”'’.,!?)]|$)/g,
+    .replace(/(^|[\s"“'‘(])(btw|BTW|jk|JK|nvm|NVM|ofc|OFC|thx|THX|pls|PLS|plz|PLZ|ikr|IKR|ngl|NGL|smh|SMH|ttyl|TTYL|lmk|LMK|cya|wyd|WYD|gtg|GTG|ty|rn|u|ez|gl hf|GL HF|gg wp|GG WP|omw|OMW|idc|IDC|tbf|TBF|hbu|wbu|g2g|ily|tmi|bff|ppl|smth|sth|rly|prolly|obv|yw|lmfao|LMFAO)(?=[\s"”'’.,!?)]|$)/g,
       (m, pre, w, at, all) => (w === 'u' && /\b(?:letters?|[a-z])\s$/i.test(all.slice(Math.max(0, at - 9), at + pre.length)) ? m : pre + CHAT[w.toLowerCase()]))   // not "the letter u"
     .replace(/\b(\d+)\s?doz\.?(?=\s|$)/g, (m, n) => n + ' dozen')
     // day lists: "Mon, Tue and Wed", "Sat or Sun", "Mon/Wed/Fri" -> full names (a lone "Sun" stays as written)
