@@ -1,3 +1,6 @@
+Says "Sr. Engineer" as Senior (it said "Sister"; "Sr. Mary" stays Sister), "Silver: 20s" as twenty silver (was "twenty seconds"), and "2d8 + INT" as "plus Intelligence".
+Says "Ave. speed" and "avg damage" as average (it said "Avenue"), "Est. time" as estimated, "Nos. 3 and 4" as numbers, "T-10 minutes" as T-minus ten, and ">100 degrees" / "<10%" as more than / less than.
+Says Bible verses the way people do ("John 3:16" as three sixteen, "1 Corinthians 13:4" as First Corinthians), "Smith v. Jones" as versus, "TL;DR", "AN:" as author's note, "60 W" / "12 V" / "500 MW" as watts, volts and megawatts, and "10,000 BC" (was "ten,zero BC").
 More chat shorthand said as words: "omw", "idc", "tbf", "hbu", "g2g", "ily", "ppl", "smth", "rly", "prolly", "obv", "yw" and "GG WP".
 Says "1½ hours", "¾ of it" and "½ the bottle" as words, and "a 401(k)" as four oh one K.
 Says "incl." and "esp." in full, "min. 5" / "max. 10" as minimum / maximum, "100 gold/day", "3 attacks/turn" and "dmg/sec" with "per" (the voice said "slash"), and "he/she", "his/her" as "he or she".
