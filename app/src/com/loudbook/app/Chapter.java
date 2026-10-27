@@ -75,6 +75,29 @@ final class Chapter {
         return o;
     }
 
+    /**
+     * The first sentence of the paragraph with this text (the one numbered near `block` if several
+     * match), or of paragraph number `block` if the text isn't found. -1 if neither.
+     */
+    int firstOfParagraph(String para, int block) {
+        String p = squash(para);
+        int best = -1, bestD = Integer.MAX_VALUE;
+        if (!p.isEmpty()) {
+            for (int i = 0; i < chunks.size(); i++) {
+                Chunk c = chunks.get(i);
+                if (c.block < 0 || (i > 0 && chunks.get(i - 1).block == c.block)) continue;     // (paragraph starts only)
+                String t = squash(c.text);
+                if (t.isEmpty() || !p.startsWith(t.substring(0, Math.min(t.length(), 40)))) continue;
+                int d = Math.abs(c.block - block);
+                if (d < bestD) { bestD = d; best = i; }
+            }
+        }
+        if (best >= 0) return best;
+        for (int i = 0; i < chunks.size(); i++) if (chunks.get(i).block == block) return i;
+        return -1;
+    }
+    private static String squash(String s) { return s == null ? "" : s.replaceAll("[\\s\u200b-\u200d\ufeff]+", ""); }
+
     /** Non-space characters of this paragraph that come before chunk i (to find it on the page). */
     int offsetInBlock(int i) {
         int n = 0;

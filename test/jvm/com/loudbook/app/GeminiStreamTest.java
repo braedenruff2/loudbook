@@ -123,7 +123,8 @@ public class GeminiStreamTest {
             });
             watch.start();
             boolean live = !run[0].equals("all at once");
-            GeminiBook.Made m = b.fetch(ch, from, text.length, "test-key", "gemini-3.8-flash-tts", "Sulafat", style, 0, new double[1], live ? asr : null);
+            // (all at once: not streamed, but still listened to, as fast as it can be, before it's played)
+            GeminiBook.Made m = b.fetch(ch, from, text.length, "test-key", "gemini-3.8-flash-tts", "Sulafat", style, 0, new double[1], asr, new ArrayList<>(), live);
             long took = System.currentTimeMillis() - t0;
             watch.join();
             System.out.printf("== %s: %.0f s of speech; first sentence ready after %.1f s, all after %.1f s; %s%n",
@@ -138,11 +139,11 @@ public class GeminiStreamTest {
                 check(run[0] + ": the text sent is the chapter's text alone", lastReq.contains("\"text\":\"" + text[from]));
             } else check(run[0] + ": the older API gets the text with no style in front", !lastReq.contains("narrator") && lastReq.contains("\"text\":\"" + text[from]));
             check(run[0] + ": every sentence recorded", m.count == text.length - from);
+            check(run[0] + ": timed by the words heard", m.timed);
             if (live) {
                 check(run[0] + ": streamed", req.contains("\"stream\":true") || req.contains("streamGenerateContent"));
                 check(run[0] + ": the first sentence is ready long before the recording is done", firstReady[0] >= 0 && firstReady[0] < took / 2 && firstReady[0] < 9000);
-                check(run[0] + ": timed by the words heard", m.timed);
-            }
+            } else check(run[0] + ": not streamed", !req.contains("\"stream\":true"));
             // each sentence's clip starts where the sentence really does
             double worst = 0; int worstAt = -1;
             for (int i = from; i < text.length; i++) {
@@ -150,7 +151,7 @@ public class GeminiStreamTest {
                 if (Math.abs(st - tr) > worst) { worst = Math.abs(st - tr); worstAt = i; }
             }
             System.out.printf("   worst start error %.2f s (sentence %d)%n", worst, worstAt);
-            check(run[0] + ": no sentence is off (every start within half a second)", worst < 0.5 || !live && worst < 0.9);
+            check(run[0] + ": no sentence is off (every start within half a second)", worst < 0.5);
             Voice.Clip c = b.clip(text.length - 1);
             check(run[0] + ": the last clip has the end of the recording", c.samples.length > rate / 2);
         }

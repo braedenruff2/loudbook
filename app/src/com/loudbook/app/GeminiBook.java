@@ -192,6 +192,17 @@ final class GeminiBook {
      */
     Made fetch(Chapter ch, int from, int to, String key, String model, String voice, String style, double pace, double[] paceOut, AsrAligner asr,
                List<Span> more) throws IOException {
+        return fetch(ch, from, to, key, model, voice, style, pace, paceOut, asr, more, true);
+    }
+
+    /**
+     * stream: ask for the audio as it's made. Either way, with the recogniser the words are
+     * listened to as the audio comes in, and each sentence is timed by its own first words before
+     * it's handed out to play (a recording that comes all at once is listened to straight away,
+     * much faster than it plays, so reading starts in a moment).
+     */
+    Made fetch(Chapter ch, int from, int to, String key, String model, String voice, String style, double pace, double[] paceOut, AsrAligner asr,
+               List<Span> more, boolean stream) throws IOException {
         StringBuilder text = new StringBuilder();
         List<String> texts = new ArrayList<>();
         List<Span> spans = new ArrayList<>();
@@ -221,7 +232,7 @@ final class GeminiBook {
         if (fo != null) fo.start();
         CloudVoice.Pcm pcm;
         try {
-            pcm = CloudVoice.speakToFile(key, model, voice, style, text.toString(), f, 600_000, fo != null, fo == null ? null : fo::arrived);
+            pcm = CloudVoice.speakToFile(key, model, voice, style, text.toString(), f, 600_000, fo != null && stream, fo == null ? null : fo::arrived);
         } catch (IOException e) {
             if (fo != null) fo.finish();
             if (fo != null && fo.filed > 0) {
@@ -330,8 +341,10 @@ final class GeminiBook {
         void finish() {
             ended = true;
             synchronized (lock) { lock.notifyAll(); }
-            try { thread.join(60_000); } catch (InterruptedException ignored) { }
+            try { thread.join(180_000); } catch (InterruptedException ignored) { }
+            synchronized (GeminiBook.this) { closed = true; }   // (from here on the rest is filed by fetch, not here)
         }
+        volatile boolean closed;
         float[] rms() { return java.util.Arrays.copyOf(rms, nf); }
 
         @Override public void run() {
@@ -376,16 +389,19 @@ final class GeminiBook {
             if (filed == 0 && cut[0] < 0) cut[0] = 0;                      // (the first words weren't made out: it starts at the start)
             if (filed > 0) cut[filed] = lastEnd;
             List<Seg> add = new ArrayList<>();
+            List<Long> st2 = new ArrayList<>();
+            long end = lastEnd;
             int k = filed;
             while (k < last && k < limit && cut[k] >= 0 && cut[k + 1] > cut[k] + rate / 5) {
                 add.add(new Seg(from + k, hash(ch.chunks.get(from + k)), part, cut[k], cut[k + 1], true));
-                starts.add(cut[k]);
-                lastEnd = cut[k + 1];
+                st2.add(cut[k]);
+                end = cut[k + 1];
                 k++;
             }
             if (add.isEmpty()) return;
-            filed = k;
             synchronized (GeminiBook.this) {
+                if (closed) return;
+                starts.addAll(st2); lastEnd = end; filed = k;
                 parts.set(part, new CloudVoice.Pcm(f, 0, (fed * 2), rate));
                 all.addAll(add);
                 all.sort((a, b) -> Integer.compare(a.idx, b.idx));

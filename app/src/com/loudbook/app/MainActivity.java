@@ -335,17 +335,20 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         web.setOnLongClickListener(v -> {
             if (pageChapter == null) return false;
             float d = getResources().getDisplayMetrics().density;
-            web.evaluateJavascript("window.LB ? LB.blockAt(" + (lastTouchX / d) + "," + (lastTouchY / d) + ") : -1", r -> {
-                int block;
-                try { block = Integer.parseInt(r.trim()); } catch (Exception e) { return; }
-                if (block < 0) return;
-                for (int i = 0; i < pageChapter.size(); i++) if (pageChapter.chunks.get(i).block == block) {
-                    if (svc != null) {
-                        if (svc.chapter() == null || !svc.chapter().url.equals(pageChapter.url)) svc.setChapter(pageChapter, i, true);
-                        else { svc.seek(i); if (!svc.isPlaying()) play(); }
-                    }
-                    break;
-                }
+            web.evaluateJavascript("window.LB ? (LB.blockInfo ? LB.blockInfo(" + (lastTouchX / d) + "," + (lastTouchY / d) + ") : JSON.stringify({i: LB.blockAt(" + (lastTouchX / d) + "," + (lastTouchY / d) + "), text: ''})) : '{\"i\":-1}'", r -> {
+                int block; String para;
+                try { JSONObject o = new JSONObject(new org.json.JSONArray("[" + r + "]").getString(0)); block = o.optInt("i", -1); para = o.optString("text", ""); }
+                catch (Exception e) { return; }
+                if (block < 0 || svc == null) return;
+                // the sentence is found by the paragraph's text in the chapter that's playing: its copy
+                // can come from another load of the page, numbered a little differently
+                Chapter playing = svc.chapter();
+                boolean same = playing != null && playing.url.equals(pageChapter.url);
+                Chapter c = same ? playing : pageChapter;
+                int i = c.firstOfParagraph(para, block);
+                if (i < 0) return;
+                if (!same) svc.setChapter(pageChapter, i, true);
+                else { svc.seek(i); if (!svc.isPlaying()) play(); }
             });
             return true;
         });

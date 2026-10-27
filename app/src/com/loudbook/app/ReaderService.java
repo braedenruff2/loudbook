@@ -819,9 +819,9 @@ public class ReaderService extends Service {
             // recogniser is ready; otherwise the whole recording first, timed afterwards
             String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date());
             boolean stream = !today.equals(prefs.getString("gemNoStream", ""));
-            AsrAligner live = stream ? asrReady() : null;
+            AsrAligner live = asrReady();
             made = b.fetch(ch, from, to, prefs.getString("cloudKey", ""), cModel(), cVoice(), cStyle(),
-                prefs.getFloat("gemPace:" + cVoice(), 0f), pace, live, new ArrayList<>(plan.subList(1, plan.size())));
+                prefs.getFloat("gemPace:" + cVoice(), 0f), pace, live, new ArrayList<>(plan.subList(1, plan.size())), stream);
             got = made.count;
             prefs.edit().putString("gemHow", CloudVoice.how + (made.timed ? "; timed by the words as it arrived" : "")
                 + (CloudVoice.howProblem.isEmpty() ? "" : " (first try: " + CloudVoice.howProblem + ")")).apply();
