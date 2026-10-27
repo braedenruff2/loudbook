@@ -130,6 +130,10 @@ if (!window.LB) {
   const SITES = [
     {
       id: 'royalroad', name: 'Royal Road', hosts: /(^|\.)royalroad\.com$/,
+      // Royal Road puts a hidden "this story was taken without permission" line somewhere in each
+      // chapter, different on every load (for copies on other sites). It's hidden on the page; if
+      // it ever shows through, it still isn't part of the story (and must not shift what's where).
+      skipText: /^(?=[\s\S]{0,320}$)(?=[\s\S]*\b(?:report\w*|sightings?|violation|elsewhere|amazon|royal\s?road|without (?:the author'?s )?(?:permission|consent|approval))\b)(?=[\s\S]*\b(?:royal\s?road|amazon|(?:this|the) (?:story|tale|narrative|novel|content|work))\b)[\s\S]*\b(?:stolen|unauthori[sz]ed|unlawful(?:ly)?|illicit(?:ly)?|pilfered|misappropriated|pirated|purloined|taken without|lifted|without (?:the author'?s )?(?:permission|consent|approval)|infring\w*)\b/i,
       roots: (doc) => [q(doc, '.chapter-inner.chapter-content, .chapter-content, .chapter-inner')],
       title: (doc) => txt(q(doc, '.fic-header h1, h1.font-white, .chapter-title')),
       fiction: (doc) => txt(q(doc, '.fic-header h2')) || titleParts(doc, '|')[1] || '',
@@ -234,7 +238,17 @@ if (!window.LB) {
   // sharing the root element; `base` counts the non-space characters before each line so the
   // page can find the sentence inside the shared element.
   const squashLen = (t) => t.replace(/[\s\u200b-\u200d\ufeff]+/g, '').length;
-  function blocksOf(root, isHidden, skip, lines) {
+  // A block's text without the sentences a site marks as not part of the story (skipText).
+  function withoutSkipped(text, skipText) {
+    if (!skipText || !text) return text;
+    if (skipText.test(text)) return '';
+    const parts = text.split(/(?<=[.!?…]["”’)\]]?)\s+/);
+    if (parts.length < 2) return text;
+    const kept = parts.filter(p => !skipText.test(p));
+    return kept.length === parts.length ? text : kept.join(' ');
+  }
+
+  function blocksOf(root, isHidden, skip, lines, skipText) {
     const out = [];
     const skipSel = skip ? SKIP_SEL + ', ' + skip : SKIP_SEL;
     if (!lines) {
@@ -243,7 +257,7 @@ if (!window.LB) {
         if (el.closest(skipSel)) continue;
         if (el.tagName === 'TD' || el.tagName === 'TH') continue;
         if (isHidden(el)) continue;
-        const text = textOf(el, (n) => isHidden(n) || (skip && n.matches && n.matches(skip)));
+        const text = withoutSkipped(textOf(el, (n) => isHidden(n) || (skip && n.matches && n.matches(skip))), skipText);
         if (speakable(text)) out.push({ el, text });
       }
       if (out.length) return out;
@@ -251,7 +265,7 @@ if (!window.LB) {
     const all = textOf(root, (n) => isHidden(n) || (n.matches && n.matches(skipSel)), true);
     let base = 0;
     for (const line of all.split('\n').map(s => s.trim()).filter(Boolean)) {
-      if (speakable(line)) out.push({ el: root, text: line, shared: true, base });
+      if (speakable(line) && withoutSkipped(line, skipText)) out.push({ el: root, text: line, shared: true, base });
       base += squashLen(line);
     }
     return out;
@@ -268,7 +282,7 @@ if (!window.LB) {
     for (const root of roots) {
       const head = site && site.postTitle ? site.postTitle(root) : '';
       if (head && roots.length > 1) blocks.push({ el: root, text: head, shared: true, base: -1, heading: true });
-      blocks.push(...blocksOf(root, isHidden, site && site.skip, !!(site && site.lines)));
+      blocks.push(...blocksOf(root, isHidden, site && site.skip, !!(site && site.lines), site && site.skipText));
     }
     const nav = (dir) => {
       if (site && site[dir]) { const v = site[dir](doc, url); if (v !== undefined) return v; }
@@ -1049,8 +1063,23 @@ return { parseFixes, makeSayer, tidy };
     return true;
   }
   function unTint() { const p = blocks[activeIndex]; if (p && p.el && !p.shared) p.el.classList.remove('lb-active'); }
+  // The paragraph that holds a sentence: the one numbered i, or, if this page was read on another
+  // load of it (a site can hide a different line each time, so the numbering can differ by one),
+  // the nearest one that has the sentence's text.
+  function blockOf(i, text) {
+    const key = squash(text || '');
+    if (!key) return i;
+    const has = (j) => { const b = blocks[j]; return !!b && squash(b.text || '').includes(key); };
+    if (has(i)) return i;
+    for (let d = 1; d <= 12; d++) { if (has(i + d)) return i + d; if (has(i - d)) return i - d; }
+    for (let j = 0; j < blocks.length; j++) if (has(j)) return j;
+    return i;
+  }
   function highlight(i, text, offset) {
     unTint();
+    const j = blockOf(i, text);
+    if (j !== i) offset = 0;                                       // (found elsewhere: look for it from the paragraph's start)
+    i = j;
     activeIndex = i;
     const b = blocks[i];
     const el = b && elOf(b);
@@ -1085,7 +1114,13 @@ return { parseFixes, makeSayer, tidy };
 
   // sayText: what the voice is given for a bit of text (for the pronunciation tests)
   const sayText = (t, fixes, tidy) => speakNumbers(LBSay.makeSayer(LBSay.parseFixes(fixes || ""), { tidy: tidy !== false })(t));
-  window.LB = { run, highlight, clear, blockAt, speakNumbers, words, sayText };
+  // what's under a long press: the paragraph's number and its text (the app finds the sentence by
+  // the text, in case its copy of the chapter came from another load of the page)
+  function blockInfo(x, y) {
+    const i = blockAt(x, y);
+    return JSON.stringify({ i, text: i >= 0 && blocks[i] ? blocks[i].text : '' });
+  }
+  window.LB = { run, highlight, clear, blockAt, blockInfo, speakNumbers, words, sayText };
 })();
 
 }

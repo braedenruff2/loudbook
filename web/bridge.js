@@ -165,8 +165,23 @@
     return true;
   }
   function unTint() { const p = blocks[activeIndex]; if (p && p.el && !p.shared) p.el.classList.remove('lb-active'); }
+  // The paragraph that holds a sentence: the one numbered i, or, if this page was read on another
+  // load of it (a site can hide a different line each time, so the numbering can differ by one),
+  // the nearest one that has the sentence's text.
+  function blockOf(i, text) {
+    const key = squash(text || '');
+    if (!key) return i;
+    const has = (j) => { const b = blocks[j]; return !!b && squash(b.text || '').includes(key); };
+    if (has(i)) return i;
+    for (let d = 1; d <= 12; d++) { if (has(i + d)) return i + d; if (has(i - d)) return i - d; }
+    for (let j = 0; j < blocks.length; j++) if (has(j)) return j;
+    return i;
+  }
   function highlight(i, text, offset) {
     unTint();
+    const j = blockOf(i, text);
+    if (j !== i) offset = 0;                                       // (found elsewhere: look for it from the paragraph's start)
+    i = j;
     activeIndex = i;
     const b = blocks[i];
     const el = b && elOf(b);
@@ -201,5 +216,11 @@
 
   // sayText: what the voice is given for a bit of text (for the pronunciation tests)
   const sayText = (t, fixes, tidy) => speakNumbers(LBSay.makeSayer(LBSay.parseFixes(fixes || ""), { tidy: tidy !== false })(t));
-  window.LB = { run, highlight, clear, blockAt, speakNumbers, words, sayText };
+  // what's under a long press: the paragraph's number and its text (the app finds the sentence by
+  // the text, in case its copy of the chapter came from another load of the page)
+  function blockInfo(x, y) {
+    const i = blockAt(x, y);
+    return JSON.stringify({ i, text: i >= 0 && blocks[i] ? blocks[i].text : '' });
+  }
+  window.LB = { run, highlight, clear, blockAt, blockInfo, speakNumbers, words, sayText };
 })();
