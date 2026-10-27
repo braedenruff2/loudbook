@@ -1,3 +1,4 @@
+Royal Road: the hidden "support the author by reading it on Royal Road" lines (another kind it hides on every chapter) are skipped too, not read out.
 Web chapters with Gemini: every recording is now timed by the words actually spoken before a sentence plays (also when Google sends the whole recording at once), and the page highlight and long-press find the sentence by its text, so a page that loads a little differently (Royal Road hides a different line each time) can't put them a paragraph off. Royal Road's hidden "this story was stolen" line is never read out.
 Says "Sr. Engineer" as Senior (it said "Sister"; "Sr. Mary" stays Sister), "Silver: 20s" as twenty silver (was "twenty seconds"), and "2d8 + INT" as "plus Intelligence".
 Says "Ave. speed" and "avg damage" as average (it said "Avenue"), "Est. time" as estimated, "Nos. 3 and 4" as numbers, "T-10 minutes" as T-minus ten, and ">100 degrees" / "<10%" as more than / less than.

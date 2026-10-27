@@ -16,14 +16,20 @@ for (const line of fs.readFileSync(path.join(__dirname, 'cases.tsv'), 'utf8').sp
   if (got !== want) { bad++; console.log(`FAIL ${text}\n  want ${want}\n  got  ${got}`); }
 }
 console.log(`${n - bad} of ${n} pronunciation cases right`);
-// Royal Road's hidden anti-theft lines (test/say/antitheft.tsv: skip or keep, then the line): the
+// Royal Road's hidden anti-theft lines (test/say/antitheft.tsv: skip or keep, then the line; or para,
+// a paragraph, then what's left of it once the line is taken out): the
 // skipped ones are never read, story lines that share their words still are.
 const rr = window.LB_SITES && window.LB_SITES.SITES.find(s => s.id === 'royalroad');
 let rrBad = 0, rrN = 0;
 for (const line of fs.readFileSync(path.join(__dirname, 'antitheft.tsv'), 'utf8').split('\n')) {
   if (!line.trim()) continue;
-  const [want, text] = line.split('\t');
+  const [want, text, left] = line.split('\t');
   rrN++;
+  if (want === 'para') {                              // a paragraph with the line inside: what's left of it
+    const got = rr ? window.LB_SITES.withoutSkipped(text, rr.skipText) : text;
+    if (got !== left) { rrBad++; console.log(`FAIL anti-theft paragraph: ${text}\n  want ${left}\n  got  ${got}`); }
+    continue;
+  }
   const got = rr && rr.skipText.test(text) ? 'skip' : 'keep';
   if (got !== want) { rrBad++; console.log(`FAIL anti-theft: want ${want}, got ${got}: ${text}`); }
 }

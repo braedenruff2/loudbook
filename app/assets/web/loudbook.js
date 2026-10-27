@@ -133,7 +133,10 @@ if (!window.LB) {
       // Royal Road puts a hidden "this story was taken without permission" line somewhere in each
       // chapter, different on every load (for copies on other sites). It's hidden on the page; if
       // it ever shows through, it still isn't part of the story (and must not shift what's where).
-      skipText: /^(?=[\s\S]{0,320}$)(?=[\s\S]*\b(?:report\w*|sightings?|violation|elsewhere|amazon|royal\s?road|without (?:the author'?s )?(?:permission|consent|approval))\b)(?=[\s\S]*\b(?:royal\s?road|amazon|(?:this|the) (?:story|tale|narrative|novel|content|work))\b)[\s\S]*\b(?:stolen|unauthori[sz]ed|unlawful(?:ly)?|illicit(?:ly)?|pilfered|misappropriated|pirated|purloined|taken without|lifted|without (?:the author'?s )?(?:permission|consent|approval)|infring\w*)\b/i,
+      // Two kinds: "stolen from Royal Road, report it on Amazon" and "support the author by reading
+      // the original on Royal Road" (both checked against ~35 known wordings, and story lines that
+      // share their words).
+      skipText: /^(?=[\s\S]{0,320}$)(?:(?=[\s\S]*\b(?:report\w*|sightings?|violation|elsewhere|amazon|royal\s?road|without (?:the author'?s )?(?:permission|consent|approval))\b)(?=[\s\S]*\b(?:royal\s?road|amazon|(?:this|the) (?:story|tale|narrative|novel|content|work|text)|(?:stolen|pirated) (?:story|tale|narrative|novel|content|work))\b)[\s\S]*\b(?:stolen|unauthori[sz]ed|unlawful(?:ly)?|illicit(?:ly)?|pilfered|misappropriated|appropriated|pirated|purloined|taken without|taken from|lifted|theft|not rightfully|without (?:the author'?s )?(?:permission|consent|approval)|infring\w*)\b|(?=[\s\S]{0,240}$)(?![\s\S]*\bpatreon\b)(?=[\s\S]*\b(?:royal\s?road|official|original|genuine|preferred platform|(?:another|different) (?:site|platform|website)|pirate\w*)\b)[\s\S]*\b(?:support\w* (?:(?:the|this|their|your|our) )?(?:(?:original|creative|favou?rite|hard-working) )?(?:authors?|creators?|writers?|creativity)|authors? gets? (?:the )?(?:credit|support)|your support by read\w*)\b)/i,
       roots: (doc) => [q(doc, '.chapter-inner.chapter-content, .chapter-content, .chapter-inner')],
       title: (doc) => txt(q(doc, '.fic-header h1, h1.font-white, .chapter-title')),
       fiction: (doc) => txt(q(doc, '.fic-header h2')) || titleParts(doc, '|')[1] || '',
@@ -239,12 +242,25 @@ if (!window.LB) {
   // page can find the sentence inside the shared element.
   const squashLen = (t) => t.replace(/[\s\u200b-\u200d\ufeff]+/g, '').length;
   // A block's text without the sentences a site marks as not part of the story (skipText).
+  const SKIP_TAIL = /^(?:(?:please )?report (?:it|this|them|any \w+|the \w+|sightings?)\b[^.!?]{0,30}[.!?]?|(?:love|loving|enjoying|enjoy|like|liking) (?:this|the) (?:story|novel|tale|book)\?|support (?:original|the) (?:creators?|authors?)!?|if you (?:\w+ ){1,3}(?:it|this)\b[^.!?]{0,30}\b(?:amazon|elsewhere)\b[^.!?,]{0,10},? (?:please )?report (?:it|this)[.!]?)$/i;
+  // ("Royal Road is the home of this novel." / "You might be reading a pirated copy.": next to a skipped line)
+  const leadIn = (p) => p.length <= 120 && /\b(?:royal\s?road|amazon|official|original|genuine|(?:another|different|preferred) (?:site|platform|website)|pirated copy|pirate site)\b/i.test(p) &&
+    /\b(?:(?:this|the) (?:story|novel|tale|book|text|narrative)|novels?|copy|authors?'?s?|pirate site)\b/i.test(p);
   function withoutSkipped(text, skipText) {
     if (!skipText || !text) return text;
-    if (skipText.test(text)) return '';
     const parts = text.split(/(?<=[.!?…]["”’)\]]?)\s+/);
-    if (parts.length < 2) return text;
-    const kept = parts.filter(p => !skipText.test(p));
+    if (parts.length < 2) return skipText.test(text) ? '' : text;
+    const drop = parts.map(p => skipText.test(p));
+    // a skipped line's own short lead-in or follow-up ("Enjoying the story?", "Report any sightings.")
+    // (or two sentences that only match together: "Find it on the original site. Support creators!")
+    for (let i = 0; i + 1 < parts.length; i++)
+      if (!drop[i] && !drop[i + 1] && skipText.test(parts[i] + ' ' + parts[i + 1])) drop[i] = drop[i + 1] = true;
+    for (let more = true; more; ) {
+      more = false;
+      for (let i = 0; i < parts.length; i++)
+        if (!drop[i] && (drop[i - 1] || drop[i + 1]) && (SKIP_TAIL.test(parts[i]) || leadIn(parts[i]))) drop[i] = more = true;
+    }
+    const kept = parts.filter((p, i) => !drop[i]);
     return kept.length === parts.length ? text : kept.join(' ');
   }
 
@@ -314,7 +330,7 @@ if (!window.LB) {
     return out;
   }
 
-  globalThis.LB_SITES = { SITES, profileFor, extract, textOf, blocksFromApiHtml, genericContainer, BLOCK_SEL };
+  globalThis.LB_SITES = { SITES, profileFor, extract, textOf, withoutSkipped, blocksFromApiHtml, genericContainer, BLOCK_SEL };
 })();
 
 const LBChunk = (() => {
