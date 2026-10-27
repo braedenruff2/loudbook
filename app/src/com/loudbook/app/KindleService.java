@@ -515,8 +515,12 @@ public class KindleService extends AccessibilityService {
 
     /** What Loudbook sees and what it made of it, also kept for Settings › "Show what Loudbook sees in Kindle". */
     String report(Page p) {
+        android.graphics.Point real = new android.graphics.Point();
+        try { wm.getDefaultDisplay().getRealSize(real); } catch (Throwable ignored) { }
+        DisplayMetrics dm = getResources().getDisplayMetrics();
         String d = "Loudbook " + BuildInfo.VERSION + " Kindle view, Android " + android.os.Build.VERSION.SDK_INT
-            + (exploreOn ? ", explore-by-touch on" : "") + "\n" + dump();
+            + (exploreOn ? ", explore-by-touch on" : "") + "\nscreen " + real.x + "x" + real.y + " (" + dm.widthPixels + "x" + dm.heightPixels + " at " + dm.densityDpi + " dpi)"
+            + "; highlight: " + placement + "\n" + dump();
         try { java.nio.file.Files.write(new java.io.File(getFilesDir(), "kindle-last.txt").toPath(), d.getBytes("UTF-8")); } catch (Exception ignored) { }
         if (testBuild()) try { java.nio.file.Files.write(new java.io.File(getExternalFilesDir(null), "kindle-last.txt").toPath(), d.getBytes("UTF-8")); } catch (Exception ignored) { }
         return d;
@@ -831,6 +835,7 @@ public class KindleService extends AccessibilityService {
                     @Override public void onFailure(int code) {
                         if (hl != null) hl.setVisibility(View.VISIBLE);
                         Log.i("LoudbookTest", "kindle: no picture of the screen (" + code + "), word places estimated");
+                        placement = "no picture of the screen (error " + code + "): estimated";
                         if (tries < 2) main.postDelayed(() -> fromScreen(p, tries + 1), 1200);   // (pictures are allowed once a second)
                     }
                 });
@@ -851,6 +856,9 @@ public class KindleService extends AccessibilityService {
         return new Rect(at[0], at[1], at[0] + bw, at[1] + bh);
     }
 
+    /** How the highlight's places were last worked out (for "Copy what Loudbook sees"). */
+    private volatile String placement = "not yet";
+
     private void placeFromPicture(Page p, android.graphics.Bitmap pic, Rect button, int tries) {
         boolean again = false;
         try {
@@ -859,7 +867,15 @@ public class KindleService extends AccessibilityService {
             int w = pic.getWidth(), h = pic.getHeight();
             int[] px = new int[w * h];
             pic.getPixels(px, 0, w, 0, 0, w, h);
+            // the picture can be at the panel's own resolution while the phone draws at a lower one
+            // (Pixel phones' "High resolution" setting): then its places are scaled to the screen's
+            android.graphics.Point real = new android.graphics.Point();
+            try { wm.getDefaultDisplay().getRealSize(real); } catch (Throwable t) { real.set(w, h); }
+            if (real.x <= 0 || real.y <= 0) real.set(w, h);
+            float sx = real.x / (float) w, sy = real.y / (float) h;
+            boolean scaled = Math.abs(sx - 1) > 0.01f || Math.abs(sy - 1) > 0.01f;
             int bgv = InkLayout.background(px), fill = 0xFF000000 | (bgv << 16) | (bgv << 8) | bgv;
+            if (button != null && scaled) button = new Rect(Math.round(button.left / sx), Math.round(button.top / sy), Math.round(button.right / sx), Math.round(button.bottom / sy));
             if (button != null) {                                        // (not the gold button)
                 Rect cut = new Rect(button);
                 cut.inset(-button.width() / 6, -button.height() / 6);
@@ -869,6 +885,12 @@ public class KindleService extends AccessibilityService {
             List<float[]> boxes = new ArrayList<>();
             for (Bit b : p.lines) { texts.add(b.text); boxes.add(new float[]{b.r.left, b.r.top, b.r.right, b.r.bottom}); }
             List<InkLayout.Word> ink = InkLayout.words(px, w, h, 0, 0);
+            if (scaled) {
+                List<InkLayout.Word> sc = new ArrayList<>();
+                for (InkLayout.Word iw : ink) sc.add(new InkLayout.Word(Math.round(iw.x0 * sx), Math.round(iw.y0 * sy), Math.round(iw.x1 * sx), Math.round(iw.y1 * sy), iw.rowEnd));
+                ink = sc;
+            }
+            String sizes = "picture " + w + "x" + h + (scaled ? ", screen " + real.x + "x" + real.y + " (scaled)" : "");
             List<float[][]> placed = InkLayout.pageBoxes(texts, ink);
             KindleLayout before = shown;
             List<float[][]> chars = new ArrayList<>();
@@ -880,6 +902,7 @@ public class KindleService extends AccessibilityService {
             }
             if (found == 0) {
                 Log.i("LoudbookTest", "kindle: couldn't place the words from the screen (" + ink.size() + " ink words, button " + button + "), estimated instead");
+                placement = "couldn't place the words from the screen (" + sizes + ", " + ink.size() + " ink words, try " + (tries + 1) + "): estimated";
                 again = tries < 2;                                       // (maybe the page was still turning)
                 return;
             }
@@ -887,7 +910,8 @@ public class KindleService extends AccessibilityService {
             k.exactLines = found;
             if (p == shownPage) { shown = k; spansFor = -1; }
             saveLayout(k, "ink");
-            Log.i("LoudbookTest", "kindle: words placed from the screen on " + found + " of " + p.lines.size() + " pieces (" + ink.size() + " ink words)");
+            Log.i("LoudbookTest", "kindle: words placed from the screen on " + found + " of " + p.lines.size() + " pieces (" + ink.size() + " ink words, " + sizes + ")");
+            placement = "words placed from the screen on " + found + " of " + p.lines.size() + " pieces (" + sizes + ", " + ink.size() + " ink words)";
         } catch (Throwable t) { Log.w(TAG, "kindle ink", t); }
         finally {
             pic.recycle();

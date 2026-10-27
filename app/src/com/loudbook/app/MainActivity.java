@@ -1076,8 +1076,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         box.addView(gStyle);
         Button gHear = smallButton("Save and hear it (uses a request)");
         box.addView(gHear);
-        box.addView(toggle("Record the next chapter ahead of time (uses a request; no wait at the page turn)",
-            prefs.getBoolean("gemPrefetch", false), (b, on) -> prefs.edit().putBoolean("gemPrefetch", on).apply()));
+        box.addView(toggle("Record ahead, on into the next chapter (no wait at the chapter turn; every request is packed full, so none goes to waste)",
+            prefs.getBoolean("gemPrefetch", true), (b, on) -> prefs.edit().putBoolean("gemPrefetch", on).apply()));
         box.addView(toggle("Going back to a part Gemini didn't record: record it too (uses a request; otherwise the regular voice reads it)",
             prefs.getBoolean("gemBackfill", false), (b, on) -> prefs.edit().putBoolean("gemBackfill", on).apply()));
         box.addView(toggle("Exact sentence timing (the phone listens to each recording once to find where every sentence starts)",
@@ -1087,7 +1087,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             int used = svc != null ? svc.cloudRequestsToday() : 0;
             long retry = prefs.getLong("gemRetryAt", 0);
             String wait = retry > System.currentTimeMillis() ? " Google's limit was reached; more requests from " + android.text.format.DateFormat.getTimeFormat(this).format(new java.util.Date(retry)) + "." : "";
-            gInfo.setText("Requests used today: " + used + "." + wait + " Each chapter is read with one request (two if Google stops a long one early), and recordings are kept, so going back or hearing a chapter again is free. Reading starts as soon as the first sentence arrives.\n"
+            gInfo.setText("Requests used today: " + used + "." + wait + " Each request is packed as full as Google allows: when a chapter's end leaves room, the next chapter's start goes in too. Recordings are kept, so going back or hearing a chapter again is free. Reading starts as soon as the first sentence arrives.\n"
                 + "Google's Gemini voice is one of the best-rated anywhere. It needs a free API key from aistudio.google.com (Get API key). "
                 + "The free tier has daily limits, and Google may use what's sent to improve its products; past that, Google charges about $0.81 per hour of listening. "
                 + "Whenever Gemini can't be reached or the limit is hit, your PC or the phone reads instead."

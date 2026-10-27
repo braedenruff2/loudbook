@@ -77,6 +77,46 @@ final class GeminiBook {
     /** How long a recording is, in seconds. */
     synchronized double seconds(int part) { CloudVoice.Pcm p = parts.get(part); return p.samples() / (double) p.rate; }
 
+    /**
+     * Files sentences recorded in another chapter's request (packed in at its end): samples
+     * [a, b) of that recording are copied here; local[k] is where sentence from+k starts in them.
+     */
+    void addFrom(CloudVoice.Pcm src, long a, long b, Chapter ch, int from, long[] local) throws IOException {
+        dir.mkdirs();
+        File f;
+        synchronized (this) { f = new File(dir, "part" + parts.size() + "-" + System.currentTimeMillis() + ".pcm"); }
+        try (java.io.RandomAccessFile in = new java.io.RandomAccessFile(src.file, "r");
+             java.io.OutputStream out = new java.io.BufferedOutputStream(new java.io.FileOutputStream(f), 1 << 16)) {
+            in.seek(src.offset + a * 2);
+            byte[] buf = new byte[1 << 16];
+            long left = (b - a) * 2;
+            while (left > 0) {
+                int n = in.read(buf, 0, (int) Math.min(buf.length, left));
+                if (n <= 0) break;
+                out.write(buf, 0, n);
+                left -= n;
+            }
+        }
+        CloudVoice.Pcm p = new CloudVoice.Pcm(f, 0, f.length() & ~1L, src.rate);
+        int n = local.length - 1;
+        synchronized (this) {
+            if (all.isEmpty()) version = VERSION;
+            int part = parts.size();
+            parts.add(p);
+            for (int k = 0; k < n; k++)
+                all.add(new Seg(from + k, hash(ch.chunks.get(from + k)), part, local[k], Math.min(local[k + 1], p.samples()), k < n - 1));
+            all.sort((x, y) -> Integer.compare(x.idx, y.idx));
+            boundTo = null; bind(ch);
+            save();
+        }
+    }
+
+    /** How long sentence i's recording is (seconds), 0 if it has none. */
+    synchronized double secondsOf(int i) { Seg s = bound.get(i); return s == null ? 0 : (s.end - s.start) / (double) parts.get(s.part).rate; }
+
+    /** The first sentence from i on that isn't recorded yet (or n). */
+    synchronized int nextMissing(int i, int n) { for (int k = i; k < n; k++) if (!bound.containsKey(k)) return k; return n; }
+
     /** Where sentence i starts in its recording (samples), or -1. */
     synchronized long startOf(int i) { Seg s = bound.get(i); return s == null ? -1 : s.start; }
 
@@ -114,7 +154,19 @@ final class GeminiBook {
     }
 
     /** A recording just made, for sentence timing. timed: its sentences were already timed by the words heard. */
-    static final class Made { int part; int from; int count; boolean timed; boolean streamed; }
+    static final class Made {
+        int part; int from; int count; boolean timed; boolean streamed;
+        int asked;            // sentences asked for (all chapters)
+        int chars;            // letters of the ones recorded
+        int extra;            // of them, in the chapters after the first
+        double seconds;       // how long the recording is
+    }
+
+    /** Part of a request: sentences [from, to) of a chapter, filed in that chapter's book. */
+    static final class Span {
+        final Chapter ch; final GeminiBook book; final int from, to;
+        Span(Chapter ch, GeminiBook book, int from, int to) { this.ch = ch; this.book = book; this.from = from; this.to = to; }
+    }
 
     /**
      * Asks Google for sentences [from, to) in one request, and files what comes back. paceOut[0]:
@@ -130,16 +182,33 @@ final class GeminiBook {
     }
 
     Made fetch(Chapter ch, int from, int to, String key, String model, String voice, String style, double pace, double[] paceOut, AsrAligner asr) throws IOException {
+        return fetch(ch, from, to, key, model, voice, style, pace, paceOut, asr, new ArrayList<>());
+    }
+
+    /**
+     * more: the next chapters' sentences, packed into the same request when this chapter's part
+     * is shorter than a request can hold (nothing of a request goes unused). Their recording is
+     * filed in their own books once it's complete.
+     */
+    Made fetch(Chapter ch, int from, int to, String key, String model, String voice, String style, double pace, double[] paceOut, AsrAligner asr,
+               List<Span> more) throws IOException {
         StringBuilder text = new StringBuilder();
-        int[] chars = new int[to - from];
         List<String> texts = new ArrayList<>();
-        for (int k = from; k < to; k++) {
-            Chapter.Chunk c = ch.chunks.get(k);
-            if (k > from) text.append(c.block != ch.chunks.get(k - 1).block ? "\n\n" : " ");
-            text.append(c.say);
-            chars[k - from] = c.say.length();
-            texts.add(c.say);
+        List<Span> spans = new ArrayList<>();
+        spans.add(new Span(ch, this, from, to));
+        spans.addAll(more);
+        for (Span sp : spans) {
+            if (text.length() > 0) text.append("\n\n");
+            for (int k = sp.from; k < sp.to; k++) {
+                Chapter.Chunk c = sp.ch.chunks.get(k);
+                if (k > sp.from) text.append(c.block != sp.ch.chunks.get(k - 1).block ? "\n\n" : " ");
+                text.append(c.say);
+                texts.add(c.say);
+            }
         }
+        int[] chars = new int[texts.size()];
+        for (int k = 0; k < chars.length; k++) chars[k] = texts.get(k).length();
+        int n0 = to - from;                                       // (this chapter's part)
         dir.mkdirs();
         int partNo;
         File f;
@@ -148,7 +217,7 @@ final class GeminiBook {
             f = new File(dir, "part" + partNo + "-" + System.currentTimeMillis() + ".pcm");
             parts.add(new CloudVoice.Pcm(f, 0, 0, 24000));             // (its place, while it arrives)
         }
-        Follow fo = asr != null && asr.loaded() ? new Follow(ch, from, texts, partNo, f, asr) : null;
+        Follow fo = asr != null && asr.loaded() ? new Follow(ch, from, texts, n0, partNo, f, asr) : null;
         if (fo != null) fo.start();
         CloudVoice.Pcm pcm;
         try {
@@ -197,19 +266,36 @@ final class GeminiBook {
             starts[k] = Math.min(total, v);
         }
         Made m = new Made();
+        int count0 = Math.min(count, n0);
+        m.asked = texts.size(); m.seconds = total / (double) pcm.rate;
+        for (int k = 0; k < count; k++) m.chars += chars[k];
+        m.extra = count - count0;
         synchronized (this) {
-            m.part = partNo; m.from = from; m.count = count; m.timed = fo != null; m.streamed = CloudVoice.lastWay == 0 || CloudVoice.lastWay == 3;
+            m.part = partNo; m.from = from; m.count = count0; m.timed = fo != null; m.streamed = CloudVoice.lastWay == 0 || CloudVoice.lastWay == 3;
             boolean onlyThis = true;
             for (Seg sg : all) if (sg.part != partNo) onlyThis = false;
             if (onlyThis) version = VERSION;                                   // (a new recording is timed the new way)
             parts.set(partNo, pcm);
-            for (int k = filed; k < count; k++)
-                all.add(new Seg(from + k, hash(ch.chunks.get(from + k)), partNo, starts[k], starts[k + 1], k < count - 1));
+            for (int k = filed; k < count0; k++)
+                all.add(new Seg(from + k, hash(ch.chunks.get(from + k)), partNo, starts[k], starts[k + 1], k < count0 - 1));
             // (the ones filed while it arrived: all but the last are followed by the next in the same recording)
-            for (Seg sg : all) if (sg.part == partNo) sg.joined = sg.idx < from + count - 1;
+            for (Seg sg : all) if (sg.part == partNo) sg.joined = sg.idx < from + count0 - 1;
             all.sort((a, b) -> Integer.compare(a.idx, b.idx));
             boundTo = null; bind(ch);
             save();
+        }
+        // the next chapters' part of the recording goes to their own books
+        int g = n0;
+        for (int si = 1; si < spans.size(); si++) {
+            Span sp = spans.get(si);
+            int g0 = g, g1 = g + (sp.to - sp.from);
+            g = g1;
+            if (count <= g0) break;
+            int c1 = Math.min(count, g1);
+            long[] local = new long[c1 - g0 + 1];
+            for (int k = g0; k <= c1; k++) local[k - g0] = starts[k] - starts[g0];
+            try { sp.book.addFrom(pcm, starts[g0], starts[c1], sp.ch, sp.from, local); }
+            catch (IOException e) { System.err.println("Loudbook: next chapter's recording: " + e); }
         }
         return m;
     }
@@ -219,7 +305,7 @@ final class GeminiBook {
      * starting. Runs on its own thread; the download goes on undisturbed.
      */
     private final class Follow implements Runnable {
-        final Chapter ch; final int from; final List<String> texts; final int part; final File f;
+        final Chapter ch; final int from; final List<String> texts; final int limit, part; final File f;
         final AsrAligner.Live live;
         final int rate = 24000, frame = rate * Align.FRAME_MS / 1000;
         volatile long bytes;
@@ -234,8 +320,8 @@ final class GeminiBook {
         long lastEnd;
         List<AsrAligner.Word> words = new ArrayList<>();
 
-        Follow(Chapter ch, int from, List<String> texts, int part, File f, AsrAligner asr) {
-            this.ch = ch; this.from = from; this.texts = texts; this.part = part; this.f = f;
+        Follow(Chapter ch, int from, List<String> texts, int limit, int part, File f, AsrAligner asr) {
+            this.ch = ch; this.from = from; this.texts = texts; this.limit = limit; this.part = part; this.f = f;
             live = asr.new Live(rate);
         }
         void start() { thread = new Thread(this, "lb-gemini-follow"); thread.start(); }
@@ -285,13 +371,13 @@ final class GeminiBook {
             double[] st = AsrAligner.sentenceStarts(words, texts);
             int last = -1;
             for (int k = 0; k < st.length; k++) if (!Double.isNaN(st[k])) last = k;
-            if (last < 1 || last <= filed) return;
+            if (last < 1 || last <= filed || filed >= limit) return;
             long[] cut = AsrAligner.cuts(java.util.Arrays.copyOf(st, last + 1), texts.subList(0, last + 1), Align.pausesOf(rms()), rate, new long[last + 1]);
             if (filed == 0 && cut[0] < 0) cut[0] = 0;                      // (the first words weren't made out: it starts at the start)
             if (filed > 0) cut[filed] = lastEnd;
             List<Seg> add = new ArrayList<>();
             int k = filed;
-            while (k < last && cut[k] >= 0 && cut[k + 1] > cut[k] + rate / 5) {
+            while (k < last && k < limit && cut[k] >= 0 && cut[k + 1] > cut[k] + rate / 5) {
                 add.add(new Seg(from + k, hash(ch.chunks.get(from + k)), part, cut[k], cut[k + 1], true));
                 starts.add(cut[k]);
                 lastEnd = cut[k + 1];

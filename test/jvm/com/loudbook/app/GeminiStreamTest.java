@@ -154,6 +154,53 @@ public class GeminiStreamTest {
             Voice.Clip c = b.clip(text.length - 1);
             check(run[0] + ": the last clip has the end of the recording", c.samples.length > rate / 2);
         }
+        // packed: the end of one chapter and the start of the next in one request
+        {
+            mode = "streamed";
+            CloudVoice.lastWay = -1;
+            int split = 12;
+            List<Chapter.Chunk> a1 = new ArrayList<>(), a2 = new ArrayList<>();
+            for (int i = 0; i < text.length; i++) (i < split ? a1 : a2).add(new Chapter.Chunk(i / 4, text[i], text[i]));
+            Chapter c1 = new Chapter("https://example.com/p1", "test", "One", "Story", a1);
+            Chapter c2 = new Chapter("https://example.com/p2", "test", "Two", "Story", a2);
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            java.util.Random rnd = new java.util.Random(5);
+            long n = 0;
+            double[] truth = new double[text.length];
+            for (int i = 0; i < text.length; i++) {
+                float[] x = Voice.trim(tts.generate(text[i], 3, 1.0f).getSamples(), rate);
+                truth[i] = n / (double) rate;
+                for (float f : x) { short sh = (short) (f * 32767); out.write(sh & 0xff); out.write((sh >> 8) & 0xff); n++; }
+                int gap = (int) (rate * (i == split - 1 ? 1.2 : 0.25 + rnd.nextDouble() * 0.45));
+                for (int g = 0; g < gap; g++) { out.write(0); out.write(0); n++; }
+            }
+            pcm = out.toByteArray();
+            java.io.File d1 = new java.io.File(files, "book-p1"), d2 = new java.io.File(files, "book-p2");
+            deleteAll(d1); deleteAll(d2);
+            GeminiBook b1 = GeminiBook.open(files, "book-p1"), b2 = GeminiBook.open(files, "book-p2");
+            b1.bind(c1); b2.bind(c2);
+            List<GeminiBook.Span> more = new ArrayList<>();
+            more.add(new GeminiBook.Span(c2, b2, 0, c2.size()));
+            GeminiBook.Made m = b1.fetch(c1, 0, c1.size(), "test-key", "gemini-3.8-flash-tts", "Sulafat", style, 0, new double[1], asr, more);
+            String req;
+            synchronized (bodies) { req = bodies.get(bodies.size() - 1); }
+            System.out.printf("== packed: %d + %d sentences in one request%n", m.count, m.extra);
+            check("packed: one request holds the end of this chapter and the next one's start", req.contains(text[split - 1]) && req.contains(text[split]));
+            check("packed: all of this chapter filed here", m.count == split && b1.has(split - 1));
+            check("packed: the next chapter's sentences are filed in its own book", m.extra == text.length - split && b2.has(0) && b2.has(c2.size() - 1));
+            double worst = 0;
+            for (int i = 0; i < split; i++) worst = Math.max(worst, Math.abs(b1.startOf(i) / (double) rate - truth[i]));
+            double base = b2.startOf(0) / (double) rate;
+            for (int i = split; i < text.length; i++) worst = Math.max(worst, Math.abs((b2.startOf(i - split) / (double) rate - base) - (truth[i] - truth[split])));
+            System.out.printf("   worst start error %.2f s%n", worst);
+            check("packed: every sentence in both chapters starts where it should", worst < 0.5);
+            Voice.Clip last = b1.clip(split - 1), firstNext = b2.clip(0);
+            check("packed: this chapter's last clip stops before the next chapter begins", last.samples.length / (double) rate < (truth[split] - truth[split - 1]) + 0.2);
+            check("packed: the next chapter's first clip is its first sentence", Math.abs(firstNext.samples.length / (double) rate - (truth[split + 1] - truth[split])) < 0.6);
+            // and it's kept: opened again later, the next chapter's book still has its recording
+            GeminiBook again = GeminiBook.open(files, "book-p2");
+            check("packed: the next chapter's recording is kept", again.recorded() == c2.size());
+        }
         server.stop(0);
         System.out.println(bad == 0 ? "ALL OK" : bad + " FAILED");
         System.exit(bad == 0 ? 0 : 1);
