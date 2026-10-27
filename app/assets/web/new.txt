@@ -1,3 +1,5 @@
+Reads text-speak in messages as words: "r u", "c u l8r", "gr8", "b4", "2nite", "4ever", "m8" and "u r".
+Fixed: numbers written with spaces ("1 000 000 gold", "25 000 coins") lost their zeros and were read as "one gold". Also says "D-Day" and "H-hour" (they were read as "Day" and "Hour"), "Ch 45 pt 2" as part two, "T+5 seconds" as T plus five, and a lone "TBC" as to be continued.
 Says ".5%" as point five percent, "ZIP 90210" digit by digit, "Supt." as Superintendent and "Eq. 2" as Equation two; "The Ave. was busy" is Avenue again (only "Ave. speed" and the like are average).
 Says "The year was 1066" as ten sixty-six, "120 wpm" as words per minute, star ratings like "Rating: ★★★★☆" as four out of five stars (they were skipped; a row of stars between scenes stays silent), and stammers like "Wh-what?" and "Th-thanks" as plain words.
 Royal Road: the hidden "support the author by reading it on Royal Road" lines (another kind it hides on every chapter) are skipped too, not read out.

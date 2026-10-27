@@ -492,7 +492,8 @@ const CHAT = { btw: 'by the way', jk: 'just kidding', nvm: 'never mind', ofc: 'o
   gtg: 'got to go', ty: 'thank you', rn: 'right now', u: 'you', ez: 'easy', 'gl hf': 'good luck, have fun',
   omw: 'on my way', idc: "I don't care", tbf: 'to be fair', hbu: 'how about you', wbu: 'what about you', g2g: 'got to go', ily: 'I love you',
   tmi: 'T-M-I', bff: 'B-F-F', ppl: 'people', smth: 'something', sth: 'something', rly: 'really', prolly: 'probably', obv: 'obviously',
-  yw: "you're welcome", lmfao: 'L-M-F-A-O', 'gg wp': 'G-G, well played' };
+  yw: "you're welcome", lmfao: 'L-M-F-A-O', 'gg wp': 'G-G, well played',
+  l8r: 'later', gr8: 'great', b4: 'before', '2nite': 'tonight', '4ever': 'forever', m8: 'mate', w8: 'wait', 'r u': 'are you', 'c u': 'see you', 'u r': 'you are', 'c ya': 'see ya' };
 const ord = (n) => (n % 100 >= 11 && n % 100 <= 13) ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th';
 
 // LitRPG stat names, said in full when they're clearly stats ("STR: 12", "AGI +3")
@@ -556,7 +557,7 @@ function tidy(t) {
     const n = st.indexOf('☆') < 0 ? st.length : st.indexOf('☆');
     return n === st.length ? (lead ? lead + n + ' stars' : m) : lead || st.length === 5 || st.length === 10 ? lead + n + ' out of ' + st.length + ' stars' : m; })
   // scene breaks and decorations ("***", "~~~", "=== Chapter 5 ===", "---o0o---", "◇◇◇"): silent
-  t = t.replace(/([~=*#_<>+\-—–])\1{2,}/g, ' ').replace(/(^|\s)(?!XXX\b)[oO0xX]{3}(?=\s|$)/g, '$1 ').replace(/^\s*XXX\s*$/, '').replace(/[◇◆◈❖•·♦♢❦☆★✦✧♪♫]+/gu, ' ')
+  t = t.replace(/([~=*#_<>+\-—–])\1{2,}/g, ' ').replace(/(?<!\d)(^|\s)(?!XXX\b)[oO0xX]{3}(?=\s|$)/g, '$1 ').replace(/^\s*XXX\s*$/, '').replace(/[◇◆◈❖•·♦♢❦☆★✦✧♪♫]+/gu, ' ')
     .replace(/(\p{L})\s+<3\s+(?=\p{L})/gu, '$1 heart ').replace(/<3\b/g, '')
     // emoji and ♥ ™ ® (the voice reads out their names: "red heart", "trade mark"); © is kept
     .replace(/(?![©‼⁉])[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{1F3FB}-\u{1F3FF}]+/gu, ' ')
@@ -595,8 +596,12 @@ function tidy(t) {
     .replace(/(\d)\s\*\s(?=\d)/g, '$1 times ').replace(/([\w)])\s+=\s+(?=[\w(+\-−$])/g, '$1 equals ')
     // *sigh*, **bold**: the voice would say "asterisk"
     .replace(/\*+([^*\n]{1,80}?)\*+/g, '$1').replace(/(^|\s)\*+(?=\s|$)/g, '$1')
+    // thousands written with spaces: "1 000 000 gold", "25 000 coins", "12 500" (each "000" was dropped as a scene break)
+    .replace(/(?<![\d.,])\b(\d{1,3})((?:[ \u00a0\u202f]\d{3}){1,4})\b(?![.,]?\d|[ \u00a0\u202f]\d)/g, (m, a, rest) => {
+      const g = rest.trim().split(/[ \u00a0\u202f]/);
+      return g.length > 1 || /00$/.test(g[0]) ? a + g.join('') : m; })
     // stammers: "N-no" -> "no", "S-stop" -> "stop" (otherwise "en no", "ess stop")
-    .replace(/\b(\p{L})(?:-\1)*-(\1)/giu, (m, a, b) => (a === a.toUpperCase() ? b.toUpperCase() : b))   // also "W-w-wait"
+    .replace(/\b(\p{L})(?:-\1)*-(\1)(?!(?<=\b[Dd]-[Dd])ay\b|(?<=\b[Hh]-[Hh])our\b|(?<=\b[Bb]-[Bb])(?:oys?|irls?|all)\b|(?<=\b[CcDd]-[CcDd])ups?\b)/giu, (m, a, b) => (a === a.toUpperCase() ? b.toUpperCase() : b))   // also "W-w-wait"
     .replace(/\b([b-df-hj-np-tv-z]{2})(?:-\1)*-(\1)/gi, (m, a, b) => (a[0] === a[0].toUpperCase() ? b[0].toUpperCase() + b[1] : b))   // "Wh-what", "Th-thanks"
     // arrows in stat changes: "15 → 17"
     .replace(/\s*(?:→|->|⟶|=>)\s*/g, ' to ')
@@ -833,6 +838,7 @@ function tidy(t) {
     .replace(/\bNos\.\s*(?=\d)/g, 'Numbers ').replace(/\b([Ee])st\.(?=\s+(?:time|cost|value|damage|arrival|duration|completion|total|population|reward|price)\b)/g, '$1stimated')   // Nos. 3 and 4, "Est. time: 5 min"
     .replace(/(^|[.!?:]\s+|\b(?:[Tt]he|[Aa]n?|[Hh]is|[Hh]er|[Mm]y|[Yy]our|[Tt]heir|[Oo]ur|[Ii]ts)\s+)(?:(Ave|ave)\.(?!\s+(?:was|is|were|are|has|had|will|would|could|can|and|or|to|in|on|at|of|with|near|where|which|that|by|for|from)\b)|(Avg|avg)\.?)(?=\s+\p{Ll})/gu, (m, p, a, b) => p + ((a || b)[0] === 'A' ? 'Average' : 'average'))   // "Ave. speed was 30" (was "Avenue speed"), "the avg damage"
     .replace(/\bT-(\d+)(?=\s+(?:seconds?|secs?|minutes?|mins?|hours?|days?)\b)/g, 'T-minus $1')   // T-10 minutes (was "T-ten")
+    .replace(/\bT\+\s?(\d+)(?=\s+(?:seconds?|secs?|minutes?|mins?|hours?|days?)\b)/g, 'T plus $1')   // T+5 seconds
     .replace(/(^|[\s(\[])(<=|>=|<|>)(?=[+]?\d)(?!<3(?!\d))/g, (m, a, op) => a + { '<': 'less than ', '>': 'more than ', '<=': 'at most ', '>=': 'at least ' }[op])   // ">100 degrees" (the voice skipped the sign)
     .replace(/\b([Aa])pprox\.(?=\s)|\b([Aa])pprox\b(?=\s+[~\d])/g, (m, a, b) => (a || b) + 'pproximately')
     .replace(/(^|\s)w\/o(?=[\s,.!?]|$)/g, '$1without').replace(/(^|\s)([Ww])\/(?=\s)/g, (m, sp, w) => sp + (w === 'W' ? 'With' : 'with')).replace(/\bb\/c\b/g, 'because')
@@ -864,7 +870,7 @@ function tidy(t) {
     .replace(/\b(?:tbh|TBH)\b/g, 'to be honest').replace(/\b(?:imo|IMHO|imho)\b/g, (m) => (m.length > 3 ? 'in my humble opinion' : 'in my opinion'))
     .replace(/(^|[\s"“'‘(])gg(?=[\s"”'’.,!?)]|$)/g, '$1G-G')   // good game, said as letters
     // chat shorthand in messages and system logs (the voice read them as one word: "nvm", "thx")
-    .replace(/(^|[\s"“'‘(])(btw|BTW|jk|JK|nvm|NVM|ofc|OFC|thx|THX|pls|PLS|plz|PLZ|ikr|IKR|ngl|NGL|smh|SMH|ttyl|TTYL|lmk|LMK|cya|wyd|WYD|gtg|GTG|ty|rn|u|ez|gl hf|GL HF|gg wp|GG WP|omw|OMW|idc|IDC|tbf|TBF|hbu|wbu|g2g|ily|tmi|bff|ppl|smth|sth|rly|prolly|obv|yw|lmfao|LMFAO)(?=[\s"”'’.,!?)]|$)/g,
+    .replace(/(^|[\s"“'‘(])(r u|c u|u r|c ya|btw|BTW|jk|JK|nvm|NVM|ofc|OFC|thx|THX|pls|PLS|plz|PLZ|ikr|IKR|ngl|NGL|smh|SMH|ttyl|TTYL|lmk|LMK|cya|wyd|WYD|gtg|GTG|ty|rn|u|ez|gl hf|GL HF|gg wp|GG WP|omw|OMW|idc|IDC|tbf|TBF|hbu|wbu|g2g|ily|tmi|bff|ppl|smth|sth|rly|prolly|obv|yw|lmfao|LMFAO|l8r|gr8|b4|2nite|4ever|m8|w8)(?=[\s"”'’.,!?)]|$)/g,
       (m, pre, w, at, all) => (w === 'u' && /\b(?:letters?|[a-z])\s$/i.test(all.slice(Math.max(0, at - 9), at + pre.length)) ? m : pre + CHAT[w.toLowerCase()]))   // not "the letter u"
     .replace(/\b(\d+)\s?doz\.?(?=\s|$)/g, (m, n) => n + ' dozen')
     // day lists: "Mon, Tue and Wed", "Sat or Sun", "Mon/Wed/Fri" -> full names (a lone "Sun" stays as written)
@@ -905,6 +911,7 @@ function tidy(t) {
     .replace(/\b(\d+(?:st|nd|rd|th))\s+St\.(?!\w)/g, '$1 Street')                          // 42nd St.
     .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/(?<!\b(?:\d+\w*|[A-Z][a-z]+)\s)\bSt\s+(?=[A-Z][a-z])/g, 'Saint ').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, w, mid) => w + ' Street' + (mid !== undefined ? '' : '.'))   // "on Patrick St." keeps its full stop
     .replace(/\b(\p{Lu}\p{Ll}+\s+)(Rd|Ln)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, w, a, mid) => w + (a === 'Rd' ? 'Road' : 'Lane') + (mid !== undefined ? '' : '.'))   // Elm Rd., Oak Ln.
+    .replace(/\b([Pp])t\.?\s?(?=\d+\b(?![.,]\d))/g, '$1art ').replace(/^(\s*)(?:TBC|tbc)\.?(?=\s*$)/, '$1To be continued.')   // "Ch 45 pt 2", a lone "TBC"
     .replace(/\bHwy\.?\s*(?=\d)/g, 'Highway ').replace(/\bGr\.\s*(?=\d)/g, 'Grade ')
     .replace(/\b(Ave|Blvd)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, a, mid) => (a === 'Ave' ? 'Avenue' : 'Boulevard') + (mid !== undefined ? '' : '.'))          // 5th Ave.
     .replace(/\b(Mr|Mrs|Ms|Dr)\.(?=\s*(?:&|and)\s)/g, (m, t) => TITLES[t])                 // Mr. & Mrs. Smith
