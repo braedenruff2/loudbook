@@ -77,6 +77,8 @@ adb shell input tap $TX $TY
 sleep 10
 adb shell screencap -p /sdcard/explore-pick.png; adb pull /sdcard/explore-pick.png .
 adb logcat -d | sed -n '/=== choose where to start, explore-only/,$p' | grep -o "kindle: start at letter.*\|no book text found" | tail -1 | sed 's/^/explore-only, hold and tap: /' > pick.txt
+adb shell input tap $X $Y                              # pause (so the next section's tap starts reading, not pauses it)
+sleep 2
 adb shell am force-stop com.amazon.kindle
 adb shell input keyevent KEYCODE_HOME
 # leaving Kindle while it reads (screen-reader touch on): everything must shut off by itself,
@@ -91,6 +93,9 @@ adb shell input keyevent KEYCODE_HOME
 sleep 5
 adb shell settings get secure touch_exploration_enabled | sed 's/^/touch exploration after leaving Kindle: /' >> leave.txt
 adb shell dumpsys window windows | grep -c "Window{.*com.loudbook.app" | sed 's/^/Loudbook windows on screen after leaving Kindle: /' >> leave.txt
+adb logcat -d | sed -n '/=== leave Kindle while reading/,$p' > leave-log.txt
+grep -c "kindle speaking" leave-log.txt | sed 's/^/sentences read before leaving: /' >> leave.txt
+grep -q "left Kindle, reading paused" leave-log.txt && echo "reading after leaving Kindle: paused" >> leave.txt || echo "reading after leaving Kindle: NOT paused" >> leave.txt
 adb shell screencap -p /sdcard/left.png; adb pull /sdcard/left.png .
 adb shell am force-stop com.amazon.kindle
 adb logcat -d > logcat.txt
