@@ -1,3 +1,4 @@
+Kindle: leaving Kindle now shuts everything off by itself: the highlight goes, the screen goes back to normal taps (no more double-tap lock), and reading pauses. Paused for a minute in Kindle, the screen goes back to normal too.
 Says "E=mc²", "x^2" and "10^6" (squared, to the power of), "50 m²" as fifty square meters, "CO2" as C O two, and "5 sp, 3 cp, 1 pp" next to gold as silver, copper and platinum.
 Pauses after bracketed system labels that start a line ("[Skill Acquired] Fireball", "<<System Alert>> Quest complete!"); says "a 10/10" and "10/10 would recommend" as "out of", "Day 3/10" as "day three of ten", "1/5 of" as "one fifth", "3/10 of" as "three tenths" (was "three 10ths"), "Alt+F4" / "Ctrl+C" as keys, and "@ noon" as "at".
 Says "a 180" and "a full 360" as one-eighty and three-sixty, "Xbox 360", "Boeing 747" as seven forty-seven, "9/11", "20/20 vision", "a 1-2 punch" and "a Colt .45" the way people say them.

@@ -198,26 +198,41 @@ public class KindleService extends AccessibilityService {
     @Override public void onInterrupt() { }
 
     // ---------------------------------------------------------------- the floating button
-    /** Shows the button while Kindle is on screen (or while reading it), every second. */
+    /**
+     * Keeps everything in step with what's on screen, twice a second while anything of Loudbook's
+     * is up. Loudbook only hears from Kindle (res/xml/kindle_service.xml), so leaving Kindle has to
+     * be noticed by looking: then everything shuts off at once (the highlight, "tap where to
+     * start", and screen-reader touch, which would otherwise leave every other app needing double
+     * taps), and reading pauses, so the phone is never left stuck.
+     */
     private void watch() {
         if (me != this) return;
         boolean kindle = kindleRoot() != null;
         kindleOnScreen = kindle;
         boolean reading = svc != null && svc.readingKindle();
-        if (reading && kindle) main.post(paint); else hideHighlight();
         boolean speaking = reading && svc.isPlaying() && !svc.isPaused();
-        // only while Loudbook is open (in recent apps) or reading: swipe Loudbook away and the
-        // button stays out of Kindle
-        if ((kindle && loudbookOpen()) || speaking) showBubble(); else hideBubble();
+        long now = System.currentTimeMillis();
+        if (kindle) awayAt = 0; else if (awayAt == 0) awayAt = now;
+        if (!kindle) {
+            // not on Kindle: nothing of Loudbook's stays on the screen
+            hideHighlight(); hidePicker();
+            if (exploreOn) { Log.i("LoudbookTest", "kindle: left Kindle, screen-reader touch off"); setExplore(false); }
+            // (a moment's grace: Kindle's own screens can come and go while it opens a book)
+            if (speaking && now - awayAt > 2500 && !busy) { Log.i("LoudbookTest", "kindle: left Kindle, reading paused"); svc.pause(); speaking = false; }
+        } else if (reading) main.post(paint); else hideHighlight();
+        if (kindle && loudbookOpen() || speaking) showBubble(); else hideBubble();
         // explore-by-touch only while reading Kindle (so the phone works normally the rest of the time)
         // (reading takes a moment to start: leave things as they are meanwhile)
-        boolean settling = busy || System.currentTimeMillis() - startedAt < 6000;
+        boolean settling = busy || now - startedAt < 6000;
         if (!reading && !settling) needExplore = false;
-        // (kept on while paused too, as long as Kindle is on screen: Kindle closes the book each time it switches)
-        boolean explore = needExplore && reading && kindle;
-        if (explore != exploreOn && !settling) setExplore(explore);
+        // (kept on while paused, for a while, as long as Kindle is on screen: Kindle closes the book
+        // each time it switches; paused for long, it goes off so Kindle's own buttons work normally)
+        if (speaking || !reading) { pausedAt = 0; restWhilePaused = false; } else if (pausedAt == 0) pausedAt = now;
+        if (pausedAt > 0 && (now - pausedAt > 45_000 || !kindle)) restWhilePaused = true;     // (back on when reading goes on: see tapped)
+        boolean explore = needExplore && reading && kindle && !restWhilePaused;
+        if (explore != exploreOn && (!settling || !kindle)) setExplore(explore);
         if (bubble != null) {
-            boolean on = reading && svc.isPlaying() && !svc.isPaused();
+            boolean on = speaking;
             bubble.setText(on ? "❚❚" : "▶");
             // while reading: keep the screen on (Kindle only turns pages on a live screen), dimmed
             boolean dim = on && Voice.prefs(this).getBoolean("kindleDim", true);
@@ -228,10 +243,12 @@ public class KindleService extends AccessibilityService {
                 try { wm.updateViewLayout(bubble, bubbleLp); } catch (Exception ignored) { }
             }
         }
-        // keep checking only while the button is up (Kindle's own events say when it comes back)
+        // keep checking while anything is up or going on (Kindle's own events say when it comes back)
         main.removeCallbacks(tick);
-        if (bubble != null) main.postDelayed(tick, 1000);
+        if (bubble != null || hl != null || picker != null || exploreOn || reading || busy) main.postDelayed(tick, 500);
     }
+    private long awayAt, pausedAt;
+    private boolean restWhilePaused;
 
     /** Loudbook's screen is open, or in recent apps (not swiped away, and opened since the phone started). */
     private boolean loudbookOpen() {
@@ -320,6 +337,7 @@ public class KindleService extends AccessibilityService {
     private int lastLit = -1;
     private List<int[]> spans;
     private final Runnable paint = this::paintHighlight;
+    private int paints;
 
     /** Marks the sentence being read on Kindle's page, and the word in it, as the reading goes. */
     private void paintHighlight() {
@@ -327,6 +345,7 @@ public class KindleService extends AccessibilityService {
         if (me != this) return;
         boolean reading = svc != null && svc.readingKindle() && svc.isPlaying();
         if (!reading || !kindleOnScreen) { hideHighlight(); return; }
+        if (++paints % 5 == 0 && kindleRoot() == null) { kindleOnScreen = false; hideHighlight(); watch(); return; }
         KindleLayout lay = shown;
         float[] now = svc.kindleNow();
         Chapter ch = svc.chapter();
@@ -458,7 +477,8 @@ public class KindleService extends AccessibilityService {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT);
         try { wm.addView(f, lp); picker = f; Log.i("LoudbookTest", "kindle: choose where to start"); } catch (Exception e) { Log.w(TAG, "picker", e); }
-        main.postDelayed(this::hidePicker, 20_000);                  // (tapped nothing: put it away)
+        main.postDelayed(this::hidePicker, 15_000);                  // (tapped nothing: put it away)
+        main.removeCallbacks(tick); main.postDelayed(tick, 500);       // (and keep an eye on whether Kindle is still there)
     }
     private void hidePicker() { if (picker != null) { try { wm.removeView(picker); } catch (Exception ignored) { } picker = null; } }
 
@@ -524,6 +544,7 @@ public class KindleService extends AccessibilityService {
         }
         if (svc.readingKindle() && !svc.kindleDone()) {
             if (svc.isPlaying() && !svc.isPaused()) { svc.pause(); watch(); return; }
+            restWhilePaused = false; pausedAt = 0;
             if (needExplore && !exploreOn) setExplore(true);
             if (busy) return;
             busy = true;
@@ -614,10 +635,11 @@ public class KindleService extends AccessibilityService {
     /** Starts reading the page from a letter (0: the top). */
     private void begin(Page p, boolean[] explored, int letter) {
         needExplore = explored[0];
+        restWhilePaused = false; pausedAt = 0;
         startedAt = System.currentTimeMillis();
         if (explored[1] && !Voice.prefs(this).getBoolean("exploreToldOnce", false)) {
             Voice.prefs(this).edit().putBoolean("exploreToldOnce", true).apply();
-            toast("Kindle shares this book's text only with screen readers, so while Loudbook reads Kindle (also when paused) the screen works like one: double-tap to press things, two fingers to turn pages. Leave Kindle to get your screen back.");
+            toast("Kindle shares this book's text only with screen readers, so while Loudbook reads Kindle the screen works like one: double-tap to press things, two fingers to turn pages. Leave Kindle (or stay paused for a minute) and the screen goes back to normal.");
         }
         accept(p);
         svc.startKindle(p, letter);
@@ -642,6 +664,7 @@ public class KindleService extends AccessibilityService {
             setServiceInfo(i);
             exploreOn = on;
             Log.i("LoudbookTest", "explore by touch " + (on ? "on" : "off"));
+            if (on) { main.removeCallbacks(tick); main.postDelayed(tick, 500); }   // (watched from now on, so it never outlasts Kindle)
             // Kindle closes the book when a screen reader comes or goes: open it again
             if (bookOpen) new Thread(KindleService.this::reopenBook, "lb-kindle-reopen").start();
         } catch (Exception e) { Log.w(TAG, "explore by touch", e); }
