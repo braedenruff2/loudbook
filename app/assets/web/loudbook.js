@@ -476,7 +476,7 @@ function romans(t) {
   // a single I/V/X after a monarch's name with the title: "King Henry V", "Queen Elizabeth I", "Emperor Charles V"
   t = t.replace(/\b(King|Queen|Pope|Emperor|Empress|Tsar|Czar|Tsarina|Pharaoh|Kaiser|Sultan|Shah|Prince|Princess|Duke|Duchess)(\s+[A-Z][a-z]+)\s+([IVX])\b(?![''’\w])(?!\s+(?:am|think|guess|mean|know|suppose|said|say)\b)/g,
     (m, title, name, r) => title + name + ' the ' + romanValue(r) + ord(romanValue(r)));
-  return t.replace(/\b([A-Z][\w.]*)(\s+)([IVXLCDM]+)\b(?![''’]\w)/g, (m, before, sp, r, at, all) => {
+  return t.replace(/\b([A-Z][\w.]*)(\s+)([IVXLCDM]+)\b(?![''’](?![sS]\b)\w)/g, (m, before, sp, r, at, all) => {
     if (!ROMAN.test(r)) return m;
     if (/^[LCDM]$/.test(r)) return m;   // "Rank C", "Grade D", "Class M" are letters (was "Rank one hundred")
     if (COUNTED.test(before)) return before + sp + romanValue(r);
@@ -493,7 +493,7 @@ const CHAT = { btw: 'by the way', jk: 'just kidding', nvm: 'never mind', ofc: 'o
   omw: 'on my way', idc: "I don't care", tbf: 'to be fair', hbu: 'how about you', wbu: 'what about you', g2g: 'got to go', ily: 'I love you',
   tmi: 'T-M-I', bff: 'B-F-F', ppl: 'people', smth: 'something', sth: 'something', rly: 'really', prolly: 'probably', obv: 'obviously',
   yw: "you're welcome", lmfao: 'L-M-F-A-O', 'gg wp': 'G-G, well played',
-  l8r: 'later', gr8: 'great', b4: 'before', '2nite': 'tonight', '4ever': 'forever', m8: 'mate', w8: 'wait', 'r u': 'are you', 'c u': 'see you', 'u r': 'you are', 'c ya': 'see ya' };
+  l8r: 'later', srsly: 'seriously', gr8: 'great', b4: 'before', '2nite': 'tonight', '4ever': 'forever', m8: 'mate', w8: 'wait', 'r u': 'are you', 'c u': 'see you', 'u r': 'you are', 'c ya': 'see ya' };
 const ord = (n) => (n % 100 >= 11 && n % 100 <= 13) ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th';
 
 // LitRPG stat names, said in full when they're clearly stats ("STR: 12", "AGI +3")
@@ -596,6 +596,8 @@ function tidy(t) {
     .replace(/(\d)\s\*\s(?=\d)/g, '$1 times ').replace(/([\w)])\s+=\s+(?=[\w(+\-−$])/g, '$1 equals ')
     // *sigh*, **bold**: the voice would say "asterisk"
     .replace(/\*+([^*\n]{1,80}?)\*+/g, '$1').replace(/(^|\s)\*+(?=\s|$)/g, '$1')
+    // _italic_ (markdown pasted into a post): drop the underscores ("snake_case" and "__init__" stay)
+    .replace(/(^|[\s"“'‘(\[])_(?!_)([^_\n]{1,80}?[^_\s])_(?=[\s"”'’.,;:!?)\]]|$)/g, '$1$2')
     // thousands written with spaces: "1 000 000 gold", "25 000 coins", "12 500" (each "000" was dropped as a scene break)
     .replace(/(?<![\d.,])\b(\d{1,3})((?:[ \u00a0\u202f]\d{3}){1,4})\b(?![.,]?\d|[ \u00a0\u202f]\d)/g, (m, a, rest) => {
       const g = rest.trim().split(/[ \u00a0\u202f]/);
@@ -870,8 +872,10 @@ function tidy(t) {
     .replace(/\b(?:tbh|TBH)\b/g, 'to be honest').replace(/\b(?:imo|IMHO|imho)\b/g, (m) => (m.length > 3 ? 'in my humble opinion' : 'in my opinion'))
     .replace(/(^|[\s"“'‘(])gg(?=[\s"”'’.,!?)]|$)/g, '$1G-G')   // good game, said as letters
     // chat shorthand in messages and system logs (the voice read them as one word: "nvm", "thx")
-    .replace(/(^|[\s"“'‘(])(r u|c u|u r|c ya|btw|BTW|jk|JK|nvm|NVM|ofc|OFC|thx|THX|pls|PLS|plz|PLZ|ikr|IKR|ngl|NGL|smh|SMH|ttyl|TTYL|lmk|LMK|cya|wyd|WYD|gtg|GTG|ty|rn|u|ez|gl hf|GL HF|gg wp|GG WP|omw|OMW|idc|IDC|tbf|TBF|hbu|wbu|g2g|ily|tmi|bff|ppl|smth|sth|rly|prolly|obv|yw|lmfao|LMFAO|l8r|gr8|b4|2nite|4ever|m8|w8)(?=[\s"”'’.,!?)]|$)/g,
+    .replace(/(^|[\s"“'‘(])(r u|c u|u r|c ya|btw|BTW|jk|JK|nvm|NVM|ofc|OFC|thx|THX|pls|PLS|plz|PLZ|ikr|IKR|ngl|NGL|smh|SMH|ttyl|TTYL|lmk|LMK|cya|wyd|WYD|gtg|GTG|ty|rn|u|ez|gl hf|GL HF|gg wp|GG WP|omw|OMW|idc|IDC|tbf|TBF|hbu|wbu|g2g|ily|tmi|bff|ppl|smth|sth|rly|prolly|obv|yw|lmfao|LMFAO|srsly|SRSLY|l8r|gr8|b4|2nite|4ever|m8|w8)(?=[\s"”'’.,!?)]|$)/g,
       (m, pre, w, at, all) => (w === 'u' && /\b(?:letters?|[a-z])\s$/i.test(all.slice(Math.max(0, at - 9), at + pre.length)) ? m : pre + CHAT[w.toLowerCase()]))   // not "the letter u"
+    // the same at the start of a message, capitalised ("Thx!", "Ppl are weird."); not Ty, U, Rn, Ez (names and words)
+    .replace(/(^|[\s"“'‘(])(Thx|Pls|Plz|Ppl|Cya|Hbu|Wbu|Idc|Tbf|Omw|Smh|Ttyl|Lmk|Wyd|Nvm|Ofc|Ikr|Rly|Prolly|Smth|Obv|Btw|Ngl|Yw|Gtg|G2g|L8r|Gr8|Srsly)(?=[\s"”'’.,!?)]|$)/g, (m, pre, w) => { const x = CHAT[w.toLowerCase()]; return pre + x[0].toUpperCase() + x.slice(1); })
     .replace(/\b(\d+)\s?doz\.?(?=\s|$)/g, (m, n) => n + ' dozen')
     // day lists: "Mon, Tue and Wed", "Sat or Sun", "Mon/Wed/Fri" -> full names (a lone "Sun" stays as written)
     .replace(/\b(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b\.?(?:,\s*(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b\.?)*,?\s+(?:and|or|&)\s+(?:Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)\b\.?(?![\w'’])/gu,
