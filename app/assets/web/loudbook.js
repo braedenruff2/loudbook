@@ -615,6 +615,10 @@ function tidy(t) {
     .replace(/\b(HP|MP|SP|XP|EXP|EP|AP)\/(HP|MP|SP|XP|EXP|EP|AP)\b/g, '$1 and $2')   // HP/MP (not "slash")
     .replace(/\b([A-Z]{3})(?=\s*(?::|\+|-|—|–|\d))/g, (m, k) => STATS[k] || m)
     .replace(/(\d%?\s*)([A-Z]{3})\b(?![a-z])/g, (m, n, k) => n + (STATS[k] || k))   // +5 STR
+    // stats named in a sentence: "his INT", "INT rose by 2, WIS by 1", "AGI and STR" (the voice spelled them: "I-N-T")
+    .replace(/\b(my|his|her|their|your|its|our|high|low|base|total) (STR|AGI|DEX|INT|VIT|END|WIS|CHA|LUK|LCK|PER|CON|SPD|DEF|ATK|MAG|RES|SPI|FOC|WIL)\b(?![a-z'’])/g, (m, w, k) => w + ' ' + STATS[k])
+    .replace(/\b(STR|AGI|DEX|INT|VIT|END|WIS|CHA|LUK|LCK|PER|CON|SPD|DEF|ATK|MAG|RES|SPI|FOC|WIL)(?=(?: (?:rose|increased|went up|grew|dropped|fell|decreased|was raised|was lowered))? by [+-]?\d)/g, (m, k) => STATS[k])
+    .replace(/\b(STR|AGI|DEX|INT|VIT|END|WIS|CHA|LUK|LCK|PER|CON|SPD|DEF|ATK|MAG|RES|SPI|FOC|WIL)((?:, |,? and |,? or )(STR|AGI|DEX|INT|VIT|END|WIS|CHA|LUK|LCK|PER|CON|SPD|DEF|ATK|MAG|RES|SPI|FOC|WIL))+\b(?![a-z'’])/g, (m) => m.replace(/[A-Z]{3}/g, (k) => STATS[k]))
     .replace(/(^|[\s(\[])\+(?=\d)/g, '$1plus ')                     // +5 Agility
     .replace(/(^|[\s(\[])[-−](?=\d)/g, '$1minus ')
     .replace(/\b(\d*)d(4|6|8|10|12|20|100)\b/g, (m, n, s) => (n ? n + ' ' : '') + 'D ' + s)   // 5d6, a d20
@@ -873,6 +877,8 @@ function tidy(t) {
     .replace(/\b((?:\p{Lu}\.\s){2,3})(?=\p{Lu}\p{Ll})/gu, (m) => m.replace(/\./g, ''))   // J. K. Rowling
     // gamer words the voice gets wrong: "AoE" ("ow-ee"), "DoT" ("doo-tee"), "IRL" ("url"), "idk"
     .replace(/\bAoEs?\b/g, (m) => 'AOE' + m.slice(3)).replace(/\bDoT(s?)\b/g, 'dot$1')
+    .replace(/\bHoT(s?)\b/g, 'hot$1').replace(/\b([Ii])sekai(s?)\b/g, (m, i, p) => (i === 'I' ? 'E' : 'e') + 'esekai' + p).replace(/\bn00b(s?)\b/g, 'noob$1').replace(/\bpwn(ed|s)?\b/g, (m, e) => (e === 'ed' ? 'pohnd' : e ? 'pones' : 'pone'))   // "eye-skai", "N zero zero B", "P W ned"
+   .replace(/\b(PvPvE|PvP|PvE)(s?)\b/g, (m, w, s) => w.toUpperCase() + s)   // heal over time ("ho-tee"), "pee-vee pee"
     .replace(/\bIRL\b/g, 'I-R-L').replace(/\b(?:idk|IDK)\b/g, 'I-D-K').replace(/\b(?:brb|BRB)\b/g, 'be right back').replace(/\b(?:afk|AFK)\b/g, 'A-F-K').replace(/(^|[\s"“'‘(])np(?=[\s"”'’.,!?)]|$)/g, '$1no problem')
     .replace(/\b(omg|OMG|wtf|WTF|lmao|LMAO)\b/g, (m) => m.toUpperCase().split('').join('-')).replace(/(\d)-yrs?-old\b/g, '$1-year-old')   // O-M-G (the voice said "omg"), a 30-yr-old
     .replace(/\b(?:tbh|TBH)\b/g, 'to be honest').replace(/\b(?:imo|IMHO|imho)\b/g, (m) => (m.length > 3 ? 'in my humble opinion' : 'in my opinion'))

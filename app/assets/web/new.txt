@@ -1,3 +1,4 @@
+Says gamer words the way players do: "PvP" and "PvE" as letters, "HoT" as hot, "n00b", "pwned", "isekai", and stats in a sentence ("his INT", "AGI and STR") as Intelligence, Agility and Strength.
 Kindle: leaving Kindle just as a page ended no longer stopped reading for good; it now waits and turns the page when you're back.
 Kindle: a word split over a page turn ("there" | "fore") is read as one word again ("therefore"), not two.
 Says email addresses as "bob at example dot com", "(cont.)" as continued, "the 25 y.o. mage" as twenty-five-year-old, and "Stage 3-2" or "World 1-4" as three two and one four (not three to two).
