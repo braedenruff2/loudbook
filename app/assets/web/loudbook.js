@@ -653,7 +653,10 @@ function tidy(t) {
     .replace(/\b(\d)\s?ft\.?\s?(\d{1,2})\s?in\b(?:\.(?=\s+\p{Ll}))?/gu, '$1 foot $2')                      // 5 ft 6 in
     .replace(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\.?\s+(3[01]|[12]\d|0?[1-9])(st|nd|rd|th)?\b(?![:.\/]?\d)/g,   // Jan. 5, 2024 -> January 5th
       (m, mo, d, th) => (MONTHS[mo] || mo) + ' ' + +d + (th || ({ 1: 'st', 2: 'nd', 3: 'rd' }[+d % 10 && (+d < 11 || +d > 13) ? +d % 10 : 0] || 'th')))
-    .replace(/\b(\d+)\s?(?:y\/o|yo|y\.o\.)(?![\w\/])/g, (m, n) => n + (n === '1' ? ' year old' : ' years old'))   // 25 y/o
+    .replace(/(?<=\b(?:[Aa]n?|[Tt]he|[Tt]his|[Tt]hat|[Hh]is|[Hh]er|[Mm]y|[Yy]our|[Oo]ur|[Tt]heir)\s+)(\d+)\s?(?:y\/o|yo|y\.o\.)(?=\s+\p{Ll})/gu, '$1-year-old')   // the 25 y.o. mage
+    .replace(/\b(\d+)\s?(?:y\/o|yo|y\.o\.)(?![\w\/])/g, (m, n, at, all) => n + (n === '1' ? ' year old' : ' years old')
+      + (m.endsWith('.') && /^(?:\s*$|\s+[\p{Lu}"“])/u.test(all.slice(at + m.length)) ? '.' : ''))   // 25 y/o ("he was 40 y.o." keeps its full stop)
+    .replace(/\b(Stage|World)\s+(\d{1,2})-(\d{1,2})\b(?![-\d%])/g, '$1 $2 $3')   // Stage 3-2 / World 1-4 (a level's name, not a range)
     .replace(/\b(\d{1,3}(?:,\d{3})+)(st|nd|rd|th)\b/g, (m, n, t) => n.replace(/,/g, '') + t)   // the 10,000th visitor (was "ten,zeroth")
     .replace(/(?<![\d,.])((?:1\d|20)\d0|['’]\d0)['’]s\b/g, '$1s')   // the 1990's, the '90's -> nineties (was "ninety's")
     .replace(/\b(\d{1,2}(?:st|nd|rd|th)\s+(?:of\s+)?)(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)(?:\.(?=\s+\p{Ll}|,))?(?=[\s.,;]|$)/gu, (m, d, mo) => d + (MONTHS[mo] || 'September'))   // 1st Jan 2020
@@ -826,6 +829,9 @@ function tidy(t) {
     .replace(/\b(?:Ctrl|Alt|Shift|Cmd|Win|Fn)(?:\s?\+\s?(?:Ctrl|Alt|Shift|Cmd|Win|Del|Delete|Esc|Tab|Enter|Space|Home|End|F\d{1,2}|[A-Z0-9])\b)+/g, (m) =>
       m.split(/\s?\+\s?/).map((k) => ({ Ctrl: 'Control', Cmd: 'Command', Win: 'Windows', Del: 'Delete', Esc: 'Escape' }[k] || k.replace(/^F(\d+)$/, 'F $1'))).join(' '))
     .replace(/(\s)@(?=\s+[A-Za-z])/g, '$1at')   // "meet me @ noon" (emails like bob@mail.com untouched)
+    .replace(/(?<![\w.@\/:])([A-Za-z0-9][\w.+-]*)@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,6})\b(?![\w@\/-])/g,   // bob@example.com
+      (m, u, d) => u.replace(/\./g, ' dot ') + ' at ' + d.replace(/\./g, ' dot '))
+    .replace(/\((?:cont\.|cont['’]d\.?|contd\.?)\)/gi, '(continued)')   // (cont.), (cont'd)
     .replace(/\bGG,? EZ\b/g, (m) => m.replace('EZ', 'easy')).replace(/\bK\/D(?= ratio\b| of\b|\s+(?:is|was)\b)/g, 'K D')   // "GG, EZ" (the voice said "ez"), K/D ratio ("K slash D")
     .replace(/\bAK-?47s?\b/g, (m) => 'AK forty-seven' + (m.endsWith('s') ? 's' : ''))   // AK47 (the voice said "ack")
     .replace(/(\d)['′](?=\s+(?:wide|tall|long|high|deep|across|thick|away|square|by)\b)/g, (m, d, at, all) => d + (/\b[Aa]n?\s+\d*$/.test(all.slice(Math.max(0, at - 8), at + 1)) ? '-foot' : ' feet'))   // a 3' wide door (the voice dropped the foot mark)
