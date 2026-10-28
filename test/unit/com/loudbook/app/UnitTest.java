@@ -84,6 +84,25 @@ public class UnitTest {
         check("page break: where the next page starts in it", kb.bridgeHead, 25);
         java.util.List<Chapter.Chunk> pg2 = kb.chunks(Arrays.asList("immediately; that he is to take possession. \u201cWhat is his name?\u201d"), false);
         check("page break: the next page goes on after it", pg2.size() + " " + pg2.get(0).text, "1 \u201cWhat is his name?\u201d");
+        // a word hyphenated over the page break comes as two pieces ("there" | "fore"): one word again
+        check("split word, no dictionary: two words", KindleText.joinBreak("You must there", "fore allow me"), "You must there fore allow me");
+        java.util.Set<String> dict = new java.util.HashSet<>(Arrays.asList("therefore", "attachment", "often", "sand", "fora"));
+        KindleText.dictionary = dict::contains;
+        check("split word: one word again", KindleText.joinBreak("You must there", "fore allow me"), "You must therefore allow me");
+        check("split word: attach|ment", KindleText.joinBreak("his father\u2019s uncommon attach", "ment to me"), "his father\u2019s uncommon attachment to me");
+        check("two words that also make one: of|ten stays", KindleText.joinBreak("one of", "ten men"), "one of ten men");
+        check("two words that also make one: for|a stays", KindleText.joinBreak("waited for", "a while"), "waited for a while");
+        check("a single letter isn't half a word", KindleText.joinBreak("Bob's", "and"), "Bob's and");
+        check("not a word together: two words", KindleText.joinBreak("nobody else", "bothered to come"), "nobody else bothered to come");
+        check("a capital starts a new word", KindleText.joinBreak("You must there", "Fore"), "You must there Fore");
+        check("a kept hyphen joins", KindleText.joinBreak("a well-", "known man"), "a well-known man");
+        KindleText kw = new KindleText("");
+        kw.chunks(Arrays.asList("It was late. You must there"), false);
+        check("split word over the break, whole sentence", kw.bridge("fore allow me to go. Then he left.").text, "You must therefore allow me to go.");
+        KindleText kw2 = new KindleText("");
+        kw2.chunks(Arrays.asList("It was late. You must there"), false);
+        check("split word, next page (no bridge)", kw2.chunks(Arrays.asList("fore allow me to go. Then he left."), false).get(0).text.startsWith("You must therefore allow"), true);
+        KindleText.dictionary = null;
         // a line that wraps onto two rows on screen (known from the character boxes): a box per row
         float[][] cb = new float[11][];
         for (int i = 0; i < 11; i++) cb[i] = i < 5 ? new float[]{10 + i * 10, 100, 20 + i * 10, 120} : i == 5 ? new float[]{0, 0, 0, 0} : new float[]{10 + (i - 6) * 10, 120, 20 + (i - 6) * 10, 140};

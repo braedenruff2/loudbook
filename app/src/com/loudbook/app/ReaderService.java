@@ -573,6 +573,8 @@ public class ReaderService extends Service {
     /** Starts reading the page open in Kindle (from KindleService's button); letter: where on the page to start (0 = the top). */
     void startKindle(KindleService.Page p, int letter) {
         kt = new KindleText(prefs.getString("fixes", ""));
+        final android.content.Context app = getApplicationContext();
+        KindleText.dictionary = w -> Voice.hasWord(app, w);
         java.util.List<Chapter.Chunk> raw = kt.chunks(p.paragraphs, false);
         if (raw.isEmpty()) raw = new KindleText(prefs.getString("fixes", "")).chunks(p.paragraphs, true);
         logKindle("start", p.paragraphs, raw);
@@ -580,8 +582,9 @@ public class ReaderService extends Service {
         kindleEnded = false; kindleBusy = false;
         splitIdx = -1; splitTurned = false;
         final java.util.List<Chapter.Chunk> page = raw;
-        final Chapter.Chunk bridge = kt.bridge(p.nextStart);
+        final KindleText kts = kt;
         kindleThread.submit(() -> {
+            final Chapter.Chunk bridge = kts.bridge(p.nextStart);            // (may look in the dictionary: not on the main thread)
             java.util.List<Chapter.Chunk> first = new java.util.ArrayList<>(spoken(page));
             float frac = addBridge(first, bridge);
             // the sentence at the place tapped (or the first)

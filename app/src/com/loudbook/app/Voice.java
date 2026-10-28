@@ -261,6 +261,25 @@ final class Voice {
         return sb.toString();
     }
     /** Copies an asset folder into the app's private files once; returns the real path. */
+    private static final java.util.Map<String, Boolean> knownWords = new java.util.HashMap<>();
+    /**
+     * Whether Kokoro's English dictionary has this word (lower case): for a word Kindle splits over
+     * a page break. Reads through the dictionary (a few MB) each time, which is rare; off the main thread.
+     */
+    static boolean hasWord(Context ctx, String w) {
+        synchronized (knownWords) { Boolean b = knownWords.get(w); if (b != null) return b; }
+        boolean found = false;
+        String key = w + " ";
+        File f = new File(new File(ctx.getFilesDir(), DIR), "lexicon-us-en.txt");
+        try (InputStream in = f.exists() ? new java.io.FileInputStream(f) : ctx.getAssets().open(DIR + "/lexicon-us-en.txt");
+             java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8), 65536)) {
+            String line;
+            while ((line = r.readLine()) != null) if (line.startsWith(key)) { found = true; break; }
+        } catch (Exception e) { Log.w(TAG, "dictionary", e); return false; }
+        synchronized (knownWords) { if (knownWords.size() > 500) knownWords.clear(); knownWords.put(w, found); }
+        return found;
+    }
+
     static String copyAssetDir(Context ctx, String assetDir) throws Exception {
         File dest = new File(ctx.getFilesDir(), assetDir);
         File done = new File(dest, ".copied-" + BuildInfo.VERSION);

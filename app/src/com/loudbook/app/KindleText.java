@@ -44,7 +44,7 @@ final class KindleText {
         }
         if (!carry.isEmpty()) {
             if (paras.isEmpty()) paras.add(carry);
-            else paras.set(0, carry + (startsLower(paras.get(0)) || !END.matcher(carry).find() ? " " : " ") + paras.get(0));
+            else paras.set(0, joinBreak(carry, paras.get(0)));
             carry = "";
         }
         if (!last && !paras.isEmpty()) {
@@ -98,7 +98,7 @@ final class KindleText {
         String n = nextStart.replaceAll("\\s+", " ").trim();
         if (n.isEmpty()) return null;
         String first = firstSentence(n);
-        String whole = carry + " " + first;
+        String whole = joinBreak(carry, first);
         skip = first;
         bridgeHead = carry.length();
         return new Chapter.Chunk(block, whole, say(whole));
@@ -136,6 +136,39 @@ final class KindleText {
         }
         out.add(rest);
         return out;
+    }
+
+    /**
+     * Whether a word (lower case) is in the voice's English dictionary; set by the app. null: not
+     * known, so a page break is never taken to split a word.
+     */
+    static volatile java.util.function.Predicate<String> dictionary;
+    private static final Pattern BREAK_TAIL = Pattern.compile("(\\p{L}{2,})$");
+    private static final Pattern BREAK_HEAD = Pattern.compile("(\\p{Ll}{2,})(?![\\p{L}])");
+    /** Short everyday words: "at|one", "of|ten", "for|a" are two words, not one split by the break. */
+    private static final java.util.Set<String> SHORT = new java.util.HashSet<>(java.util.Arrays.asList((
+        "a an the of at in on to for and or nor is it its me my be as by do so no up we he she his her him you your one two ten "
+        + "was are has had not but can our us if into than then them they this that with from all any some out off own who how "
+        + "why what when see saw get got let may way day man men new old").split(" ")));
+    /**
+     * The end of one page and the start of the next, joined. Kindle shares a word hyphenated over the
+     * page break as two pieces ("therefore": "...You must there" | "fore allow me"): when the two
+     * make one word in the dictionary (and neither is a short everyday word), they're joined
+     * without a space, so the voice says one word. A hyphen kept at the end ("well-" | "known") joins too.
+     */
+    static String joinBreak(String carry, String next) {
+        if (carry.isEmpty()) return next;
+        if (next.isEmpty()) return carry;
+        if (carry.length() > 1 && carry.endsWith("-") && Character.isLetter(carry.charAt(carry.length() - 2)) && startsLower(next)) return carry + next;
+        java.util.function.Predicate<String> dict = dictionary;
+        Matcher a = BREAK_TAIL.matcher(carry), b = BREAK_HEAD.matcher(next);
+        if (dict != null && a.find() && b.lookingAt()) {
+            String x = a.group(1).toLowerCase(java.util.Locale.ROOT), y = b.group(1);
+            if (!SHORT.contains(x) && !SHORT.contains(y)) {
+                try { if (dict.test(x + y)) return carry + next; } catch (RuntimeException ignored) { }
+            }
+        }
+        return carry + " " + next;
     }
 
     private static boolean startsLower(String s) { return !s.isEmpty() && Character.isLowerCase(s.charAt(0)); }
