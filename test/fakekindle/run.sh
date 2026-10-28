@@ -119,10 +119,14 @@ adb shell input keyevent KEYCODE_HOME
 # leaving Kindle just as a page ends (the stand-in Kindle goes to the background instead of turning, once):
 # reading must wait, paused, not take it as the end of the book, and turn the page once Kindle is back and the
 # button is tapped, reading the sentence over the break once, whole
+sleep 15                                                                # (the last section's reading has given up turning past the end)
 adb shell log -t LoudbookTest "=== away at the page turn ==="
 adb shell am start -S -n com.amazon.kindle/.Reader --ez explore true --ez away true
 sleep 6
-adb shell input tap $X $Y
+# (a fresh start by hold and tap on "Mara walked...", the page's last sentence, whatever the last section left)
+adb shell input swipe $X $Y $X $Y 1200
+sleep 2
+adb shell input tap $TX $TY
 for i in $(seq 1 45); do sleep 2; adb logcat -d | sed -n '/=== away at the page turn/,$p' | grep -q "not on screen at the page turn" && break; done
 sleep 6
 adb shell am start -n com.amazon.kindle/.Reader --ez explore true      # (back to the book, on the same page)
