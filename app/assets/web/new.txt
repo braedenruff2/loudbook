@@ -1,3 +1,4 @@
+Says cultivation-story words the right way: qi as "chee", xianxia, wuxia and dantian, and common names like Xiao, Xu, Qing and Xin; also "PKer" and "GvG".
 Says gamer words the way players do: "PvP" and "PvE" as letters, "HoT" as hot, "n00b", "pwned", "isekai", and stats in a sentence ("his INT", "AGI and STR") as Intelligence, Agility and Strength.
 Kindle: leaving Kindle just as a page ended no longer stopped reading for good; it now waits and turns the page when you're back.
 Kindle: a word split over a page turn ("there" | "fore") is read as one word again ("therefore"), not two.

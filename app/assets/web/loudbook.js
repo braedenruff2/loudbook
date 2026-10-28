@@ -878,7 +878,11 @@ function tidy(t) {
     // gamer words the voice gets wrong: "AoE" ("ow-ee"), "DoT" ("doo-tee"), "IRL" ("url"), "idk"
     .replace(/\bAoEs?\b/g, (m) => 'AOE' + m.slice(3)).replace(/\bDoT(s?)\b/g, 'dot$1')
     .replace(/\bHoT(s?)\b/g, 'hot$1').replace(/\b([Ii])sekai(s?)\b/g, (m, i, p) => (i === 'I' ? 'E' : 'e') + 'esekai' + p).replace(/\bn00b(s?)\b/g, 'noob$1').replace(/\bpwn(ed|s)?\b/g, (m, e) => (e === 'ed' ? 'pohnd' : e ? 'pones' : 'pone'))   // "eye-skai", "N zero zero B", "P W ned"
-   .replace(/\b(PvPvE|PvP|PvE)(s?)\b/g, (m, w, s) => w.toUpperCase() + s)   // heal over time ("ho-tee"), "pee-vee pee"
+   .replace(/\b(PvPvE|PvP|PvE|GvG|GvE|RvR)(s?)\b/g, (m, w, s) => w.toUpperCase() + s)   // heal over time ("ho-tee"), "pee-vee pee"
+    .replace(/\bPK(ers?|ing)\b/g, 'PK-$1')   // player killer: "pee-ker"
+    // cultivation (xianxia) words and Chinese names the voice says the English way: qi "kai", Xiao "zai-oh", Qing "king"
+    .replace(/\b([Qq])i\b/g, (m, q) => (q === 'Q' ? 'C' : 'c') + 'hee').replace(/\b([Xx])ianxia\b/g, (m, x) => (x === 'X' ? 'S' : 's') + 'hee-en-shah').replace(/\b([Ww])uxia\b/g, '$1oo-shah').replace(/\b([Dd])antian(s?)\b/g, '$1ahntyen$2')
+    .replace(/\b(Xiao|Qiao|Xian|Qian|Xia|Xing|Xin|Xu|Xi|Qing|Qin|Qiu)\b/g, (m) => ({ Xiao: 'Sheeyow', Qiao: 'Cheeyow', Xian: 'Shee-en', Qian: 'Chee-en', Xia: 'Shee-ah', Xing: 'Shing', Xin: 'Shin', Xu: 'Shoo', Xi: 'Shee', Qing: 'Ching', Qin: 'Chin', Qiu: 'Chee-oo' })[m])
     .replace(/\bIRL\b/g, 'I-R-L').replace(/\b(?:idk|IDK)\b/g, 'I-D-K').replace(/\b(?:brb|BRB)\b/g, 'be right back').replace(/\b(?:afk|AFK)\b/g, 'A-F-K').replace(/(^|[\s"“'‘(])np(?=[\s"”'’.,!?)]|$)/g, '$1no problem')
     .replace(/\b(omg|OMG|wtf|WTF|lmao|LMAO)\b/g, (m) => m.toUpperCase().split('').join('-')).replace(/(\d)-yrs?-old\b/g, '$1-year-old')   // O-M-G (the voice said "omg"), a 30-yr-old
     .replace(/\b(?:tbh|TBH)\b/g, 'to be honest').replace(/\b(?:imo|IMHO|imho)\b/g, (m) => (m.length > 3 ? 'in my humble opinion' : 'in my opinion'))
