@@ -579,7 +579,7 @@ public class ReaderService extends Service {
         if (raw.isEmpty()) raw = new KindleText(prefs.getString("fixes", "")).chunks(p.paragraphs, true);
         logKindle("start", p.paragraphs, raw);
         kindleSig = p.signature;
-        kindleEnded = false; kindleBusy = false;
+        kindleEnded = false; kindleBusy = false; kindleHidden = false;
         splitIdx = -1; splitTurned = false;
         final java.util.List<Chapter.Chunk> page = raw;
         final KindleText kts = kt;
@@ -653,6 +653,23 @@ public class ReaderService extends Service {
 
     /** Turns Kindle's page and adds its sentences to what's being read. */
     private volatile boolean kindleQueued;
+    /** The page couldn't be turned because Kindle wasn't on screen: turn it when Kindle's back. */
+    private volatile boolean kindleHidden;
+    /** Waits (paused) while Kindle is away, then turns the page once it's back and reading goes on. false = interrupted. */
+    private boolean kindleBack(int myGen, Chapter ch, java.util.ArrayDeque<long[]> marks) {
+        while (gen == myGen && kindleHidden && chapter == ch) {
+            heard(ch, marks, myGen);
+            sleep(200);
+            KindleService k = KindleService.me;
+            if (paused || k == null || !k.kindleVisible()) continue;
+            kindleHidden = false;
+            Log.i("LoudbookTest", "kindle: back in Kindle, turning the page now");
+            kindleMore(ch);
+            long until = System.currentTimeMillis() + 10_000;
+            while (gen == myGen && (kindleBusy || !kindleQueued) && System.currentTimeMillis() < until) { heard(ch, marks, myGen); sleep(40); }
+        }
+        return gen == myGen;
+    }
     private void kindleMore(Chapter ch) {
         if (kindleBusy || kindleEnded || kt == null) return;
         kindleBusy = true;
@@ -661,7 +678,13 @@ public class ReaderService extends Service {
             try {
                 KindleService k = KindleService.me;
                 KindleService.Page p = k == null ? new KindleService.Page() : k.nextPage(kindleSig);
-                if (p.paragraphs.isEmpty()) {
+                if (p.paragraphs.isEmpty() && k != null && !k.kindleVisible()) {
+                    // Kindle isn't on screen (he switched apps just as the page ended): not the end of
+                    // the book. Pause, and turn the page once he's back in Kindle and reading goes on
+                    kindleHidden = true;
+                    Log.i("LoudbookTest", "kindle: not on screen at the page turn, waiting for it");
+                    main.post(() -> { pause(); status("Kindle isn't on screen, so the page can't be turned. Open it to carry on.", false); });
+                } else if (p.paragraphs.isEmpty()) {
                     kindleEnded = true;
                     java.util.List<Chapter.Chunk> rest = spoken(kt.chunks(new java.util.ArrayList<>(), true));   // whatever was held back
                     if (!rest.isEmpty()) ch.chunks.addAll(rest);
@@ -969,7 +992,7 @@ public class ReaderService extends Service {
                     if (!splitTurned && splitIdx == ch.size() - 1) { splitTurned = true; kindleMore(ch); }   // (never got there: turn anyway)
                     until = System.currentTimeMillis() + 10_000;
                     while (gen == myGen && next >= ch.size() && (kindleBusy || !kindleQueued) && System.currentTimeMillis() < until) { heard(ch, marks, myGen); sleep(40); }
-                    if (gen != myGen) return;
+                    if (!kindleBack(myGen, ch, marks)) return;
                 }
                 else if (kt != null && "kindle".equals(ch.site) && next >= ch.size() && !kindleEnded) {
                     // Kindle: everything on this page is queued. Turn the page only once its last
@@ -979,7 +1002,7 @@ public class ReaderService extends Service {
                     kindleMore(ch);
                     long until = System.currentTimeMillis() + 10_000;
                     while (gen == myGen && next >= ch.size() && (kindleBusy || !kindleQueued) && System.currentTimeMillis() < until) { heard(ch, marks, myGen); sleep(40); }
-                    if (gen != myGen) return;
+                    if (!kindleBack(myGen, ch, marks)) return;
                 }
                 if (next >= ch.size()) {
                     if (!drain(myGen, ch, marks)) return;          // let the last words finish

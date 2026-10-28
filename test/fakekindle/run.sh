@@ -103,8 +103,11 @@ adb shell am force-stop com.amazon.kindle
 adb shell log -t LoudbookTest "=== next page shared ==="
 adb shell am start -S -n com.amazon.kindle/.Reader --ez explore true --ez next true
 sleep 6
-adb shell input tap $X $Y
-sleep 58                                               # (the emulator's voice is slow: the long sentence over the break takes ~18 s to make)
+# (hold and tap "Mara walked...": a fresh start there, whatever the last section left paused)
+adb shell input swipe $X $Y $X $Y 1200
+sleep 2
+adb shell input tap $TX $TY
+sleep 50                                               # (the emulator's voice is slow: the long sentence over the break takes ~18 s to make)
 adb shell screencap -p /sdcard/bridge.png; adb pull /sdcard/bridge.png .
 adb logcat -d | sed -n '/=== next page shared/,$p' > bridge-log.txt
 grep -q "sentence over the page break" bridge-log.txt && echo "next page shared, sentence over the break read whole: yes" > bridge.txt || echo "next page shared, sentence over the break read whole: NO" > bridge.txt
