@@ -98,4 +98,19 @@ grep -c "kindle speaking" leave-log.txt | sed 's/^/sentences read before leaving
 grep -q "left Kindle, reading paused" leave-log.txt && echo "reading after leaving Kindle: paused" >> leave.txt || echo "reading after leaving Kindle: NOT paused" >> leave.txt
 adb shell screencap -p /sdcard/left.png; adb pull /sdcard/left.png .
 adb shell am force-stop com.amazon.kindle
+# a Kindle that also lists the next page's text, unseen, as the real Kindle does with a screen reader on:
+# the sentence over the page break is read whole, once, and the page turns when the voice gets to the next page's words
+adb shell log -t LoudbookTest "=== next page shared ==="
+adb shell am start -S -n com.amazon.kindle/.Reader --ez explore true --ez next true
+sleep 6
+adb shell input tap $X $Y
+sleep 36
+adb shell screencap -p /sdcard/bridge.png; adb pull /sdcard/bridge.png .
+adb logcat -d | sed -n '/=== next page shared/,$p' > bridge-log.txt
+grep -q "sentence over the page break" bridge-log.txt && echo "next page shared, sentence over the break read whole: yes" > bridge.txt || echo "next page shared, sentence over the break read whole: NO" > bridge.txt
+grep -q "the voice is at the next page's words" bridge-log.txt && echo "page turned at the next page's words: yes" >> bridge.txt || echo "page turned at the next page's words: NO" >> bridge.txt
+grep -c "kindle speaking [0-9]*: She liked the quiet" bridge-log.txt | sed 's/^/times the sentence over the break was read (want 1): /' >> bridge.txt
+grep -c "kindle speaking [0-9]*: bothered" bridge-log.txt | sed 's/^/times the next page start was read again (want 0): /' >> bridge.txt
+adb shell am force-stop com.amazon.kindle
+adb shell input keyevent KEYCODE_HOME
 adb logcat -d > logcat.txt

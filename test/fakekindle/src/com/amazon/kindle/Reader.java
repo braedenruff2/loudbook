@@ -31,6 +31,10 @@ public class Reader extends Activity {
     // explore mode: the page is drawn (like Kindle's renderer) and its text is shared only while
     // a screen reader that explores by touch is on
     boolean explore;
+    // next: like the real Kindle, also list the next page's text for screen readers, unseen (no
+    // place on screen), right after this page's: Loudbook then reads a sentence over the page
+    // break whole and turns the page when the voice gets to the next page's words
+    boolean next;
     Drawn drawn;
 
     class Drawn extends android.widget.FrameLayout {
@@ -78,6 +82,7 @@ public class Reader extends Activity {
                         AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain(Drawn.this);
                         onInitializeAccessibilityNodeInfo(info);
                         info.addChild(Drawn.this, 0);
+                        if (next && Reader.this.page + 1 < PAGES.length) info.addChild(Drawn.this, 1);
                         info.addChild(Drawn.this, 999);
                         return info;
                     }
@@ -91,6 +96,16 @@ public class Reader extends Activity {
                         getLocationOnScreen(at);
                         info.setBoundsInScreen(new Rect(at[0] + 100, at[1] + getHeight() - 200, at[0] + 600, at[1] + getHeight() - 100));
                         info.setVisibleToUser(true);
+                        info.setPackageName(getPackageName());
+                        return info;
+                    }
+                    if (id == 1 && next && Reader.this.page + 1 < PAGES.length) {
+                        AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain(Drawn.this, id);
+                        info.setParent(Drawn.this);
+                        info.setClassName("android.view.View");
+                        info.setText(String.join("\n", PAGES[Reader.this.page + 1]));
+                        info.setBoundsInScreen(new Rect(0, 0, 0, 0));
+                        info.setVisibleToUser(false);
                         info.setPackageName(getPackageName());
                         return info;
                     }
@@ -134,6 +149,7 @@ public class Reader extends Activity {
         TextView head = new TextView(this); head.setText("The Valley Road"); head.setGravity(Gravity.CENTER);
         root.addView(head);
         explore = getIntent().getBooleanExtra("explore", false);
+        next = explore && getIntent().getBooleanExtra("next", false);
         body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL);
         if (explore) {
             drawn = new Drawn();
