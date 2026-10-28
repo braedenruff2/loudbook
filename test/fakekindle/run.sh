@@ -116,4 +116,26 @@ grep -c "kindle speaking [0-9]*: She liked the quiet" bridge-log.txt | sed 's/^/
 grep -c "kindle speaking [0-9]*: bothered" bridge-log.txt | sed 's/^/times the next page start was read again (want 0): /' >> bridge.txt
 adb shell am force-stop com.amazon.kindle
 adb shell input keyevent KEYCODE_HOME
+# leaving Kindle just as a page ends (the stand-in Kindle goes to the background instead of turning, once):
+# reading must wait, paused, not take it as the end of the book, and turn the page once Kindle is back and the
+# button is tapped, reading the sentence over the break once, whole
+adb shell log -t LoudbookTest "=== away at the page turn ==="
+adb shell am start -S -n com.amazon.kindle/.Reader --ez explore true --ez away true
+sleep 6
+adb shell input tap $X $Y
+for i in $(seq 1 45); do sleep 2; adb logcat -d | sed -n '/=== away at the page turn/,$p' | grep -q "not on screen at the page turn" && break; done
+sleep 6
+adb shell am start -n com.amazon.kindle/.Reader --ez explore true      # (back to the book, on the same page)
+sleep 6
+adb shell input tap $X $Y                                               # carry on
+sleep 45
+adb shell screencap -p /sdcard/away.png; adb pull /sdcard/away.png .
+adb logcat -d | sed -n '/=== away at the page turn/,$p' > away-log.txt
+grep -q "not on screen at the page turn" away-log.txt && echo "Kindle away at the page turn, noticed: yes" > away.txt || echo "Kindle away at the page turn, noticed: NO" > away.txt
+grep -q "left Kindle, reading paused" away-log.txt && echo "reading paused while away: yes" >> away.txt || echo "reading paused while away: NO" >> away.txt
+grep -q "back in Kindle, turning the page now" away-log.txt && grep -q "kindle page turned" away-log.txt && echo "page turned once back: yes" >> away.txt || echo "page turned once back: NO" >> away.txt
+grep -c "kindle speaking [0-9]*: She liked the quiet" away-log.txt | sed 's/^/times the sentence over the break was started (want 1): /' >> away.txt
+grep -q "kindle speaking [0-9]*: and she liked that nobody else bothered" away-log.txt && echo "the rest of it read with the next page's words: yes" >> away.txt || echo "the rest of it read with the next page's words: NO" >> away.txt
+adb shell am force-stop com.amazon.kindle
+adb shell input keyevent KEYCODE_HOME
 adb logcat -d > logcat.txt

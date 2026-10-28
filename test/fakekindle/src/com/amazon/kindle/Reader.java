@@ -35,6 +35,9 @@ public class Reader extends Activity {
     // place on screen), right after this page's: Loudbook then reads a sentence over the page
     // break whole and turns the page when the voice gets to the next page's words
     boolean next;
+    // away: the first page turn asked for doesn't happen; Kindle goes to the background instead, as
+    // when he switches apps just as a page ends (Loudbook must wait, not take it as the end of the book)
+    boolean away;
     Drawn drawn;
 
     class Drawn extends android.widget.FrameLayout {
@@ -150,6 +153,7 @@ public class Reader extends Activity {
         root.addView(head);
         explore = getIntent().getBooleanExtra("explore", false);
         next = explore && getIntent().getBooleanExtra("next", false);
+        away = getIntent().getBooleanExtra("away", false);
         body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL);
         if (explore) {
             drawn = new Drawn();
@@ -170,6 +174,7 @@ public class Reader extends Activity {
 
     boolean turn() {
         if (page + 1 >= PAGES.length) return false;
+        if (away) { away = false; Log.i("FakeKindle", "going to the background instead of turning"); moveTaskToBack(true); return false; }
         page++;
         show();
         return true;
