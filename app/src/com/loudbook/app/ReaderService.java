@@ -660,6 +660,7 @@ public class ReaderService extends Service {
         while (gen == myGen && kindleHidden && chapter == ch) {
             heard(ch, marks, myGen);
             sleep(200);
+            if (gen != myGen || chapter != ch || !kindleHidden) return false;   // (something else is being read now)
             KindleService k = KindleService.me;
             if (paused || k == null || !k.kindleVisible()) continue;
             kindleHidden = false;
@@ -671,19 +672,21 @@ public class ReaderService extends Service {
         return gen == myGen;
     }
     private void kindleMore(Chapter ch) {
-        if (kindleBusy || kindleEnded || kt == null) return;
+        if (kindleBusy || kindleEnded || kt == null || chapter != ch) return;
         kindleBusy = true;
         kindleQueued = false;
         kindleThread.submit(() -> {
             try {
+                if (chapter != ch) return null;                                  // (a new start since)
                 KindleService k = KindleService.me;
                 KindleService.Page p = k == null ? new KindleService.Page() : k.nextPage(kindleSig);
                 if (p.paragraphs.isEmpty() && k != null && !k.kindleVisible()) {
-                    // Kindle isn't on screen (he switched apps just as the page ended): not the end of
-                    // the book. Pause, and turn the page once he's back in Kindle and reading goes on
+                    // Kindle isn't on screen (he switched apps just as the page ended, or Kindle's own
+                    // screens flickered): not the end of the book. Wait, and turn the page once Kindle is
+                    // back and reading goes on (leaving Kindle pauses reading by itself, see KindleService)
                     kindleHidden = true;
                     Log.i("LoudbookTest", "kindle: not on screen at the page turn, waiting for it");
-                    main.post(() -> { pause(); status("Kindle isn't on screen, so the page can't be turned. Open it to carry on.", false); });
+                    main.post(() -> status("Kindle isn't on screen, so the page can't be turned. Open it to carry on.", false));
                 } else if (p.paragraphs.isEmpty()) {
                     kindleEnded = true;
                     java.util.List<Chapter.Chunk> rest = spoken(kt.chunks(new java.util.ArrayList<>(), true));   // whatever was held back
