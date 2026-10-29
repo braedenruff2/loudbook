@@ -885,6 +885,18 @@ function tidy(t) {
     // cultivation (xianxia) words and Chinese names the voice says the English way: qi "kai", Xiao "zai-oh", Qing "king"
     .replace(/\b([Qq])i\b/g, (m, q) => (q === 'Q' ? 'C' : 'c') + 'hee').replace(/\b([Xx])ianxia\b/g, (m, x) => (x === 'X' ? 'S' : 's') + 'hee-en-shah').replace(/\b([Ww])uxia\b/g, '$1oo-shah').replace(/\b([Dd])antian(s?)\b/g, '$1ahntyen$2').replace(/\b([Ss])hixiong\b/g, '$1hih-shee-ong')
     .replace(/\b([Xx])iulian\b/g, (m, x) => (x === 'X' ? 'S' : 's') + 'heeo-lien').replace(/\b([Ss])himei\b/g, '$1hih-may').replace(/\b([Gg])ege\b/g, '$1uh-guh').replace(/\b([Jj])iejie\b/g, '$1ee-eh-jee-eh').replace(/\bLaozu\b/g, 'Lao-zoo')   // "zi-yoo-lian", "shy-my", "jeej", "lay-ah-zoo"
+    // Japanese and Korean words from anime-style and translated stories (JP_KO): "Onee-san" was "one-san", "tsundere" "tsoon-deer",
+    // "Hyung" "hi-ung", "Ryuu" "rye-oo", "Kekeke" "kek"; respellings checked in Kokoro
+    .replace(/\b(onii(?:san|chan|sama)?|onee(?:san|chan|sama)?|ojou|ojii|obaa|hime|maou|yuusha|tsundere|yandere|kawaii|desu|arigatou?|sumimasen|chuunibyou?|kouhai|hyung|unnie|eonni|sunbae|hoobae|aigoo|daebak|murim|kya+|ryuu|yuuki|yuu|ach)(s?)\b/gi, (m, w, s) => {
+      const k = w.toLowerCase(), r = ({ onii: 'oh-nee', oniisan: 'oh-nee-san', oniichan: 'oh-nee-chan', oniisama: 'oh-nee-sama', onee: 'oh-neh', oneesan: 'oh-neh-san', oneechan: 'oh-neh-chan', oneesama: 'oh-neh-sama',
+        ojou: 'oh-joe', ojii: 'oh-jee', obaa: 'oh-bah', hime: 'hee-meh', maou: 'mah-oh', yuusha: 'yoo-shah', tsundere: 'tsoon-deh-reh', yandere: 'yahn-deh-reh', kawaii: 'kah-wah-ee', desu: 'dess',
+        arigato: 'ah-ree-gah-toh', arigatou: 'ah-ree-gah-toh', sumimasen: 'soo-mee-mah-sen', chuunibyo: 'chew-nee-bee-yo', chuunibyou: 'chew-nee-bee-yo', kouhai: 'koh-high', hyung: 'hee-yoong', unnie: 'uh-nee', eonni: 'uh-nee',
+        sunbae: 'soon-beh', hoobae: 'hoo-beh', aigoo: 'eye-goo', daebak: 'deh-bahk', murim: 'moo-rim', ryuu: 'rhew', yuuki: 'yoo-kee', yuu: 'yoo', ach: 'ahk' })[k] || (/^kya+$/.test(k) ? 'kee-yah' : null);
+      if (!r || (k === 'ach' && s) || (s && !/^(tsundere|yandere|sunbae|hoobae)$/.test(k))) return m;
+      return (w === w.toUpperCase() && w.length > 1 ? r.toUpperCase() : w[0] === w[0].toUpperCase() ? r[0].toUpperCase() + r.slice(1) : r) + s;
+    })
+    .replace(/(?<!-)\b([Nn])(ee|ii)(?=-(?:san|chan|sama)\b)/g, (m, n, v) => n + (v === 'ee' ? 'eh' : 'ee'))   // Nee-san (sister) "nay", Nii-san (brother) "nee-eye"
+    .replace(/\b([Kk])e(?:ke){2,}\b/g, '$1eh-keh-keh')   // goblin laugh "Kekeke": "kek"
     .replace(/\bXiao(?=[a-z]{2,}\b)(?!mi\b)/g, 'Sheeyow-')   // Xiaofan, Xiaochun ("zai-ah-fan"); Xiaomi is fine
     .replace(/(\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|few|several|dozen|many))(\s+)li\b/g, '$1$2lee')   // a hundred li (distance, "lie")
     .replace(/\b(Xiao|Qiao|Xian|Qian|Xiang|Qiang|Xia|Xing|Xin|Xue|Xie|Xuan|Xun|Xu|Xi|Qing|Qin|Qiu|Quan)\b/g, (m) => ({ Xiang: 'Shee-ahng', Qiang: 'Chee-ahng', Xue: 'Shoo-weh', Xie: 'Shee-eh', Xuan: 'Shoo-ahn', Xun: 'Shoon', Quan: 'Choo-wen', Xiao: 'Sheeyow', Qiao: 'Cheeyow', Xian: 'Shee-en', Qian: 'Chee-en', Xia: 'Shee-ah', Xing: 'Shing', Xin: 'Shin', Xu: 'Shoo', Xi: 'Shee', Qing: 'Ching', Qin: 'Chin', Qiu: 'Chee-oo' })[m])
