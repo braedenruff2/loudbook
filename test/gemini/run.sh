@@ -13,11 +13,11 @@ adb logcat -c
 adb shell am start -n com.loudbook.app/.MainActivity
 sleep 100                                   # the phone voice downloads and loads the first time
 G="--es gemhost http://localhost:8001/v1beta/"
-adb shell log -t LoudbookTest "=== streamed: play chapter one ==="
+adb shell log -t LoudbookTest "'=== streamed: play chapter one ==='"
 adb shell am start -n com.loudbook.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "http://localhost:8000/g1.html" --ez play true $G
 sleep 170
 adb logcat -d > logcat1.txt
-adb shell log -t LoudbookTest "=== all at once: play chapter one again (a new address, so nothing is recorded yet) ==="
+adb shell log -t LoudbookTest "'=== all at once: play chapter one again, a new address, so nothing is recorded yet ==='"   # (quoted twice: adb shell runs it through sh)
 adb shell am start -n com.loudbook.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "http://localhost:8000/g1.html?again=1" --ez play true --ez gemwhole true $G
 sleep 150
 adb shell am force-stop com.loudbook.app
