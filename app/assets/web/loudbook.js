@@ -881,6 +881,7 @@ function tidy(t) {
     .replace(/\bHoT(s?)\b/g, 'hot$1').replace(/\b([Ii])sekai(s?)\b/g, (m, i, p) => (i === 'I' ? 'E' : 'e') + 'esekai' + p).replace(/\bn00b(s?)\b/g, 'noob$1').replace(/\bpwn(ed|s)?\b/g, (m, e) => (e === 'ed' ? 'pohnd' : e ? 'pones' : 'pone'))   // "eye-skai", "N zero zero B", "P W ned"
    .replace(/\b(PvPvE|PvP|PvE|GvG|GvE|RvR)(s?)\b/g, (m, w, s) => w.toUpperCase() + s)   // heal over time ("ho-tee"), "pee-vee pee"
     .replace(/\bPK(ers?|ing)\b/g, 'PK-$1')   // player killer: "pee-ker"
+    .replace(/\bELO\b/g, 'Eelo').replace(/(?<=\w\s)af(?=[.,!?;:"”'’)]|\s*$)/g, 'A-F')   // game rating ("E-L-O"), "OP af." ("aff")
     // cultivation (xianxia) words and Chinese names the voice says the English way: qi "kai", Xiao "zai-oh", Qing "king"
     .replace(/\b([Qq])i\b/g, (m, q) => (q === 'Q' ? 'C' : 'c') + 'hee').replace(/\b([Xx])ianxia\b/g, (m, x) => (x === 'X' ? 'S' : 's') + 'hee-en-shah').replace(/\b([Ww])uxia\b/g, '$1oo-shah').replace(/\b([Dd])antian(s?)\b/g, '$1ahntyen$2').replace(/\b([Ss])hixiong\b/g, '$1hih-shee-ong')
     .replace(/\b([Xx])iulian\b/g, (m, x) => (x === 'X' ? 'S' : 's') + 'heeo-lien').replace(/\b([Ss])himei\b/g, '$1hih-may').replace(/\b([Gg])ege\b/g, '$1uh-guh').replace(/\b([Jj])iejie\b/g, '$1ee-eh-jee-eh').replace(/\bLaozu\b/g, 'Lao-zoo')   // "zi-yoo-lian", "shy-my", "jeej", "lay-ah-zoo"
