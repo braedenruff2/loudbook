@@ -522,7 +522,7 @@ const UNITS = { km: ['kilometer', 'kilometers'], cm: ['centimeter', 'centimeters
   KB: ['kilobyte', 'kilobytes'], MB: ['megabyte', 'megabytes'], GB: ['gigabyte', 'gigabytes'], TB: ['terabyte', 'terabytes'], PB: ['petabyte', 'petabytes'],
   Hz: ['hertz', 'hertz'], kHz: ['kilohertz', 'kilohertz'], MHz: ['megahertz', 'megahertz'], GHz: ['gigahertz', 'gigahertz'],
   Mbps: ['megabit per second', 'megabits per second'], Gbps: ['gigabit per second', 'gigabits per second'], kW: ['kilowatt', 'kilowatts'], kWh: ['kilowatt-hour', 'kilowatt-hours'],
-  MW: ['megawatt', 'megawatts'], kV: ['kilovolt', 'kilovolts'], mAh: ['milliamp-hour', 'milliamp-hours'], V: ['volt', 'volts'], W: ['watt', 'watts'] };
+  MW: ['megawatt', 'megawatts'], ly: ['light-year', 'light-years'], kV: ['kilovolt', 'kilovolts'], mAh: ['milliamp-hour', 'milliamp-hours'], V: ['volt', 'volts'], W: ['watt', 'watts'] };
 
 const GRUNTS = [[/^[Hh](m+p+h|m+f)$/, 'humph'], [/^[Hh]mn?$/, 'hmm'], [/^([Mm]hm+|[Mm]m-?hm+)$/, 'mm-hmm'], [/^[Mm]m+$/, 'hmm'],
   [/^[Ss]hh+$/, 'shush'], [/^[Pp]+f+t?$/, 'puh'], [/^[Gg]rr+$/, 'grur'], [/^[Bb]rr+$/, 'burr'], [/^[Nn]+g+h$|^[Nn]n+g$|^[Nn]+h$/, 'ungh'],
@@ -721,7 +721,7 @@ function tidy(t) {
     .replace(/\b(Univ|Govt|Assn)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, a, mid) => ({ Univ: 'University', Govt: 'Government', Assn: 'Association' }[a]) + (mid !== undefined ? '' : '.'))   // Univ. of Arcana
     .replace(/(?<![\w.$])(\d+(?:\.\d+)?)(?:B|bn)(?=\s+(?:views|followers|subscribers|people|users|players|dollars|years|credits|coins|gold|souls|lives|stars|galaxies|cells|neurons|parameters|tons)\b)/g, '$1 billion')   // 3B credits (Room 12B stays)
     .replace(/(?<![\w.$])(\d+(?:\.\d+)?)[mM](?=\s+(?:views|followers|subs|subscribers|people|users|readers|players|fans|likes|downloads|copies|gold|coins|credits|souls|lives|years|troops|soldiers|monsters)\b)/g, '$1 million')   // 3.4m followers (was "meters")
-    .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|wpm|ft|yds|yd|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|m\/s|m|g|L|KB|MB|GB|TB|PB|kHz|MHz|GHz|Hz|Mbps|Gbps|kWh|kW|MW|kV|mAh|V|W)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
+    .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|wpm|ft|yds|yd|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|m\/s|m|g|L|KB|MB|GB|TB|PB|kHz|MHz|GHz|Hz|Mbps|Gbps|kWh|kW|MW|kV|mAh|ly|V|W)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
       (m, pre, n, u, at, all) => {
         // "a 10 km run", "the 5 kg bag" -> ten-kilometer run (the adjective form takes the singular)
         const next = /^\s+(\p{Ll}+)/u.exec(all.slice(at + m.length));
@@ -730,6 +730,7 @@ function tidy(t) {
         // "60 W", "1,000 V shock" -> watts, volts (not "5 W" as in west, "Room 2 V"): only before a full stop or an electrical word
         if ((u === 'V' || u === 'W') && (!/^\s*(?:[.,;!?)]|$|(?:bulbs?|lights?|lasers?|chargers?|batter(?:y|ies)|outlets?|sockets?|shocks?|currents?|power|output|motors?|amps?|amplifiers?|speakers?|LEDs?|AC|DC)\b)/.test(all.slice(at + m.length)) ||
             (/^\s*[.,;!?)]|^\s*$/.test(all.slice(at + m.length)) && !/\b(?:watts?|volts?|power|bulb|lamp|light|laser|output|rated|drew|draws|uses|used|charger|battery|voltage|wattage|outlet|socket|shock|current|motor|engine|grid|plant|generator|reactor|cells?|wire|line)\b/i.test(all.slice(Math.max(0, at - 40), at))))) return m;
+        if (u === 'g' && /\b(?:pull(?:ed|ing|s)?|pulling)\s$/i.test(all.slice(0, at) + pre)) return pre + n + (n === '1' ? ' gee' : ' gees');   // g-force: "pulled 9 g" ("nine grams")
         if (u === 'L' && /\b(?:[Ll]evel|[Ff]loor|[Rr]oom|[Aa]pt|[Ss]eat|[Rr]ow|[Gg]ate|[Uu]nit|[Bb]lock|[Ss]ize)\s$/.test(all.slice(0, at) + pre)) return m;   // Room 2L, size 3L
         if ((u === 'kWh' || !/[\/h]$|ps$/.test(u)) && /(?:^|\s)(?:[Aa]n?|[Tt]he|[Hh]is|[Hh]er|[Tt]heir|[Mm]y|[Yy]our|[Oo]ur)\s$/.test(all.slice(0, at) + pre) && next &&
             !/^(?:away|long|tall|wide|high|deep|thick|off|of|from|to|and|or|per|in|on|at|by|for|ahead|behind|down|up|later|ago|left|more|less|each|apiece|north|south|east|west|he|she|it|they|we|you|that|which|who|was|were|is|are|had|has|felt|seemed|took|went)$/.test(next[1]))
@@ -881,6 +882,7 @@ function tidy(t) {
     .replace(/\bHoT(s?)\b/g, 'hot$1').replace(/\b([Ii])sekai(s?)\b/g, (m, i, p) => (i === 'I' ? 'E' : 'e') + 'esekai' + p).replace(/\bn00b(s?)\b/g, 'noob$1').replace(/\bpwn(ed|s)?\b/g, (m, e) => (e === 'ed' ? 'pohnd' : e ? 'pones' : 'pone'))   // "eye-skai", "N zero zero B", "P W ned"
    .replace(/\b(PvPvE|PvP|PvE|GvG|GvE|RvR)(s?)\b/g, (m, w, s) => w.toUpperCase() + s)   // heal over time ("ho-tee"), "pee-vee pee"
     .replace(/\bPK(ers?|ing)\b/g, 'PK-$1')   // player killer: "pee-ker"
+    .replace(/\bBBQs?\b/g, (m) => 'barbecue' + m.slice(3)).replace(/\bETAs?\b/g, (m) => 'E-TA' + m.slice(3)).replace(/\beta(?=\s+\d)/g, 'E-TA')   // "B-B-Q", "eeta" (eta 10: "omw, eta 10")
     .replace(/\bELO\b/g, 'Eelo').replace(/(?<=\w\s)af(?=[.,!?;:"”'’)]|\s*$)/g, 'A-F')   // game rating ("E-L-O"), "OP af." ("aff")
     // cultivation (xianxia) words and Chinese names the voice says the English way: qi "kai", Xiao "zai-oh", Qing "king"
     .replace(/\b([Qq])i\b/g, (m, q) => (q === 'Q' ? 'C' : 'c') + 'hee').replace(/\b([Xx])ianxia\b/g, (m, x) => (x === 'X' ? 'S' : 's') + 'hee-en-shah').replace(/\b([Ww])uxia\b/g, '$1oo-shah').replace(/\b([Dd])antian(s?)\b/g, '$1ahntyen$2').replace(/\b([Ss])hixiong\b/g, '$1hih-shee-ong')
