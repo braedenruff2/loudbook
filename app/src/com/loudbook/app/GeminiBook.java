@@ -160,6 +160,9 @@ final class GeminiBook {
         int chars;            // letters of the ones recorded
         int extra;            // of them, in the chapters after the first
         double seconds;       // how long the recording is
+        long firstAudioMs = -1, totalMs;   // when its first audio arrived, and when it was all in (from asking)
+        long firstReadyMs = -1;            // when its first sentence was ready to play
+        boolean broke;                     // the connection broke part way (not Google stopping early)
     }
 
     /** Part of a request: sentences [from, to) of a chapter, filed in that chapter's book. */
@@ -231,11 +234,19 @@ final class GeminiBook {
         Follow fo = asr != null && asr.loaded() ? new Follow(ch, from, texts, n0, partNo, f, asr) : null;
         if (fo != null) fo.start();
         CloudVoice.Pcm pcm;
+        final long t0 = System.currentTimeMillis();
+        final long[] firstAudio = {-1};
+        CloudVoice.Progress prog = (bytes) -> {
+            if (firstAudio[0] < 0 && bytes > 0) firstAudio[0] = System.currentTimeMillis() - t0;
+            if (fo != null) fo.arrived(bytes);
+        };
+        boolean broke = false;
         try {
-            pcm = CloudVoice.speakToFile(key, model, voice, style, text.toString(), f, 600_000, fo != null && stream, fo == null ? null : fo::arrived);
+            pcm = CloudVoice.speakToFile(key, model, voice, style, text.toString(), f, 600_000, fo != null && stream, prog);
         } catch (IOException e) {
             if (fo != null) fo.finish();
             if (fo != null && fo.filed > 0) {
+                broke = true;
                 // the connection broke part way: keep what was heard (the rest is asked for again)
                 pcm = new CloudVoice.Pcm(f, 0, fo.bytes & ~1L, 24000);
             } else {
@@ -245,38 +256,69 @@ final class GeminiBook {
             }
         }
         if (fo != null) fo.finish();
-        Align.Result r = Align.align(pcm, chars, pace, CloudVoice.preambleChars(style));
+        long total = pcm.samples(), minGap = pcm.rate / 5;
         int filed = fo == null ? 0 : fo.filed;
-        int count = Math.max(r.count, filed);
+        int count;
+        long[] starts;
+        if (fo == null) {
+            // no recogniser: the cuts go at the pauses that fit the sentence lengths best
+            Align.Result r = Align.align(pcm, chars, pace, CloudVoice.preambleChars(style));
+            count = r.count;
+            if (paceOut != null) paceOut[0] = r.cutShort ? 0 : r.secPerChar;
+            starts = new long[count + 1];
+            for (int k = 0; k < count; k++) starts[k] = Math.max(k == 0 ? 0 : starts[k - 1] + 1, r.start[k]);
+            starts[count] = count == 0 ? 0 : r.cutShort ? r.end[count - 1] : total;
+        } else {
+            // the words heard say how far the recording got and where every sentence starts. (The
+            // pause fit isn't used here: on a long chapter it can lose its place, and it used to
+            // decide how many sentences there were, so the end of every recording was dropped and
+            // asked for again, as if Google had stopped early.)
+            int n = texts.size();
+            double[] st = AsrAligner.sentenceStarts(fo.words, texts);
+            int lastHeard = -1;
+            for (int k = 0; k < n; k++) if (!Double.isNaN(st[k])) lastHeard = k;
+            boolean ended = lastHeard >= 0 && !broke && AsrAligner.endHeard(fo.words, texts.get(lastHeard), st[lastHeard], total / (double) pcm.rate);
+            count = Math.max(filed, lastHeard < 0 ? 0 : lastHeard + (ended ? 1 : 0));
+            if (count > 0) {
+                int m1 = Math.min(n, count + 1);
+                double[] st1 = java.util.Arrays.copyOf(st, m1);
+                long[] guess = new long[m1];
+                double spc = AsrAligner.pace(st, texts);
+                double at = Double.isNaN(st[0]) ? 0 : st[0];
+                for (int k = 0; k < m1; k++) { guess[k] = Math.round(at * pcm.rate); at += Math.max(1, texts.get(k).length()) * spc; }
+                long[] byWords = AsrAligner.cuts(st1, texts.subList(0, m1), Align.pausesOf(fo.rms()), pcm.rate, guess);
+                if (paceOut != null) paceOut[0] = count == n ? spc : 0;
+                starts = new long[count + 1];
+                for (int k = 0; k <= count; k++) {
+                    if (k < filed) { starts[k] = fo.starts.get(k); continue; }
+                    if (k == filed && filed > 0) { starts[k] = fo.lastEnd; continue; }
+                    if (k == count) { starts[k] = count == lastHeard + 1 ? total : byWords[k] >= 0 ? byWords[k] : total; break; }
+                    starts[k] = k < byWords.length ? byWords[k] : -1;
+                    if (k == 0 && starts[k] < 0) starts[k] = 0;
+                }
+                // any not placed (or out of order): shared out by length between the ones around them
+                for (int k = Math.max(1, filed + 1); k < count; k++) {
+                    if (starts[k] > starts[k - 1] + minGap / 2) continue;
+                    int b = k + 1;
+                    while (b < count && starts[b] <= starts[k - 1] + minGap / 2) b++;
+                    long hi = starts[b];
+                    double tot = 0, upto = 0;
+                    for (int q = k - 1; q < b; q++) { double l = Math.max(1, texts.get(q).length()); tot += l; if (q < k) upto += l; }
+                    starts[k] = starts[k - 1] + Math.round((hi - starts[k - 1]) * upto / tot);
+                }
+                for (int k = 1; k <= count; k++) starts[k] = Math.max(starts[k], starts[k - 1] + 1);
+                starts[count] = Math.min(total, Math.max(starts[count], starts[count - 1] + 1));
+            } else starts = new long[]{0};
+        }
         if (count == 0) {
             synchronized (this) { if (parts.size() == partNo + 1) parts.remove(partNo); }
             throw new IOException("Gemini's recording didn't match the chapter text");
         }
-        if (paceOut != null) paceOut[0] = r.cutShort ? 0 : r.secPerChar;
-        long total = pcm.samples(), minGap = pcm.rate / 5;
-        // where the rest of the sentences start: from the words heard if there are any, else the pauses
-        long[] starts = new long[count + 1];
-        long[] byWords = null;
-        if (fo != null) {
-            int n = Math.min(texts.size(), count + 1);
-            double[] st = AsrAligner.sentenceStarts(fo.words, texts.subList(0, n));
-            long[] old = new long[n];
-            for (int k = 0; k < n; k++) old[k] = k < r.count ? r.start[k] : -1;
-            byWords = AsrAligner.cuts(st, texts.subList(0, n), Align.pausesOf(fo.rms()), pcm.rate, old);
-        }
-        boolean cutShort = count < texts.size();
-        for (int k = 0; k <= count; k++) {
-            if (k < filed) { starts[k] = fo.starts.get(k); continue; }
-            if (k == filed && filed > 0) { starts[k] = fo.lastEnd; continue; }
-            long w = byWords != null && k < byWords.length ? byWords[k] : -1;
-            long p = k < r.count ? r.start[k] : -1;
-            long prev = k == 0 ? -1 : starts[k - 1];
-            long v = w >= 0 && w > prev + minGap ? w : p >= 0 && p > prev + minGap ? p : -1;
-            if (k == count) v = !cutShort ? total : v >= 0 ? v : r.count == count ? r.end[count - 1] : total;
-            else if (v < 0) v = k == 0 ? 0 : Math.min(total, prev + minGap);
-            starts[k] = Math.min(total, v);
-        }
         Made m = new Made();
+        m.firstAudioMs = firstAudio[0];
+        m.broke = broke;
+        m.totalMs = System.currentTimeMillis() - t0;
+        m.firstReadyMs = fo != null && fo.firstFiledAt > 0 ? fo.firstFiledAt - t0 : m.totalMs;
         int count0 = Math.min(count, n0);
         m.asked = texts.size(); m.seconds = total / (double) pcm.rate;
         for (int k = 0; k < count; k++) m.chars += chars[k];
@@ -329,6 +371,7 @@ final class GeminiBook {
         int filed;                                         // sentences filed so far
         final List<Long> starts = new ArrayList<>();
         long lastEnd;
+        volatile long firstFiledAt;
         List<AsrAligner.Word> words = new ArrayList<>();
 
         Follow(Chapter ch, int from, List<String> texts, int limit, int part, File f, AsrAligner asr) {
@@ -401,6 +444,7 @@ final class GeminiBook {
             if (add.isEmpty()) return;
             synchronized (GeminiBook.this) {
                 if (closed) return;
+                if (filed == 0) firstFiledAt = System.currentTimeMillis();
                 starts.addAll(st2); lastEnd = end; filed = k;
                 parts.set(part, new CloudVoice.Pcm(f, 0, (fed * 2), rate));
                 all.addAll(add);

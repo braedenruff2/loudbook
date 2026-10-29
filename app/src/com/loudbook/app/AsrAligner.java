@@ -179,6 +179,41 @@ final class AsrAligner {
     }
 
     /**
+     * Whether a sentence was said to its end: some of its last few words were heard after it
+     * started, or (if the recogniser didn't make them out) the recording goes on long enough
+     * after its start for the whole sentence. A recording that Google stopped early ends inside
+     * its last sentence.
+     */
+    static boolean endHeard(List<Word> heard, String sentence, double start, double recordingSecs) {
+        List<String> tw = new ArrayList<>();
+        for (String w : sentence.split("[\\s\\u2014\\u2013-]+")) { String n = norm(w); if (!n.isEmpty()) tw.add(n); }
+        if (tw.isEmpty()) return true;
+        String last = tw.get(tw.size() - 1), before = tw.size() >= 2 ? tw.get(tw.size() - 2) : null;
+        int seen = 0;
+        for (Word w : heard) {
+            if (w.t < start - 0.1) continue;
+            String n = norm(w.w);
+            // (near its end: not the same word earlier in the sentence)
+            if (++seen < tw.size() * 0.6) continue;
+            // its last word, or the one before it with time left in the recording for the last
+            if (n.equals(last) || n.equals(before) && recordingSecs - w.t >= 0.25 + 0.06 * last.length()) return true;
+        }
+        // not made out: long enough for the whole sentence at an ordinary pace (0.055 s a letter)?
+        return recordingSecs - start >= 0.75 * Math.max(0.6, sentence.length() * 0.055);
+    }
+
+    /** The reader's pace in this recording (seconds a letter), from the sentences whose starts were heard; 0.065 if too few. */
+    static double pace(double[] st, List<String> texts) {
+        int a = -1, b = -1;
+        for (int k = 0; k < st.length; k++) if (!Double.isNaN(st[k])) { if (a < 0) a = k; b = k; }
+        if (a < 0 || b <= a) return 0.065;
+        double chars = 0;
+        for (int k = a; k < b; k++) chars += Math.max(1, texts.get(k).length());
+        double spc = (st[b] - st[a]) / chars;
+        return spc > 0.02 && spc < 0.2 ? spc : 0.065;
+    }
+
+    /**
      * Where each sentence should start (samples; -1 where it can't be told), from the times the
      * recogniser heard their first words. If most were heard, the rest are filled in between them
      * (by length, at the nearest pause) so the whole recording is re-cut from the words.
@@ -218,8 +253,12 @@ final class AsrAligner {
                 } else if (a >= 0) guess = at[a] + (old[k] - old[a]) / (double) rate;       // after the last heard one: keep the spacing
                 else guess = Double.NaN;                                                     // before the first heard one: leave it
                 if (Double.isNaN(guess)) continue;
+                // (at a pause near the guess, but not the one the next heard sentence starts at: a
+                // short sentence just before it, "II.", would otherwise get no length at all)
+                double lo = a >= 0 ? at[a] + 0.2 : 0, hi = b < n ? at[b] - 0.2 : Double.MAX_VALUE;
                 double c = guess, best = 0.6;
-                for (double[] p : pauses) { double d = Math.abs(p[0] - guess); if (d < best) { best = d; c = p[0]; } }
+                for (double[] p : pauses) { double d = Math.abs(p[0] - guess); if (d < best && p[0] > lo && p[0] < hi) { best = d; c = p[0]; } }
+                if (c <= lo || c >= hi) c = Math.max(lo, Math.min(hi, guess));
                 at[k] = c;
             }
         }

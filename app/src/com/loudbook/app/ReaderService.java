@@ -110,6 +110,12 @@ public class ReaderService extends Service {
         speed = prefs.getFloat("speed", 1f);
         pauseScale = prefs.getFloat("pauseScale", 1f);
         cloudRetryAt = prefs.getLong("gemRetryAt", 0);
+        if (!prefs.getBoolean("gemFix1", false)) {
+            // (until 0.2.16x the end of every recording was taken for Google stopping early, which made
+            // each request a little smaller and could turn streaming off for the day: start afresh)
+            prefs.edit().remove("gemCapChars").remove("gemNoStream").putBoolean("gemFix1", true).apply();
+        }
+        if (KindleService.testBuild() && !prefs.getString("gemHost", "").isEmpty()) CloudVoice.HOST = prefs.getString("gemHost", "");   // (the emulator test's stand-in Google)
         if (prefs.getBoolean("cloudOn", false)) main.postDelayed(this::asrReady, 3000);   // (so Gemini can stream from the first chapter)
         sid = prefs.getInt("voice", 3);
         autoNext = prefs.getBoolean("autoNext", true);
@@ -396,6 +402,7 @@ public class ReaderService extends Service {
         preloadNext(chapter);
         if (!wake.isHeld()) wake.acquire(6 * 60 * 60 * 1000L);
         final int myGen = ++gen;
+        playAt = System.currentTimeMillis();
         player = new Thread(() -> loop(myGen), "loudbook-player");
         player.start();
         state();
@@ -427,7 +434,8 @@ public class ReaderService extends Service {
     private void dropClips() {
         synchronized (clips) {
             for (Future<Voice.Clip> f : clips.values()) f.cancel(false);
-            clips.clear(); clipsGen++;
+            for (Future<Voice.Clip> f : fills.values()) f.cancel(false);
+            clips.clear(); fills.clear(); clipsGen++; filling = false;
             book = null;
         }
     }
@@ -453,8 +461,19 @@ public class ReaderService extends Service {
                             // unless the setting says to record it too
                             int first = b.firstHave(ch.size());
                             if (first > idx && !prefs.getBoolean("gemBackfill", false)) {
-                                if (idx == pos) main.post(() -> status("Gemini didn't record this part (you started further on). The regular voice reads it.", false));
+                                if (idx == pos && !filling) main.post(() -> status("Gemini didn't record this part (you started further on). The regular voice reads it.", false));
+                                Future<Voice.Clip> fl;
+                                synchronized (clips) { fl = fills.get(idx); }
+                                if (fl != null) return fl.get();                // (the phone's voice made it already, while Gemini got ready)
                                 return learned(makeHere(text, want, sp), want);
+                            }
+                            // a sentence or two Gemini left out in the middle of a recording (or that
+                            // couldn't be told apart in it): the phone's voice reads it, rather than a
+                            // request just for it (each one costs one of the day's few, and a wait)
+                            int after = b.nextHave(idx, ch.size());
+                            if (first >= 0 && first < idx && after < ch.size() && after - idx <= 3 && !covered(ch, idx)) {
+                                Log.i("LoudbookTest", "gemini: sentence " + idx + " isn't in the recording; the phone's voice reads it");
+                                return learned(makeVoiced(ch, idx, text, want, sp), want);
                             }
                             // the request that covers it (its sentences are ready one by one as it arrives)
                             Future<?> rec = recording(ch, b, idx);
@@ -714,13 +733,16 @@ public class ReaderService extends Service {
     }
 
     // ---------------------------------------------------------------- Gemini (online voice)
-    private final ExecutorService cloudPool = Executors.newSingleThreadExecutor();   // one request at a time
+    private final ExecutorService cloudPool = Executors.newSingleThreadExecutor();   // recording ahead: one request at a time
+    // a request that reading is waiting for (a chapter just opened) doesn't queue behind a
+    // recording-ahead request for another chapter, which can take minutes
+    private final ExecutorService cloudNow = Executors.newSingleThreadExecutor();
     private final ExecutorService waiters = Executors.newCachedThreadPool();
     private volatile GeminiBook book;               // the playing chapter's recording
     private String bookKey = "";
-    private Future<?> pending;                      // the request in progress
-    private int pendingFrom = -1, pendingTo = -1;
-    private String pendingKey = "";
+    /** A request on its way, and what it covers: {book key, from, to} for each chapter in it. */
+    private static final class Req { Future<?> f; final List<Object[]> covers = new ArrayList<>(); }
+    private final List<Req> inflight = new ArrayList<>();
     volatile String cloudError = "";
     volatile long cloudRetryAt = 0;
     volatile String cloudStatus = "";
@@ -756,8 +778,6 @@ public class ReaderService extends Service {
         prefs.edit().putString("gemDay", today).putInt("gemCount", cloudRequestsToday() + 1).apply();
     }
 
-    // what the request on its way covers: {book key, from, to} for each chapter in it
-    private final List<Object[]> pendingCovers = new ArrayList<>();
 
     private GeminiBook bookOf(Chapter c) {
         GeminiBook b = GeminiBook.open(cloudRoot(), GeminiBook.key(c.url, cVoice(), cModel(), cStyle()));
@@ -771,22 +791,44 @@ public class ReaderService extends Service {
      */
     private synchronized Future<?> recording(Chapter ch, GeminiBook b, int i) {
         String k = GeminiBook.key(ch.url, cVoice(), cModel(), cStyle());
-        if (pending != null && !pending.isDone()) {
-            for (Object[] c : pendingCovers) if (k.equals(c[0]) && i >= (int) c[1] && i < (int) c[2]) return pending;
-            for (Object[] c : pendingCovers) if (k.equals(c[0]) && i > (int) c[1]) return pending;   // wait: it may run on far enough
-        }
-        return request(ch, b, i, true);
+        inflight.removeIf(r -> r.f.isDone());
+        for (Req r : inflight) for (Object[] c : r.covers) if (k.equals(c[0]) && i >= (int) c[1] && i < (int) c[2]) return r.f;
+        for (Req r : inflight) for (Object[] c : r.covers) if (k.equals(c[0]) && i > (int) c[1] && i - (int) c[2] < 40) return r.f;   // wait: it may run on far enough
+        // just before one on its way (it was started a little ahead, while the phone's voice reads up to it)
+        for (Req r : inflight) for (Object[] c : r.covers) if (k.equals(c[0]) && i < (int) c[1] && (int) c[1] - i < 80) return r.f;
+        return request(ch, b, i, true, true);
     }
 
-    /** Starts a request from sentence i of a chapter (after the one on its way, if any). */
-    private synchronized Future<?> request(Chapter ch, GeminiBook b, int i, boolean follow) {
-        List<GeminiBook.Span> plan = plan(ch, b, i);
-        pendingCovers.clear();
-        for (GeminiBook.Span sp : plan) pendingCovers.add(new Object[]{GeminiBook.key(sp.ch.url, cVoice(), cModel(), cStyle()), sp.from, sp.to});
-        pendingKey = (String) pendingCovers.get(0)[0];
-        pending = cloudPool.submit(() -> { record(plan, follow); return null; });
-        return pending;
+    /** Whether sentence i of ch comes before where the request on its way for ch starts (so Gemini won't have it soon). */
+    private synchronized boolean beforeRequest(Chapter ch, int i) {
+        String k = GeminiBook.key(ch.url, cVoice(), cModel(), cStyle());
+        for (Req r : inflight) if (!r.f.isDone()) for (Object[] c : r.covers) if (k.equals(c[0]) && i < (int) c[1]) return true;
+        return false;
     }
+
+    /** Whether a request on its way covers sentence i of ch. */
+    private synchronized boolean covered(Chapter ch, int i) {
+        String k = GeminiBook.key(ch.url, cVoice(), cModel(), cStyle());
+        inflight.removeIf(r -> r.f.isDone());
+        for (Req r : inflight) for (Object[] c : r.covers) if (k.equals(c[0]) && i >= (int) c[1] && i < (int) c[2]) return true;
+        return false;
+    }
+
+    private synchronized boolean requesting() { inflight.removeIf(r -> r.f.isDone()); return !inflight.isEmpty(); }
+
+    /** Starts a request from sentence i of a chapter. now: reading is waiting for it (it goes ahead of recording ahead). */
+    private synchronized Future<?> request(Chapter ch, GeminiBook b, int i, boolean follow, boolean now) {
+        inflight.removeIf(r -> r.f.isDone());
+        int at = pos;
+        if (now && ch == chapter && i >= at && i - at <= READ_AHEAD && b.nextHave(at, ch.size()) > i) i = Math.max(i, leadFrom(ch, b, at));
+        List<GeminiBook.Span> plan = plan(ch, b, i, sizeFor(ch, b, i));
+        Req r = new Req();
+        for (GeminiBook.Span sp : plan) r.covers.add(new Object[]{GeminiBook.key(sp.ch.url, cVoice(), cModel(), cStyle()), sp.from, sp.to});
+        r.f = (now && !inflight.isEmpty() ? cloudNow : cloudPool).submit(() -> { record(plan, follow); return null; });
+        inflight.add(r);
+        return r.f;
+    }
+    private Future<?> request(Chapter ch, GeminiBook b, int i, boolean follow) { return request(ch, b, i, follow, false); }
 
     /** Letters a request can hold (Google stops longer ones early): learned from the recordings. */
     private int capChars() { return prefs.getInt("gemCapChars", 24000); }
@@ -796,9 +838,9 @@ public class ReaderService extends Service {
      * already, or what a request can hold), and if there's room left, on into the next chapters
      * whose text is already loaded, so no part of a request goes to waste.
      */
-    private List<GeminiBook.Span> plan(Chapter ch, GeminiBook b, int i) {
+    private List<GeminiBook.Span> plan(Chapter ch, GeminiBook b, int i, int cap) {
         List<GeminiBook.Span> out = new ArrayList<>();
-        int cap = capChars(), used = 0;
+        int used = 0;
         Chapter c = ch; GeminiBook cb = b; int f = i;
         for (int hops = 0; hops < 5 && c != null; hops++) {
             int end = cb.nextHave(f, c.size()), t = f;
@@ -847,8 +889,8 @@ public class ReaderService extends Service {
             // streamed and listened to as it arrives (reading starts in seconds), when the
             // recogniser is ready; otherwise the whole recording first, timed afterwards
             String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date());
-            boolean stream = !today.equals(prefs.getString("gemNoStream", ""));
-            AsrAligner live = asrReady();
+            boolean stream = streamToday();
+            AsrAligner live = asrNow();
             made = b.fetch(ch, from, to, prefs.getString("cloudKey", ""), cModel(), cVoice(), cStyle(),
                 prefs.getFloat("gemPace:" + cVoice(), 0f), pace, live, new ArrayList<>(plan.subList(1, plan.size())), stream);
             got = made.count;
@@ -860,12 +902,15 @@ public class ReaderService extends Service {
             // a stream that stops early (Google sometimes cuts streamed speech off after a minute)
             // would cost a request per minute: ask for whole recordings for the rest of the day
             boolean short_ = made.count + made.extra < made.asked;
-            if (made.streamed && short_ && made.seconds < 150) prefs.edit().putString("gemNoStream", today).apply();
+            boolean cutOff = made.streamed && short_ && !made.broke && made.seconds < 150;
+            if (cutOff) prefs.edit().putString("gemNoStream", today).apply();
             // how much a request can hold: when Google stops one early, that's the most (a little
             // less, to be safe); when a long one comes back whole, it can hold at least that much
-            else if (short_ && made.chars > 3000) prefs.edit().putInt("gemCapChars", Math.max(4000, made.chars * 95 / 100)).apply();
+            else if (short_ && !made.broke && made.chars > 3000) prefs.edit().putInt("gemCapChars", Math.max(4000, made.chars * 95 / 100)).apply();
             else if (!short_ && made.chars > capChars() * 0.85) prefs.edit().putInt("gemCapChars", Math.min(60000, made.chars * 115 / 100)).apply();
             if (pace[0] > 0) prefs.edit().putFloat("gemPace:" + cVoice(), (float) pace[0]).apply();
+            learnSpeed(made, short_);
+            noteTiming(made, short_, cutOff);
             cloudError = "";
         } catch (CloudVoice.Limited ex) {
             // Google says when requests are available again: wait exactly that long
@@ -881,6 +926,9 @@ public class ReaderService extends Service {
             main.post(() -> status("Gemini: " + cloudError + ". Another voice reads for now.", false));
             throw ex;
         }
+        if (KindleService.testBuild())
+            for (int k = from; k < from + got; k++) Log.i("LoudbookTest", "gemini cut " + k + ": " + Math.round(b.startOf(k) * 1000.0 / 24000) / 1000.0
+                + " " + b.secondsOf(k) + " | " + ch.chunks.get(k).say);
         if (!made.timed) refineLater(ch, b, made);
         workSecs += (System.currentTimeMillis() - t0) / 1000.0;
         GeminiBook.trim(cloudRoot(), 800L << 20);
@@ -892,6 +940,99 @@ public class ReaderService extends Service {
         }
     }
 
+    private String today() { return new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date()); }
+
+    /** Whether today's requests are streamed (Google sends the audio as it's made; reading starts within seconds). */
+    private boolean streamToday() { return !today().equals(prefs.getString("gemNoStream", "")) && prefs.getBoolean("gemExact", true); }
+
+    /** Google's wait before audio comes (s), and how fast it makes a whole recording (seconds of audio a second), learned from requests. */
+    private double gemLatency() { return prefs.getFloat("gemLat", 6f); }
+    private double gemRate() { return prefs.getFloat("gemRate", 1.5f); }
+    private double gemPace() { float p = prefs.getFloat("gemPace:" + cVoice(), 0f); return p > 0.02 && p < 0.2 ? p : 0.065; }
+
+    private void learnSpeed(GeminiBook.Made m, boolean short_) {
+        if (m.firstAudioMs <= 0 || m.seconds < 5) return;
+        SharedPreferences.Editor e = prefs.edit();
+        double first = m.firstAudioMs / 1000.0;
+        if (m.streamed) e.putFloat("gemLat", (float) (0.6 * gemLatency() + 0.4 * Math.min(60, first)));
+        else {
+            // all at once: the audio comes once the whole recording is made
+            double r = m.seconds / Math.max(1, first - Math.min(gemLatency(), first * 0.5));
+            e.putFloat("gemRate", (float) Math.max(0.3, Math.min(20, 0.5 * gemRate() + 0.5 * r)));
+        }
+        e.apply();
+    }
+
+    /** One line per request, newest first, for Settings ("Gemini timing"): what took how long. */
+    private void noteTiming(GeminiBook.Made m, boolean short_, boolean noStream) {
+        String when = new java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(new java.util.Date());
+        String line = when + "  " + m.chars + " letters, " + mmss(m.seconds) + " of audio (" + (m.count + m.extra) + " of " + m.asked + " sentences), "
+            + (m.streamed ? "streamed" : "all at once") + ": first audio after " + (m.firstAudioMs < 0 ? "-" : secs(m.firstAudioMs))
+            + ", first sentence ready " + secs(m.firstReadyMs) + ", all in after " + mmss(m.totalMs / 1000.0)
+            + (short_ ? "; Google stopped early" : "") + (noStream ? " (so whole recordings for the rest of today)" : "");
+        Log.i("LoudbookTest", "gemini timing: " + line);
+        String old = prefs.getString("gemTimes", "");
+        String[] ls = old.isEmpty() ? new String[0] : old.split("\n");
+        StringBuilder sb = new StringBuilder(line);
+        for (int k = 0; k < Math.min(11, ls.length); k++) sb.append('\n').append(ls[k]);
+        prefs.edit().putString("gemTimes", sb.toString()).apply();
+    }
+    private static String secs(long ms) { return String.format(java.util.Locale.US, "%.1f s", ms / 1000.0); }
+    private static String mmss(double s) { long t = Math.round(s); return t < 60 ? t + " s" : (t / 60) + ":" + String.format(java.util.Locale.US, "%02d", t % 60); }
+
+    /** Seconds of recording ready from where reading is up to sentence i of ch (ch: this chapter or the next). */
+    private double readyAhead(Chapter ch, GeminiBook b, int i) {
+        Chapter cur = chapter;
+        if (cur == null) return 0;
+        double s = 0;
+        if (ch == cur) { for (int k = pos; k < i; k++) s += b.secondsOf(k); return s; }
+        GeminiBook cb = book;
+        if (cb != null) for (int k = pos; k < cur.size(); k++) s += cb.secondsOf(k);
+        for (int k = 0; k < i; k++) s += b.secondsOf(k);
+        return s;
+    }
+
+    /**
+     * How many letters a request from sentence i should ask for. Streamed: as many as Google
+     * allows (the audio comes as it's made). All at once: only as much as Google can make before
+     * the recording already there runs out, so reading never stops to wait (the first request,
+     * with nothing ahead, about a minute's worth); each one after can be bigger.
+     */
+    private int sizeFor(Chapter ch, GeminiBook b, int i) {
+        int cap = capChars();
+        if (streamToday() && asr.loaded()) return cap;
+        double ahead = readyAhead(ch, b, i);
+        double secs = Math.max(ahead < 1 ? FIRST_SECS : 120, (ahead - gemLatency() - 10) * gemRate());
+        return (int) Math.max(900, Math.min(cap, secs / gemPace()));
+    }
+
+    /**
+     * Reading starts with nothing recorded: the phone's voice reads while Google makes the first of
+     * the recording, so the request starts where the phone's voice will have got to by then (not
+     * at the first sentence, which would be read twice over, and the recording of it wasted).
+     */
+    private int leadFrom(Chapter ch, GeminiBook b, int i) {
+        if (!prefs.getBoolean("gemFill", true) || !voice.ready()) return i;
+        boolean streamed = streamToday() && asr.loaded();
+        double wait = gemLatency() + (streamed ? 3 : FIRST_SECS / gemRate());
+        double phonePace = 0.068 / Math.max(0.5, speed);                 // (the phone's voice: seconds a letter)
+        double t = 0;
+        int k = i;
+        while (k < ch.size() - 1 && t < wait && !b.has(k)) { t += Math.max(1, ch.chunks.get(k).say.length()) * phonePace + 0.3; k++; }
+        // (from the start of a paragraph if one starts near there, so Gemini takes over at a natural place)
+        for (int q = k; q < Math.min(ch.size(), k + 4); q++) if (q > 0 && ch.chunks.get(q).block != ch.chunks.get(q - 1).block) { k = q; break; }
+        if (k > i) Log.i("LoudbookTest", "gemini: starting from sentence " + k + " (about " + Math.round(wait) + " s ahead); the phone's voice reads up to it");
+        return k;
+    }
+    /** All at once (not streamed), the first request at a start: about this many seconds of audio. */
+    private static final double FIRST_SECS = 150;
+
+    /** How much recording to keep ready ahead of reading: when less is left, the next request starts. */
+    private double aheadWanted() {
+        if (streamToday() && asr.loaded()) return 180;
+        return Math.min(1800, gemLatency() + capChars() * gemPace() / gemRate() + 60);
+    }
+
     /**
      * Records ahead while reading: when less than a few minutes of recording is left ahead of
      * where reading is (in this chapter and on into the next), the next request starts, packed
@@ -900,7 +1041,7 @@ public class ReaderService extends Service {
      */
     private void recordAhead(Chapter ch, int here) {
         if (!cloudOn() || !prefs.getBoolean("gemPrefetch", true) || "kindle".equals(ch.site) || "text".equals(ch.site)) return;
-        synchronized (this) { if (pending != null && !pending.isDone()) return; }
+        if (requesting()) return;
         GeminiBook b = bookFor(ch);
         double ahead = 0;
         int k = here;
@@ -916,7 +1057,7 @@ public class ReaderService extends Service {
             if (j >= nx.size()) return;                               // (all of the next one is recorded too)
             c = nx; cb = nb; miss = j;
         }
-        if (ahead > 180) return;
+        if (ahead > aheadWanted()) return;
         Log.i("LoudbookTest", "gemini: " + Math.round(ahead) + " s recorded ahead, recording on from " + (c == ch ? "sentence " + miss : "the next chapter's sentence " + miss));
         request(c, cb, miss, c == ch);
     }
@@ -939,6 +1080,24 @@ public class ReaderService extends Service {
             asrThread.submit(() -> { try { AsrAligner.fetch(d, null); } catch (Throwable t) { Log.w(TAG, "recogniser download", t); } asrFetching = false; return null; });
         }
         return null;
+    }
+
+    /**
+     * The recogniser for a request about to go: fetched now if it isn't on the phone yet (20 MB,
+     * once). Without it a recording can't be streamed, and is timed by its pauses only, which on a
+     * long chapter can lose its place (sentences out of step with the voice).
+     */
+    private AsrAligner asrNow() {
+        AsrAligner a = asrReady();
+        if (a != null || !prefs.getBoolean("gemExact", true)) return a;
+        File d = new File(getFilesDir(), "asr");
+        try {
+            // (asrReady started fetching it in the background: wait for that, a minute and a half at most)
+            for (int k = 0; k < 900 && asrFetching && !AsrAligner.downloaded(d); k++) Thread.sleep(100);
+            if (!AsrAligner.downloaded(d)) return null;
+            asr.load(d);
+            return asr;
+        } catch (Throwable t) { Log.w(TAG, "recogniser", t); return null; }
     }
 
     private void refineLater(Chapter ch, GeminiBook b, GeminiBook.Made m) {
@@ -967,6 +1126,35 @@ public class ReaderService extends Service {
     private String prefetchAsked = "";
 
     private volatile Voice.Clip current;
+
+    // the phone's voice reading while Gemini gets ready
+    private volatile boolean filling;
+    private final Map<Integer, Future<Voice.Clip>> fills = new HashMap<>();
+    private volatile long playAt;
+    private volatile int firstSoundFor = -1;
+
+    private boolean geminiReads(Chapter ch) { return cloudOn() && !"kindle".equals(ch.site) && !"text".equals(ch.site); }
+
+    /** The phone's voice for sentence i (made once, a little ahead). */
+    private Future<Voice.Clip> fillFor(Chapter ch, int i) {
+        if (i < 0 || i >= ch.size()) return null;
+        synchronized (clips) {
+            Future<Voice.Clip> f = fills.get(i);
+            if (f != null) return f;
+            final int want = sid; final float sp = speed; final String text = ch.chunks.get(i).say;
+            f = synth.submit(() -> learned(makeVoiced(ch, i, text, want, sp), want));
+            fills.put(i, f);
+            return f;
+        }
+    }
+
+    /** Seconds of audio queued in the track and not heard yet. */
+    private double queuedSecs() {
+        AudioTrack t = track;
+        if (t == null) return 0;
+        long head = t.getPlaybackHeadPosition() & 0xffffffffL;
+        return Math.max(0, framesWritten - head) / (double) Math.max(1, t.getSampleRate());
+    }
 
     /**
      * The player thread. Sentences are streamed into the AudioTrack back to back, with no waiting
@@ -1021,16 +1209,49 @@ public class ReaderService extends Service {
                 Future<Voice.Clip> f = clipFor(next);
                 for (int k = 1; k <= READ_AHEAD; k++) clipFor(next + k);
                 final int keepFrom = next - 1;
-                synchronized (clips) { clips.keySet().removeIf(k -> k < keepFrom); }
+                synchronized (clips) { clips.keySet().removeIf(k -> k < keepFrom); fills.keySet().removeIf(k -> k < keepFrom); }
                 if (f == null) return;
                 Voice.Clip c = null;
+                boolean gem = geminiReads(ch), byPhone = false;
+                long waitFrom = System.currentTimeMillis();
+                Future<Voice.Clip> fill = null;
                 while (gen == myGen) {
                     try { c = f.get(20, java.util.concurrent.TimeUnit.MILLISECONDS); break; }
                     catch (java.util.concurrent.TimeoutException te) { heard(ch, marks, myGen); }
                     catch (Exception e) { if (gen != myGen) return; Log.w(TAG, "sentence failed", e); c = null; break; }
+                    // Gemini hasn't got this sentence yet (a chapter just opened, or Google is slow) and
+                    // nothing is left playing: the phone's voice reads until Gemini catches up, rather
+                    // than silence. Gemini takes over at the first sentence it has ready.
+                    if (gem && fill == null && prefs.getBoolean("gemFill", true) && voice.ready() && queuedSecs() < 0.3
+                        && System.currentTimeMillis() - waitFrom > (filling || beforeRequest(ch, next) ? 0 : 1500)) {
+                        fill = fillFor(ch, next);
+                        for (int k = 1; k <= 2; k++) fillFor(ch, next + k);
+                        if (!filling) {
+                            Log.i("LoudbookTest", "gemini: not ready at sentence " + next + "; the phone's voice reads meanwhile");
+                            main.post(() -> status("Gemini is getting ready; the phone's voice reads until it is\u2026", false));
+                        }
+                    }
+                    if (fill != null && fill.isDone()) {
+                        try { c = fill.get(); byPhone = true; } catch (Exception e) { c = null; }
+                        if (c != null) break;
+                        fill = null;
+                    }
                 }
                 if (gen != myGen) return;
+                if (gem && c != null) {
+                    if (filling && !byPhone) { Log.i("LoudbookTest", "gemini: ready again from sentence " + next); main.post(() -> status("", false)); }
+                    filling = byPhone;
+                }
+                if (c != null && firstSoundFor != myGen) {
+                    firstSoundFor = myGen;
+                    long ms = System.currentTimeMillis() - playAt;
+                    String how = !gem ? "" : byPhone ? " (the phone's voice, while Gemini got ready)" : " (Gemini)";
+                    Log.i("LoudbookTest", "start: first sound after " + ms + " ms" + how);
+                    if (gem) prefs.edit().putString("gemStart", new java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(new java.util.Date())
+                        + "  pressed play: first sound after " + secs(ms) + how).apply();
+                }
                 if (c != null) {
+                    Log.i("LoudbookTest", "clip " + next + ": " + Math.round(c.seconds() * 100) / 100.0 + " s" + (!gem ? "" : byPhone ? ", phone's voice" : ", gemini"));
                     if (next == pos) main.post(() -> status("", false));
                     AudioTrack t = ensureTrack(c.rate);
                     current = c;
@@ -1072,7 +1293,7 @@ public class ReaderService extends Service {
     private double gapAfter(Chapter ch, int i) {
         if (i + 1 >= ch.size()) return 0;
         GeminiBook b = book;
-        if (b != null && b.joined(i) && prefs.getBoolean("cloudOn", false)) return 0;   // Gemini's own pause is in the recording
+        if (b != null && !filling && b.joined(i) && prefs.getBoolean("cloudOn", false)) return 0;   // Gemini's own pause is in the recording
         Chapter.Chunk now = ch.chunks.get(i), nx = ch.chunks.get(i + 1);
         String t = now.text.trim().replaceAll("[\"'\u201d\u2019)\\]*]+$", "");
         double g;

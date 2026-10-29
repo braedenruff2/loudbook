@@ -20,7 +20,7 @@ import java.util.regex.Pattern;
  * Plain Java, no Android classes, so it can be tested on its own.
  */
 final class CloudVoice {
-    static final String HOST = System.getProperty("loudbook.gemini", "https://generativelanguage.googleapis.com/v1beta/");   // (tests point it elsewhere)
+    static volatile String HOST = System.getProperty("loudbook.gemini", "https://generativelanguage.googleapis.com/v1beta/");   // (tests point it elsewhere)
 
     /** The 30 Gemini voices, with Google's one-word descriptions. Good narrators first. */
     static final String[][] VOICES = {

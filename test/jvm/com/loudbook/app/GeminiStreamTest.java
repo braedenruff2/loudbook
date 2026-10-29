@@ -26,6 +26,7 @@ public class GeminiStreamTest {
     static volatile String mode;                      // how the stand-in answers
     static final List<String> bodies = new ArrayList<>();
     static byte[] pcm;                                // the audio it sends (16-bit, 24 kHz)
+    static int stopAt = -1;                           // bytes: Google stops the recording there (mid-sentence)
 
     public static void main(String[] a) throws Exception {
         java.io.File files = new java.io.File(a[0]);
@@ -67,8 +68,9 @@ public class GeminiStreamTest {
                 Thread.sleep(1500);                                          // (Gemini takes a moment to begin)
                 if (interactions) o.write(("data: {\"event_type\":\"interaction.start\",\"interaction\":{\"id\":\"x\"}}\n\n").getBytes(StandardCharsets.UTF_8));
                 int piece = rate;                                            // bytes: half a second
-                for (int at = 0; at < pcm.length; at += piece) {
-                    byte[] part = java.util.Arrays.copyOfRange(pcm, at, Math.min(pcm.length, at + piece));
+                int len = stopAt > 0 ? stopAt : pcm.length;
+                for (int at = 0; at < len; at += piece) {
+                    byte[] part = java.util.Arrays.copyOfRange(pcm, at, Math.min(len, at + piece));
                     String b64 = Base64.getEncoder().encodeToString(part);
                     String ev = interactions
                         ? "data: {\"event_type\":\"step.delta\",\"index\":0,\"delta\":{\"type\":\"audio\",\"mime_type\":\"audio/l16\",\"data\":\"" + b64 + "\"}}\n\n"
@@ -88,7 +90,7 @@ public class GeminiStreamTest {
         check("the stand-in Google is used", CloudVoice.HOST.equals(host));
 
         String style = CloudVoice.DEFAULT_STYLE;
-        String[][] runs = {{"streamed", "0"}, {"streamed, started mid-chapter", "7"}, {"old api", "0"}, {"all at once", "0"}};
+        String[][] runs = {{"streamed", "0"}, {"streamed, started mid-chapter", "7"}, {"old api", "0"}, {"all at once", "0"}, {"streamed, Google stops early", "0"}};
         for (String[] run : runs) {
             mode = run[0];
             int from = Integer.parseInt(run[1]);
@@ -107,7 +109,10 @@ public class GeminiStreamTest {
                 for (int g = 0; g < gap; g++) { out.write(0); out.write(0); n++; }
             }
             pcm = out.toByteArray();
-            double seconds = pcm.length / 2.0 / rate;
+            // (Google stops early: halfway through sentence 12)
+            int stopIn = 12;
+            stopAt = run[0].contains("stops early") ? (int) ((truth[stopIn] + truth[stopIn + 1]) / 2 * rate) * 2 : -1;
+            double seconds = (stopAt > 0 ? stopAt : pcm.length) / 2.0 / rate;
 
             java.io.File dir = new java.io.File(files, "book-" + run[0].replace(' ', '-').replace(",", ""));
             deleteAll(dir);
@@ -138,7 +143,15 @@ public class GeminiStreamTest {
                 check(run[0] + ": the style goes in Google's style field", lastReq.contains("\"speech_metadata\",\"style\":"));
                 check(run[0] + ": the text sent is the chapter's text alone", lastReq.contains("\"text\":\"" + text[from]));
             } else check(run[0] + ": the older API gets the text with no style in front", !lastReq.contains("narrator") && lastReq.contains("\"text\":\"" + text[from]));
-            check(run[0] + ": every sentence recorded", m.count == text.length - from);
+            if (stopAt > 0) {
+                // the sentences before the one it stopped in are kept; that one is asked for again (not played cut off)
+                check(run[0] + ": the sentences it got through are kept, the one it stopped in isn't (" + m.count + ")", m.count == stopIn && b.has(stopIn - 1) && !b.has(stopIn));
+                stopAt = -1;
+                continue;
+            }
+            // (the end of a recording isn't taken for Google stopping early: the last sentences were
+            // dropped, and asked for again in another request)
+            check(run[0] + ": every sentence recorded, to the end", m.count == text.length - from && b.has(text.length - 1));
             check(run[0] + ": timed by the words heard", m.timed);
             if (live) {
                 check(run[0] + ": streamed", req.contains("\"stream\":true") || req.contains("streamGenerateContent"));

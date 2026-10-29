@@ -280,6 +280,15 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         }
         else if (Intent.ACTION_VIEW.equals(i.getAction()) && i.getData() != null) url = i.getData().toString();
         if (i.getBooleanExtra("dual", false)) prefs.edit().putBoolean("dualVoice", true).apply();             // (tests)
+        if (KindleService.testBuild() && i.hasExtra("gemhost")) {
+            // (the emulator test: Gemini against a stand-in Google on the test runner)
+            String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date());
+            prefs.edit().putBoolean("cloudOn", true).putString("cloudKey", "test-key").putString("gemHost", i.getStringExtra("gemhost"))
+                .putString("gemNoStream", i.getBooleanExtra("gemwhole", false) ? today : "").putBoolean("gemFill", i.getBooleanExtra("gemfill", true))
+                .putLong("gemRetryAt", 0).apply();
+            CloudVoice.HOST = i.getStringExtra("gemhost");
+            if (svc != null) svc.cloudChanged();
+        }
         if (i.getBooleanExtra("home", false)) { i.removeExtra("home"); web.loadUrl(HOME); return true; }      // (screenshots in CI)
         if (i.getBooleanExtra("settings", false)) { i.removeExtra("settings"); main.postDelayed(this::showSettings, 1500); }   // (screenshots in CI)
         if (url == null) return false;
@@ -1085,6 +1094,26 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             prefs.getBoolean("gemBackfill", false), (b, on) -> prefs.edit().putBoolean("gemBackfill", on).apply()));
         box.addView(toggle("Exact sentence timing (the phone listens to each recording once to find where every sentence starts)",
             prefs.getBoolean("gemExact", true), (b, on) -> prefs.edit().putBoolean("gemExact", on).apply()));
+        box.addView(toggle("Start at once: while Gemini is still getting a chapter ready, the phone's voice reads, and Gemini takes over as soon as it can",
+            prefs.getBoolean("gemFill", true), (b, on) -> prefs.edit().putBoolean("gemFill", on).apply()));
+        Button gTimes = smallButton("Gemini timing (what took how long)");
+        box.addView(gTimes);
+        gTimes.setOnClickListener(v -> {
+            String start = prefs.getString("gemStart", ""), times = prefs.getString("gemTimes", "");
+            String d = (start.isEmpty() ? "" : "Last start: " + start + "\n\n")
+                + (times.isEmpty() ? "No Gemini requests yet." : "Requests, newest first:\n" + times)
+                + "\n\nGoogle's wait before audio: about " + Math.round(prefs.getFloat("gemLat", 6f)) + " s; whole recordings made at about "
+                + Math.round(prefs.getFloat("gemRate", 1.5f) * 10) / 10.0 + "x listening speed; up to " + prefs.getInt("gemCapChars", 24000) + " letters a request"
+                + (new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date()).equals(prefs.getString("gemNoStream", ""))
+                    ? "; not streamed today (a stream was cut off)" : "; streamed") + ".";
+            TextView t = text(12, C_INK, false);
+            t.setText(d); t.setTextIsSelectable(true); t.setPadding(dp(16), dp(8), dp(16), dp(8));
+            ScrollView sv = new ScrollView(this); sv.addView(t);
+            new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("Gemini timing").setView(sv)
+                .setPositiveButton("Copy", (dd, w) -> ((android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE))
+                    .setPrimaryClip(android.content.ClipData.newPlainText("Loudbook Gemini timing", d)))
+                .setNegativeButton("Close", null).show();
+        });
         Runnable showG = () -> {
             String err = svc != null ? svc.cloudError : "";
             int used = svc != null ? svc.cloudRequestsToday() : 0;
