@@ -858,7 +858,8 @@ function tidy(t) {
       const [one, many] = { '£': ['pound', 'pounds'], '¥': ['yen', 'yen'], '₹': ['rupee', 'rupees'], '₩': ['won', 'won'] }[c] || ['euro', 'euros'];
       return n + ' ' + (n === '1' ? one : many) + (p && +p ? ' ' + (+p) : '');
     })
-    .replace(/\b(\d{1,3}(?:,\d{3})+|\d+)(?:[.,](\d\d))?\s?€/g, (m, n, c) => n + (n === '1' ? ' euro' : ' euros') + (c && +c ? ' ' + +c : ''))   // 20€, 4,99 €
+    .replace(/\b(\d{1,3}(?:,\d{3})+|\d+)(?:[.,](\d\d?))?\s?€/g, (m, n, c) => n + (n === '1' ? ' euro' : ' euros') + (c && +c ? ' ' + +c.padEnd(2, '0') : ''))   // 20€, 4,99 €, 3,5 € (euros fifty)
+    .replace(/\b(\d+),(\d\d?)\s?(?:[Ee]uros?|EUR)\b/g, (m, n, c) => n + (n === '1' ? ' euro' : ' euros') + (+c ? ' ' + +c.padEnd(2, '0') : ''))   // 3,5 Euro (was "three, five Euro")
     .replace(/\b([AT])\/N\b/g, (m, k) => (k === 'A' ? "Author's note" : "Translator's note"))   // A/N, T/N
     .replace(/\b(Mon|Tue|Tues|Wed|Thu|Thur|Thurs|Fri|Sat|Sun)\s?[-–]\s?(Mon|Tue|Tues|Wed|Thu|Thur|Thurs|Fri|Sat|Sun)\b/g,
       (m, a, b) => DAYS[a] + ' to ' + DAYS[b])                         // Mon-Fri
@@ -882,6 +883,9 @@ function tidy(t) {
     .replace(/\bPK(ers?|ing)\b/g, 'PK-$1')   // player killer: "pee-ker"
     // cultivation (xianxia) words and Chinese names the voice says the English way: qi "kai", Xiao "zai-oh", Qing "king"
     .replace(/\b([Qq])i\b/g, (m, q) => (q === 'Q' ? 'C' : 'c') + 'hee').replace(/\b([Xx])ianxia\b/g, (m, x) => (x === 'X' ? 'S' : 's') + 'hee-en-shah').replace(/\b([Ww])uxia\b/g, '$1oo-shah').replace(/\b([Dd])antian(s?)\b/g, '$1ahntyen$2').replace(/\b([Ss])hixiong\b/g, '$1hih-shee-ong')
+    .replace(/\b([Xx])iulian\b/g, (m, x) => (x === 'X' ? 'S' : 's') + 'heeo-lien').replace(/\b([Ss])himei\b/g, '$1hih-may').replace(/\b([Gg])ege\b/g, '$1uh-guh').replace(/\b([Jj])iejie\b/g, '$1ee-eh-jee-eh').replace(/\bLaozu\b/g, 'Lao-zoo')   // "zi-yoo-lian", "shy-my", "jeej", "lay-ah-zoo"
+    .replace(/\bXiao(?=[a-z]{2,}\b)(?!mi\b)/g, 'Sheeyow-')   // Xiaofan, Xiaochun ("zai-ah-fan"); Xiaomi is fine
+    .replace(/(\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|few|several|dozen|many))(\s+)li\b/g, '$1$2lee')   // a hundred li (distance, "lie")
     .replace(/\b(Xiao|Qiao|Xian|Qian|Xiang|Qiang|Xia|Xing|Xin|Xue|Xie|Xuan|Xun|Xu|Xi|Qing|Qin|Qiu|Quan)\b/g, (m) => ({ Xiang: 'Shee-ahng', Qiang: 'Chee-ahng', Xue: 'Shoo-weh', Xie: 'Shee-eh', Xuan: 'Shoo-ahn', Xun: 'Shoon', Quan: 'Choo-wen', Xiao: 'Sheeyow', Qiao: 'Cheeyow', Xian: 'Shee-en', Qian: 'Chee-en', Xia: 'Shee-ah', Xing: 'Shing', Xin: 'Shin', Xu: 'Shoo', Xi: 'Shee', Qing: 'Ching', Qin: 'Chin', Qiu: 'Chee-oo' })[m])
     .replace(/\bIRL\b/g, 'I-R-L').replace(/\b(?:idk|IDK)\b/g, 'I-D-K').replace(/\b(?:brb|BRB)\b/g, 'be right back').replace(/\b(?:afk|AFK)\b/g, 'A-F-K').replace(/(^|[\s"“'‘(])np(?=[\s"”'’.,!?)]|$)/g, '$1no problem')
     .replace(/\b(omg|OMG|wtf|WTF|lmao|LMAO)\b/g, (m) => m.toUpperCase().split('').join('-')).replace(/(\d)-yrs?-old\b/g, '$1-year-old')   // O-M-G (the voice said "omg"), a 30-yr-old
