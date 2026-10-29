@@ -891,6 +891,11 @@ function tidy(t) {
     .replace(/\bIRL\b/g, 'I-R-L').replace(/\b(?:idk|IDK)\b/g, 'I-D-K').replace(/\b(?:brb|BRB)\b/g, 'be right back').replace(/\b(?:afk|AFK)\b/g, 'A-F-K').replace(/(^|[\s"“'‘(])np(?=[\s"”'’.,!?)]|$)/g, '$1no problem')
     .replace(/\b(omg|OMG|wtf|WTF|lmao|LMAO)\b/g, (m) => m.toUpperCase().split('').join('-')).replace(/(\d)-yrs?-old\b/g, '$1-year-old')   // O-M-G (the voice said "omg"), a 30-yr-old
     .replace(/\b(?:tbh|TBH)\b/g, 'to be honest').replace(/\b(?:imo|IMHO|imho)\b/g, (m) => (m.length > 3 ? 'in my humble opinion' : 'in my opinion'))
+    .replace(/\b(?:AFAIK|afaik)\b/g, 'as far as I know').replace(/\b(?:IIRC|iirc)\b/g, 'I-I-R-C').replace(/(^|[\s"“'‘(])irl(?=[\s"”'’.,!?)]|$)/g, '$1I-R-L')   // "a-fake", "ih-urk", "url"
+    .replace(/\b([Ll])vl(s?)\b/g, '$1evel$2').replace(/\bLVL(?=\s+UP\b)/g, 'LEVEL')   // "two new lvls", "LVL UP!" (Lvl 5 is done above): "L-V-L"
+    .replace(/\bcf\.(?=\s)/g, 'compare').replace(/\bviz\.(?=\s)/g, 'namely')   // "see-eff", "viz"
+    .replace(/(\d)\s?pt\b(?=\s+(?:font|type|text|size|print|letters?)\b)/g, '$1 point')   // "12 pt font": "pee-tee"
+    .replace(/(^|[\s"“'‘(\[])\/w(?=\s+\p{Lu})/gu, '$1whisper')   // chat command "/w Elara ...": "slash double-u"
     .replace(/(^|[\s"“'‘(])gg(?=[\s"”'’.,!?)]|$)/g, '$1G-G')   // good game, said as letters
     // chat shorthand in messages and system logs (the voice read them as one word: "nvm", "thx")
     .replace(/(^|[\s"“'‘(])(r u|c u|u r|c ya|btw|BTW|jk|JK|nvm|NVM|ofc|OFC|thx|THX|pls|PLS|plz|PLZ|ikr|IKR|ngl|NGL|smh|SMH|ttyl|TTYL|lmk|LMK|cya|wyd|WYD|gtg|GTG|ty|rn|u|ez|gl hf|GL HF|gg wp|GG WP|omw|OMW|idc|IDC|tbf|TBF|hbu|wbu|g2g|ily|tmi|bff|ppl|smth|sth|rly|prolly|obv|yw|lmfao|LMFAO|srsly|SRSLY|l8r|gr8|b4|2nite|4ever|m8|w8)(?=[\s"”'’.,!?)]|$)/g,
