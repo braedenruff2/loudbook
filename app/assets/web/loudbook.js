@@ -11,7 +11,10 @@ if (!window.LB) {
   if (globalThis.LB_SITES) return;
 
   const BLOCK_SEL = 'p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, tr, dt, dd';
-  const SKIP_SEL = '.author-note-portlet, .author-note, nav, header, footer, aside, .comments, #comments, script, style, noscript, template, button';
+  // (.sharedaddy etc.: WordPress's "Share this:" / "Like this:" / "Related" boxes; .nav-links: its
+  // "Next post" links, in date order rather than story order)
+  const SKIP_SEL = '.author-note-portlet, .author-note, nav, header, footer, aside, .comments, #comments, script, style, noscript, template, button, ' +
+    '.sharedaddy, .sd-sharing, .sd-like, #jp-post-flair, .jp-relatedposts, #jp-relatedposts, .wpcnt, .post-navigation, .nav-links';
   const BLOCK_TAGS = /^(P|DIV|LI|BLOCKQUOTE|H[1-6]|TR|UL|OL|PRE|DT|DD|HR|TABLE|SECTION|ARTICLE)$/;
 
   const q = (doc, sel) => { try { return doc.querySelector(sel); } catch { return null; } };
@@ -43,6 +46,13 @@ if (!window.LB) {
     return out.replace(/[ \t\u00a0]+/g, ' ').replace(/ *— *(\n|$)/g, '$1').replace(/ *\n */g, '\n').replace(/\n{2,}/g, '\n').trim();
   }
   const speakable = (t) => /[\p{L}\p{N}]/u.test(t);
+  // A paragraph that is only chapter links ("Previous Chapter | Next Chapter", "< Prev  Index  Next >"),
+  // which many story blogs put above and below the chapter. Dropped when it's a link or says "chapter"
+  // or "contents", so a story line like "Next!" stays.
+  const NAV_WORD = String.raw`(?:(?:next|previous|prev|last|first)(?:\s+(?:chapter|part|page|episode))?|(?:table\s+of\s+)?contents|index|toc|chapter\s+list|home)`;
+  const NAV_ONLY = new RegExp(String.raw`^[\W_]*${NAV_WORD}(?:[\W_]+${NAV_WORD})*[\W_]*$`, 'i');
+  const isNavOnly = (text, el) => NAV_ONLY.test(text) &&
+    ((el && el.querySelector && !!el.querySelector('a[href]')) || /chapter|contents/i.test(text));
 
   // ---------------------------------------------------------------- generic fallbacks
   function genericContainer(doc, isHidden) {
@@ -79,8 +89,10 @@ if (!window.LB) {
     return { parts, chapterAt };
   }
   function genericTitle(doc) {
-    const h1 = q(doc, 'article h1, main h1, h1');
-    if (h1 && txt(h1)) return txt(h1);
+    // (in order: on a blog the first <h1> is often the blog's name in the page header)
+    for (const sel of ['.entry-title', 'article h1', 'main h1']) { const t = txt(q(doc, sel)); if (t) return t; }
+    const h1 = qa(doc, 'h1').find(h => !h.closest('#masthead, .site-header, .site-title, .site-branding, [role="banner"]') && txt(h));
+    if (h1) return txt(h1);
     const { parts, chapterAt } = titleSplit(doc);
     return parts[chapterAt >= 0 ? chapterAt : 0] || '';
   }
@@ -104,14 +116,35 @@ if (!window.LB) {
       const m = p.match(/^(.{2,100}?)[\s,:–—-]+(?:chapter|chap\.|ch\.?|episode|ep\.)\s*\d/i);
       if (m && !isSite(m[1])) return m[1].trim();
     }
+    // a blog that is one story ("Worm", "Pale") names itself; its address is the last resort
+    const name = meta ? (meta.getAttribute('content') || '').trim() : '';
+    if (name && name.length <= 80 && !/\.(com|net|org|io|co|me|blog)$/i.test(name)) return name;
     return host;
   }
-  function genericNav(doc, url, dir, accept) {
-    const rel = q(doc, `link[rel="${dir}"][href], a[rel="${dir}"][href]`);
-    if (rel && (!accept || accept(rel.getAttribute('href')))) return abs(rel.getAttribute('href'), url);
+  // (blog themes' "Next post" links go by date, not story order)
+  const DATE_NAV = '.post-navigation, .nav-links, #nav-single, #nav-below, #nav-above, .navigation';
+  function genericNav(doc, url, dir, accept, roots) {
     const word = dir === 'next' ? '(next|continue to next part)' : '(prev|previous)';
     const re = new RegExp(`^\\s*(\\W\\s*)?${word}(\\s*(chapter|part|page))?(\\s*\\W)?\\s*$`, 'i');
+    const linkIn = (els) => {
+      for (const r of els) for (const a of r.querySelectorAll('a[href]')) {
+        if (!re.test(txt(a)) || a.closest(DATE_NAV)) continue;
+        const href = a.getAttribute('href') || '';
+        if (href === '#' || href.startsWith('javascript:') || a.classList.contains('disabled')) continue;
+        if (!accept || accept(href)) return abs(href, url);
+      }
+      return null;
+    };
+    // a site Loudbook doesn't know: the author's own link in the chapter first
+    const own = roots && roots.length ? linkIn(roots) : null;
+    if (own) return own;
+    const rels = qa(doc, `link[rel="${dir}"][href], a[rel="${dir}"][href]`);
+    const ok = (l) => !accept || accept(l.getAttribute('href'));
+    const rel = roots ? (rels.find(l => ok(l) && !l.closest(DATE_NAV)) || null) : (rels[0] && ok(rels[0]) ? rels[0] : null);
+    if (rel) return abs(rel.getAttribute('href'), url);
+    const dated = roots ? (rels.find(ok) || null) : null;
     for (const a of doc.querySelectorAll('a[href]')) {
+      if (dated && a.closest(DATE_NAV)) continue;
       if (!re.test(txt(a))) continue;
       if (a.hasAttribute('disabled') || a.classList.contains('disabled')) continue;
       const href = a.getAttribute('href') || '';
@@ -119,7 +152,7 @@ if (!window.LB) {
       if (accept && !accept(href)) continue;
       return abs(href, url);
     }
-    return null;
+    return dated ? abs(dated.getAttribute('href'), url) : null;
   }
 
   // ---------------------------------------------------------------- the sites
@@ -274,14 +307,14 @@ if (!window.LB) {
         if (el.tagName === 'TD' || el.tagName === 'TH') continue;
         if (isHidden(el)) continue;
         const text = withoutSkipped(textOf(el, (n) => isHidden(n) || (skip && n.matches && n.matches(skip))), skipText);
-        if (speakable(text)) out.push({ el, text });
+        if (speakable(text) && !isNavOnly(text, el)) out.push({ el, text });
       }
       if (out.length) return out;
     }
     const all = textOf(root, (n) => isHidden(n) || (n.matches && n.matches(skipSel)), true);
     let base = 0;
     for (const line of all.split('\n').map(s => s.trim()).filter(Boolean)) {
-      if (speakable(line) && withoutSkipped(line, skipText)) out.push({ el: root, text: line, shared: true, base });
+      if (speakable(line) && withoutSkipped(line, skipText) && !isNavOnly(line)) out.push({ el: root, text: line, shared: true, base });
       base += squashLen(line);
     }
     return out;
@@ -302,7 +335,7 @@ if (!window.LB) {
     }
     const nav = (dir) => {
       if (site && site[dir]) { const v = site[dir](doc, url); if (v !== undefined) return v; }
-      return genericNav(doc, url, dir, site && site.navAccept);
+      return genericNav(doc, url, dir, site && site.navAccept, site ? null : roots);
     };
     return {
       site: site ? site.id : 'generic',
