@@ -1,3 +1,4 @@
+Story blogs: "Next chapter" links that are pictures or arrows (», >>) are now followed, so the next chapter plays on its own.
 Substack stories: the "Subscribe for free" and "Share" boxes in the middle of a chapter are no longer read aloud.
 Blogger / Blogspot stories (many translation blogs): reads the chapter instead of the blog's sidebar when the post is written in lines rather than paragraphs, and names the story properly instead of taking the chapter's subtitle.
 Gemini on a fresh start: the phone's voice no longer stops for up to a minute after the first sentences (it was making every sentence ahead at once); it reads one sentence at a time until Gemini's audio arrives.

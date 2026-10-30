@@ -140,10 +140,15 @@ if (!window.LB) {
   const DATE_NAV = '.post-navigation, .nav-links, #nav-single, #nav-below, #nav-above, .navigation, #blog-pager, .blog-pager';
   function genericNav(doc, url, dir, accept, roots) {
     const word = dir === 'next' ? '(next|continue to next part)' : '(prev|previous)';
-    const re = new RegExp(`^\\s*(\\W\\s*)?${word}(\\s*(chapter|part|page))?(\\s*\\W)?\\s*$`, 'i');
+    const re = new RegExp(`^\\s*(\\W+\\s*)?${word}(\\s*(chapter|part|page))?(\\s*\\W+)?\\s*$`, 'i');
+    // (the author's own links can be pictures, with "Next" only in the image's alt text, or bare arrows)
+    const arrow = dir === 'next' ? /^[→»›⇒⟶>]+$/ : /^[←«‹⇐⟵<]+$/;
+    const label = (a) => txt(a) || qa(a, 'img').map(i => i.getAttribute('alt') || i.getAttribute('title') || '').join(' ').trim() ||
+      (a.getAttribute('title') || a.getAttribute('aria-label') || '').trim();
     const linkIn = (els) => {
       for (const r of els) for (const a of r.querySelectorAll('a[href]')) {
-        if (!re.test(txt(a)) || a.closest(DATE_NAV)) continue;
+        const l = label(a);
+        if (!(re.test(l) || arrow.test(l.replace(/\s+/g, ''))) || a.closest(DATE_NAV)) continue;
         const href = a.getAttribute('href') || '';
         if (href === '#' || href.startsWith('javascript:') || a.classList.contains('disabled')) continue;
         if (!accept || accept(href)) return abs(href, url);
