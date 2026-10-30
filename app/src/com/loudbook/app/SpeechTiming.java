@@ -97,6 +97,7 @@ final class SpeechTiming {
             boolean spaceAfter = i + 1 >= text.length() || Character.isWhitespace(text.charAt(i + 1))
                 || "\"'”’)]".indexOf(text.charAt(i + 1)) >= 0;
             int strength = 0;
+            if (c == '.' && spaceAfter && abbreviation(text, i)) continue;     // ("Mr. Darcy": no pause there)
             if (".!?…".indexOf(c) >= 0 && spaceAfter) strength = 2;
             else if (",;:".indexOf(c) >= 0 && spaceAfter) strength = 1;
             else if ((c == '—' || c == '–') ) strength = 1;
@@ -107,6 +108,16 @@ final class SpeechTiming {
             out.add(new float[]{f, strength});
         }
         return out;
+    }
+
+    private static final java.util.Set<String> ABBREV = new java.util.HashSet<>(java.util.Arrays.asList(
+        "mr", "mrs", "ms", "dr", "st", "mt", "jr", "sr", "prof", "vs", "etc", "no", "vol", "ch", "lt", "col", "gen", "sgt", "capt", "rev", "hon", "lvl", "lv"));
+    /** The full stop at i ends a short form ("Mr.", "Dr.", an initial "J."), not a sentence. */
+    private static boolean abbreviation(String text, int i) {
+        int a = i;
+        while (a > 0 && Character.isLetter(text.charAt(a - 1))) a--;
+        String w = text.substring(a, i);
+        return (w.length() == 1 && Character.isUpperCase(w.charAt(0))) || ABBREV.contains(w.toLowerCase(java.util.Locale.ROOT));
     }
 
     /** Works out the timing of a clip of speech (mono samples) of the text. */

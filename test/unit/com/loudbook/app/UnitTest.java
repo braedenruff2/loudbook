@@ -106,6 +106,7 @@ public class UnitTest {
             check("timing by the said text: at 'Smith', 2 of 26 written letters", Math.round(st.fracAt(ws[1] + 10) * 26), 2);
             check("timing by the said text: at 'apples', 12 of 26", Math.round(st.fracAt(ws[4] + 10) * 26), 12);
             check("timing by the said text: no change when said as written", SpeechTiming.said2text("a b", "a b") == null, true);
+            check("timing: \"Mr.\" isn't a place to pause", SpeechTiming.breaks("Mr. Collins then returned, slowly.").size(), 1);
         }
         // Kindle page geometry: where sentences and words are, and what a tap points at
         java.util.List<String> ls = Arrays.asList("The road out of the valley was", "older than the town. Mara walked", "it every morning, and liked it.");
