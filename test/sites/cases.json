@@ -142,5 +142,70 @@
   ],
   "next": "https://inkwell.example.net/glass/part10.html",
   "prev": "https://inkwell.example.net/glass/part8.html"
+ },
+ {
+  "page": "scribblehub.html",
+  "url": "https://www.scribblehub.com/read/4411-tower-of-small-gods/chapter/90005/",
+  "site": "scribblehub",
+  "title": "Chapter 5: The Lantern Market",
+  "fiction": "Tower of Small Gods",
+  "count": 3,
+  "first": "The lantern market opened an hour after sunset.",
+  "last": "\"Bargain,\" whispered the god in his pocket. \"They always expect it.\"",
+  "not": [
+   "exams",
+   "New series",
+   "Thanks for the chapter"
+  ],
+  "next": "https://www.scribblehub.com/read/4411-tower-of-small-gods/chapter/90006/",
+  "prev": "https://www.scribblehub.com/read/4411-tower-of-small-gods/chapter/90004/"
+ },
+ {
+  "page": "wattpad.html",
+  "url": "https://www.wattpad.com/1234567-the-clockmaker-s-daughter-part-seven-gears",
+  "site": "wattpad",
+  "title": "Part Seven: Gears",
+  "fiction": "The Clockmaker's Daughter",
+  "count": 3,
+  "first": "Elsie pried the back off the clock with a butter knife.",
+  "last": "\"That isn't possible,\" she said to no one.",
+  "not": [
+   "OMG",
+   "Vote",
+   "Continue to next part"
+  ],
+  "next": "https://www.wattpad.com/1234568-the-clockmaker-s-daughter-part-eight-springs"
+ },
+ {
+  "page": "webnovel.html",
+  "url": "https://www.webnovel.com/book/sword-of-the-quiet-moon_22110033000/the-fourth-seal_31122334455667788",
+  "site": "webnovel",
+  "title": "Chapter 88: The Fourth Seal",
+  "fiction": "Sword of the Quiet Moon",
+  "count": 3,
+  "first": "Lin Yue pressed his palm against the fourth seal.",
+  "last": "Behind him, Elder Mo drew a sharp breath.",
+  "not": [
+   "power stones",
+   "cheer me up",
+   "Nice chapter"
+  ]
+ },
+ {
+  "page": "tumblr.html",
+  "url": "https://inkfox.tumblr.com/post/7355/ember-road-chapter-3",
+  "site": "generic",
+  "title": "Ember Road — Chapter 3",
+  "count": 3,
+  "first": "The caravan stopped where the road turned to glass.",
+  "last": "It held. It always held, until it didn't.",
+  "not": [
+   "coffee",
+   "notes",
+   "Masterlist",
+   "#my writing"
+  ],
+  "next": "https://inkfox.tumblr.com/post/7410/ember-road-chapter-4",
+  "prev": "https://inkfox.tumblr.com/post/7302/ember-road-chapter-2"
  }
 ]

@@ -1,3 +1,4 @@
+Tumblr and story-blog chapters: the "← Chapter 2 | Masterlist | Chapter 4 →" line is no longer read aloud, those links are followed to the next chapter, and the chapter title is used instead of the blog's name.
 Gemini plays its own voice as soon as its audio starts arriving: no more phone voice reading the first sentences, and no waiting for each sentence to be worked out first. The highlight follows as each sentence is found (usually before the voice gets there). The phone's voice filling in is now a setting, off by default.
 Story blogs: "Next chapter" links that are pictures or arrows (», >>) are now followed, so the next chapter plays on its own.
 Substack stories: the "Subscribe for free" and "Share" boxes in the middle of a chapter are no longer read aloud.

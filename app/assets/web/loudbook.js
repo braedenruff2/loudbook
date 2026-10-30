@@ -54,8 +54,15 @@ if (!window.LB) {
   // or "contents", so a story line like "Next!" stays.
   const NAV_WORD = String.raw`(?:(?:next|previous|prev|last|first)(?:\s+(?:chapter|part|page|episode))?|(?:table\s+of\s+)?contents|index|toc|chapter\s+list|home)`;
   const NAV_ONLY = new RegExp(String.raw`^[\W_]*${NAV_WORD}(?:[\W_]+${NAV_WORD})*[\W_]*$`, 'i');
-  const isNavOnly = (text, el) => NAV_ONLY.test(text) &&
-    ((el && el.querySelector && !!el.querySelector('a[href]')) || /chapter|contents/i.test(text));
+  // (also a line made only of links to chapters, "← Chapter 2 | Masterlist | Chapter 4 →" on Tumblr and
+  // story blogs; a "Chapter 4" heading that isn't a link stays)
+  const LINK_WORD = String.raw`(?:${NAV_WORD}|(?:chapter|ch\.?|part|episode)\s*\d+|master\s*list|archive)`;
+  const NAV_LINKS = new RegExp(String.raw`^[\W_]*${LINK_WORD}(?:[\W_]+${LINK_WORD})*[\W_]*$`, 'i');
+  const allLinks = (el) => !!(el && el.querySelector && el.querySelector('a[href]')) &&
+    !/[\p{L}\p{N}]/u.test(Array.from(el.childNodes).filter(n => !(n.nodeType === 1 && n.tagName === 'A')).map(n => n.textContent).join(''));
+  const isNavOnly = (text, el) => (NAV_ONLY.test(text) &&
+    ((el && el.querySelector && !!el.querySelector('a[href]')) || /chapter|contents/i.test(text))) ||
+    (allLinks(el) && NAV_LINKS.test(text));
 
   // ---------------------------------------------------------------- generic fallbacks
   // A blog's own "this is the post" box (Blogger's .post-body; schema.org articleBody). Blogger posts
@@ -100,7 +107,13 @@ if (!window.LB) {
   function genericTitle(doc) {
     // (in order: on a blog the first <h1> is often the blog's name in the page header)
     for (const sel of ['.entry-title', 'article h1', 'main h1']) { const t = txt(q(doc, sel)); if (t) return t; }
-    const h1 = qa(doc, 'h1').find(h => !h.closest('#masthead, .site-header, .site-title, .site-branding, [role="banner"]') && txt(h));
+    // (Tumblr themes: the blog's name is the <h1>, the post's own title an <h2> that is also the page title)
+    const site = (q(doc, 'meta[property="og:site_name"]')?.getAttribute('content') || '').trim().toLowerCase();
+    const dt = (doc.title || '').replace(/\s+/g, ' ').toLowerCase();
+    const head = qa(doc, 'article h2, article h3, main h2').find(h => txt(h).length >= 4 && dt.startsWith(txt(h).toLowerCase()));
+    if (head) return txt(head);
+    const h1 = qa(doc, 'h1').find(h => !h.closest('#masthead, .site-header, .site-title, .site-branding, [role="banner"]') && txt(h) &&
+      txt(h).toLowerCase() !== site);
     if (h1) return txt(h1);
     const { parts, chapterAt } = titleSplit(doc);
     return parts[chapterAt >= 0 ? chapterAt : 0] || '';
@@ -143,12 +156,15 @@ if (!window.LB) {
     const re = new RegExp(`^\\s*(\\W+\\s*)?${word}(\\s*(chapter|part|page))?(\\s*\\W+)?\\s*$`, 'i');
     // (the author's own links can be pictures, with "Next" only in the image's alt text, or bare arrows)
     const arrow = dir === 'next' ? /^[→»›⇒⟶>]+$/ : /^[←«‹⇐⟵<]+$/;
+    // (inside the chapter only: "Chapter 4 →", "← Chapter 2", "Next: Chapter 4 - The Gate")
+    const labelled = dir === 'next' ? /^(?:[^←«‹⇐⟵<→»›⇒⟶>]*\b(?:chapter|ch\.?|part|episode)\s*\d+[^←«‹⇐⟵<→»›⇒⟶>]*\s*[→»›⇒⟶>]+|next\s*(?:chapter|part)?\s*:\s*\S.*)$/i
+      : /^(?:[←«‹⇐⟵<]+\s*[^←«‹⇐⟵<→»›⇒⟶>]*\b(?:chapter|ch\.?|part|episode)\s*\d+[^←«‹⇐⟵<→»›⇒⟶>]*|prev(?:ious)?\s*(?:chapter|part)?\s*:\s*\S.*)$/i;
     const label = (a) => txt(a) || qa(a, 'img').map(i => i.getAttribute('alt') || i.getAttribute('title') || '').join(' ').trim() ||
       (a.getAttribute('title') || a.getAttribute('aria-label') || '').trim();
     const linkIn = (els) => {
       for (const r of els) for (const a of r.querySelectorAll('a[href]')) {
         const l = label(a);
-        if (!(re.test(l) || arrow.test(l.replace(/\s+/g, ''))) || a.closest(DATE_NAV)) continue;
+        if (!(re.test(l) || arrow.test(l.replace(/\s+/g, '')) || (l.length <= 60 && labelled.test(l))) || a.closest(DATE_NAV)) continue;
         const href = a.getAttribute('href') || '';
         if (href === '#' || href.startsWith('javascript:') || a.classList.contains('disabled')) continue;
         if (!accept || accept(href)) return abs(href, url);
