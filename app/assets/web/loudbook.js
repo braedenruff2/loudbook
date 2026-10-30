@@ -14,7 +14,10 @@ if (!window.LB) {
   // (.sharedaddy etc.: WordPress's "Share this:" / "Like this:" / "Related" boxes; .nav-links: its
   // "Next post" links, in date order rather than story order)
   const SKIP_SEL = '.author-note-portlet, .author-note, nav, header, footer, aside, .comments, #comments, script, style, noscript, template, button, ' +
-    '.sharedaddy, .sd-sharing, .sd-like, #jp-post-flair, .jp-relatedposts, #jp-relatedposts, .wpcnt, .post-navigation, .nav-links';
+    '.sharedaddy, .sd-sharing, .sd-like, #jp-post-flair, .jp-relatedposts, #jp-relatedposts, .wpcnt, .post-navigation, .nav-links, ' +
+    // (Substack's "Thanks for reading X! Subscribe for free..." box and "Share" buttons, in the middle of the post)
+    '.subscription-widget-wrap, .subscription-widget-wrap-editor, .captioned-button-wrap, .paywall, [data-component-name="SubscribeWidgetToDOM"], ' +
+    '[data-component-name="ButtonCreateButton"], [data-component-name="CaptionedButtonToDOM"], [data-component-name="SubscribeWidget"]';
   const BLOCK_TAGS = /^(P|DIV|LI|BLOCKQUOTE|H[1-6]|TR|UL|OL|PRE|DT|DD|HR|TABLE|SECTION|ARTICLE)$/;
 
   const q = (doc, sel) => { try { return doc.querySelector(sel); } catch { return null; } };
