@@ -55,7 +55,13 @@ if (!window.LB) {
     ((el && el.querySelector && !!el.querySelector('a[href]')) || /chapter|contents/i.test(text));
 
   // ---------------------------------------------------------------- generic fallbacks
+  // A blog's own "this is the post" box (Blogger's .post-body; schema.org articleBody). Blogger posts
+  // are often lines in <div>s and <br>s with no <p>, so the paragraph count below found the sidebar.
+  const POST_BODY = '.post-body, [itemprop="articleBody"]';
+  const textLen = (el) => (el.textContent || '').replace(/\s+/g, '').length;
   function genericContainer(doc, isHidden) {
+    const posts = qa(doc, POST_BODY).filter(el => !isHidden(el) && !el.parentElement.closest(POST_BODY) && !el.closest(SKIP_SEL));
+    if (posts.length === 1 && textLen(posts[0]) >= 100) return posts[0];
     let best = null, bestScore = 0;
     const seen = new Set();
     for (const p of doc.querySelectorAll('p')) {
@@ -106,9 +112,15 @@ if (!window.LB) {
       const l = p.toLowerCase();
       return l === siteName || l === host || l.replace(/[^a-z0-9]/g, '') === hostWord.replace(/[^a-z0-9]/g, '') || /\.(com|net|org|io|co|me|blog)$/.test(l);
     };
-    const { parts, chapterAt } = titleSplit(doc);
+    // (Blogger titles are "Blog name: Post title"; a part that is the post's own heading, e.g. the
+    // "The Bridge" of "Chapter 12 - The Bridge", isn't the story either)
+    const pre = siteName ? new RegExp('^' + siteName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*:\\s*', 'i') : null;
+    const split = titleSplit(doc);
+    const parts = pre ? split.parts.map(p => p.replace(pre, '')).filter(Boolean) : split.parts, chapterAt = split.chapterAt;
+    const head = genericTitle(doc).toLowerCase();
+    const inHead = (p) => p.length >= 3 && head.includes(p.toLowerCase()) && !head.startsWith(p.toLowerCase() + ' ');
     if (chapterAt >= 0) {
-      const rest = parts.filter((p, i) => i !== chapterAt && !CHAPTER_WORD.test(p) && !isSite(p) && p.length <= 120);
+      const rest = parts.filter((p, i) => i !== chapterAt && !CHAPTER_WORD.test(p) && !isSite(p) && !inHead(p) && p.length <= 120);
       if (rest.length) return rest[0];
     }
     // "The Story Chapter 12" / "The Story, Ch. 3: Title" in one part
@@ -122,7 +134,7 @@ if (!window.LB) {
     return host;
   }
   // (blog themes' "Next post" links go by date, not story order)
-  const DATE_NAV = '.post-navigation, .nav-links, #nav-single, #nav-below, #nav-above, .navigation';
+  const DATE_NAV = '.post-navigation, .nav-links, #nav-single, #nav-below, #nav-above, .navigation, #blog-pager, .blog-pager';
   function genericNav(doc, url, dir, accept, roots) {
     const word = dir === 'next' ? '(next|continue to next part)' : '(prev|previous)';
     const re = new RegExp(`^\\s*(\\W\\s*)?${word}(\\s*(chapter|part|page))?(\\s*\\W)?\\s*$`, 'i');
@@ -297,7 +309,7 @@ if (!window.LB) {
     return kept.length === parts.length ? text : kept.join(' ');
   }
 
-  function blocksOf(root, isHidden, skip, lines, skipText) {
+  function blocksOf(root, isHidden, skip, lines, skipText, generic) {
     const out = [];
     const skipSel = skip ? SKIP_SEL + ', ' + skip : SKIP_SEL;
     if (!lines) {
@@ -309,7 +321,10 @@ if (!window.LB) {
         const text = withoutSkipped(textOf(el, (n) => isHidden(n) || (skip && n.matches && n.matches(skip))), skipText);
         if (speakable(text) && !isNavOnly(text, el)) out.push({ el, text });
       }
-      if (out.length) return out;
+      // (a page Loudbook doesn't know: if the paragraphs hold only a small part of the text, e.g. a
+      // Blogger post in <div> lines with one <p> translator's note, the text is read line by line)
+      if (out.length && !(generic && covers(out, root, isHidden, skipSel) < 0.6)) return out;
+      out.length = 0;
     }
     const all = textOf(root, (n) => isHidden(n) || (n.matches && n.matches(skipSel)), true);
     let base = 0;
@@ -319,6 +334,11 @@ if (!window.LB) {
     }
     return out;
   }
+
+  const covers = (blocks, root, isHidden, skipSel) => {
+    const all = squashLen(textOf(root, (n) => isHidden(n) || (n.matches && n.matches(skipSel))));
+    return all ? blocks.reduce((n, b) => n + squashLen(b.text), 0) / all : 1;
+  };
 
   // Everything Loudbook needs from a chapter page. isHidden decides what counts as invisible:
   // the live page asks the browser; a fetched page has had its hidden rules applied already.
@@ -331,7 +351,7 @@ if (!window.LB) {
     for (const root of roots) {
       const head = site && site.postTitle ? site.postTitle(root) : '';
       if (head && roots.length > 1) blocks.push({ el: root, text: head, shared: true, base: -1, heading: true });
-      blocks.push(...blocksOf(root, isHidden, site && site.skip, !!(site && site.lines), site && site.skipText));
+      blocks.push(...blocksOf(root, isHidden, site && site.skip, !!(site && site.lines), site && site.skipText, !site));
     }
     const nav = (dir) => {
       if (site && site[dir]) { const v = site[dir](doc, url); if (v !== undefined) return v; }
