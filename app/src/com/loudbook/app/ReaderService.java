@@ -917,6 +917,8 @@ public class ReaderService extends Service {
             String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date());
             boolean stream = streamToday();
             AsrAligner live = asrNow();
+            Log.i("LoudbookTest", "gemini: asking Google for sentences " + from + "-" + (to - 1) + (plan.size() > 1 ? " and the next chapter's start" : "")
+                + (ch == chapter && playAt > 0 ? ", " + (System.currentTimeMillis() - playAt) + " ms after play" : "") + (live == null ? " (no recogniser: not streamed)" : ""));
             made = b.fetch(ch, from, to, prefs.getString("cloudKey", ""), cModel(), cVoice(), cStyle(),
                 prefs.getFloat("gemPace:" + cVoice(), 0f), pace, live, new ArrayList<>(plan.subList(1, plan.size())), stream);
             got = made.count;
