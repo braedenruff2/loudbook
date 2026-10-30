@@ -1033,7 +1033,9 @@ public class ReaderService extends Service {
         int cap = capChars();
         if (willStream()) return cap;
         double ahead = readyAhead(ch, b, i);
-        double secs = Math.max(ahead < 1 ? FIRST_SECS : 120, (ahead - gemLatency() - 10) * gemRate());
+        // (the first: smaller when nothing else reads meanwhile, so Gemini's voice comes sooner)
+        boolean fill = prefs.getBoolean("gemFill", false);
+        double secs = Math.max(ahead < 1 ? (fill ? FIRST_SECS : 45) : fill ? 120 : 60, (ahead - gemLatency() - 10) * gemRate());
         return (int) Math.max(900, Math.min(cap, secs / gemPace()));
     }
 
@@ -1043,7 +1045,7 @@ public class ReaderService extends Service {
      * at the first sentence, which would be read twice over, and the recording of it wasted).
      */
     private int leadFrom(Chapter ch, GeminiBook b, int i) {
-        if (!prefs.getBoolean("gemFill", true) || !voice.ready()) return i;
+        if (!prefs.getBoolean("gemFill", false) || !voice.ready()) return i;
         boolean streamed = streamToday();              // (record() streams whenever today allows; it fetches the recogniser first if need be)
         double wait = gemLatency() + (streamed ? (asr.loaded() ? 3 : 8) : FIRST_SECS / gemRate());
         double phonePace = 0.068 / Math.max(0.5, speed);                 // (the phone's voice: seconds a letter)
@@ -1185,6 +1187,79 @@ public class ReaderService extends Service {
         }
     }
 
+    private void logFirstSound(int myGen, boolean gem, boolean byPhone) {
+        firstSoundFor = myGen;
+        long ms = System.currentTimeMillis() - playAt;
+        String how = !gem ? "" : byPhone ? " (the phone's voice, while Gemini got ready)" : " (Gemini)";
+        Log.i("LoudbookTest", "start: first sound after " + ms + " ms" + how);
+        if (gem) prefs.edit().putString("gemStart", new java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(new java.util.Date())
+            + "  pressed play: first sound after " + secs(ms) + how).apply();
+    }
+
+    /**
+     * Plays Gemini's recording from sentence start as it streams in, straight from the file it's
+     * saved to: Gemini's voice from its first word, rather than waiting until the first sentence
+     * can be told apart (or the phone's voice reading meanwhile). Each sentence's highlight goes in
+     * at its place in the audio as soon as the recogniser has found where it starts, so it moves
+     * when the voice gets there; a sentence not found yet just isn't highlighted until it is.
+     * Stops at the end of this chapter's part of the recording (or where Google stopped).
+     * Returns the first sentence it didn't play, or -1 if interrupted.
+     */
+    private int playLive(GeminiBook b, GeminiBook.Live lv, int start, Chapter ch, int myGen, java.util.ArrayDeque<long[]> marks) {
+        final int rate = 24000;
+        AudioTrack t = ensureTrack(rate);
+        applyRate(t, new Voice.Clip(new float[0], rate, 1f, 0));
+        long at = b.partOf(start) == lv.part ? Math.max(0, b.startOf(start)) : 0;
+        final long base = framesWritten - at;                    // (track frame of the recording's sample 0)
+        marks.add(new long[]{framesWritten, start, 0});
+        int nextMark = start + 1;
+        long endAt = -1;
+        boolean starved = false;
+        Log.i("LoudbookTest", "gemini: playing as it arrives, from sentence " + start + " (" + lv.bytes / 2 / rate + " s in so far)");
+        while (gen == myGen) {
+            if (paused) { sleep(40); continue; }
+            // sentences found since: each one's highlight goes in where it starts
+            while (nextMark < lv.to && b.has(nextMark) && b.partOf(nextMark) == lv.part) {
+                long s = b.startOf(nextMark);
+                long len = Math.max(0, b.endOf(nextMark) - s);
+                marks.add(new long[]{base + s, nextMark, len});
+                Log.i("LoudbookTest", "clip " + nextMark + ": " + Math.round(len * 100.0 / rate) / 100.0 + " s, gemini (as it arrives)");
+                nextMark++;
+            }
+            if (nextMark >= lv.to) endAt = b.endOf(lv.to - 1);                // (the end of this chapter's part)
+            boolean done = lv.done;
+            long have = lv.bytes / 2;
+            long upTo;
+            if (endAt >= 0) upTo = Math.min(have, endAt);
+            else if (done) upTo = nextMark - 1 >= start && b.partOf(nextMark - 1) == lv.part ? b.endOf(nextMark - 1) : have;
+            else upTo = have - rate;                                  // (a second behind what's in: room for the sentences to be told apart)
+            if (at < upTo) {
+                int n = (int) Math.min(rate / 5, upTo - at);
+                float[] x;
+                try { x = new CloudVoice.Pcm(lv.f, 0, have * 2, rate).read(at, n); }
+                catch (IOException e) { Log.w(TAG, "gemini live", e); return nextMark; }
+                if (x.length == 0) { sleep(30); continue; }
+                if (t.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) t.play();
+                int off = 0;
+                while (off < x.length && gen == myGen) {
+                    if (paused) { sleep(40); continue; }
+                    int w = t.write(x, off, Math.min(2048, x.length - off), AudioTrack.WRITE_BLOCKING);
+                    if (w < 0) return -1;
+                    off += w; framesWritten += w; at += w; starved = false;
+                    heard(ch, marks, myGen);
+                }
+                continue;
+            }
+            if (done || (endAt >= 0 && at >= endAt)) break;
+            if (!starved && queuedSecs() < 0.05 && at > 0) { starved = true; Log.i("LoudbookTest", "gemini: waiting for Google's audio (" + at / rate + " s played)"); }
+            heard(ch, marks, myGen);
+            sleep(30);
+        }
+        if (gen != myGen) return -1;
+        Log.i("LoudbookTest", "gemini: played as it arrived up to sentence " + (nextMark - 1));
+        return nextMark;
+    }
+
     /** Seconds of audio queued in the track and not heard yet. */
     private double queuedSecs() {
         AudioTrack t = track;
@@ -1252,14 +1327,20 @@ public class ReaderService extends Service {
                 boolean gem = geminiReads(ch), byPhone = false;
                 long waitFrom = System.currentTimeMillis();
                 Future<Voice.Clip> fill = null;
+                int liveNext = -1;
                 while (gen == myGen) {
+                    // Gemini's recording from this sentence is streaming in: play it as it arrives, no
+                    // waiting for its sentences to be told apart (the highlight catches up as they are)
+                    GeminiBook lb = gem && !filling ? book : null;
+                    GeminiBook.Live lv = lb == null ? null : lb.liveAt(next);
+                    if (lv != null && lv.bytes >= 24000) { liveNext = playLive(lb, lv, next, ch, myGen, marks); break; }
                     try { c = f.get(20, java.util.concurrent.TimeUnit.MILLISECONDS); break; }
                     catch (java.util.concurrent.TimeoutException te) { heard(ch, marks, myGen); }
                     catch (Exception e) { if (gen != myGen) return; Log.w(TAG, "sentence failed", e); c = null; break; }
                     // Gemini hasn't got this sentence yet (a chapter just opened, or Google is slow) and
                     // nothing is left playing: the phone's voice reads until Gemini catches up, rather
                     // than silence. Gemini takes over at the first sentence it has ready.
-                    if (gem && fill == null && prefs.getBoolean("gemFill", true) && voice.ready() && queuedSecs() < 0.3
+                    if (gem && fill == null && prefs.getBoolean("gemFill", false) && voice.ready() && queuedSecs() < 0.3
                         && System.currentTimeMillis() - waitFrom > (filling || beforeRequest(ch, next) ? 0 : 1500)) {
                         fill = fillFor(ch, next);
                         for (int k = 1; k <= 2; k++) fillFor(ch, next + k);
@@ -1275,19 +1356,17 @@ public class ReaderService extends Service {
                     }
                 }
                 if (gen != myGen) return;
+                if (liveNext >= 0) {
+                    if (firstSoundFor != myGen) logFirstSound(myGen, true, false);
+                    next = Math.max(next + 1, liveNext);
+                    continue;
+                }
                 if (gem && c != null && !byPhone && phoneRead.contains(next)) byPhone = true;
                 if (gem && c != null) {
                     if (filling && !byPhone) { Log.i("LoudbookTest", "gemini: ready again from sentence " + next); main.post(() -> status("", false)); }
                     filling = byPhone;
                 }
-                if (c != null && firstSoundFor != myGen) {
-                    firstSoundFor = myGen;
-                    long ms = System.currentTimeMillis() - playAt;
-                    String how = !gem ? "" : byPhone ? " (the phone's voice, while Gemini got ready)" : " (Gemini)";
-                    Log.i("LoudbookTest", "start: first sound after " + ms + " ms" + how);
-                    if (gem) prefs.edit().putString("gemStart", new java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(new java.util.Date())
-                        + "  pressed play: first sound after " + secs(ms) + how).apply();
-                }
+                if (c != null && firstSoundFor != myGen) logFirstSound(myGen, gem, byPhone);
                 if (c != null) {
                     Log.i("LoudbookTest", "clip " + next + ": " + Math.round(c.seconds() * 100) / 100.0 + " s" + (!gem ? "" : byPhone ? ", phone's voice" : ", gemini"));
                     if (next == pos) main.post(() -> status("", false));

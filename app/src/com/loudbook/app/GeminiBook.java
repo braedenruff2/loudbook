@@ -206,6 +206,32 @@ final class GeminiBook {
      */
     Made fetch(Chapter ch, int from, int to, String key, String model, String voice, String style, double pace, double[] paceOut, AsrAligner asr,
                List<Span> more, boolean stream) throws IOException {
+        Live before = streaming;
+        try { return fetchNow(ch, from, to, key, model, voice, style, pace, paceOut, asr, more, stream); }
+        finally { Live l = streaming; if (l != null && l != before) l.done = true; }
+    }
+
+    /**
+     * A recording being streamed right now, for playing it as it arrives (from its first sentence,
+     * before any sentence in it has been told apart: the highlight follows as they are).
+     */
+    static final class Live {
+        final int from, to, part; final File f;
+        volatile long bytes;            // of audio saved so far
+        volatile boolean done;          // all in, and every sentence in it filed
+        Live(int from, int to, int part, File f) { this.from = from; this.to = to; this.part = part; this.f = f; }
+    }
+    volatile Live streaming;
+
+    /** The recording streaming in now that starts at sentence i (or null). */
+    Live liveAt(int i) { Live l = streaming; return l != null && !l.done && l.from == i ? l : null; }
+
+    /** Which recording sentence i is in (-1 if none), and where it ends there (samples). */
+    synchronized int partOf(int i) { Seg s = bound.get(i); return s == null ? -1 : s.part; }
+    synchronized long endOf(int i) { Seg s = bound.get(i); return s == null ? -1 : s.end; }
+
+    private Made fetchNow(Chapter ch, int from, int to, String key, String model, String voice, String style, double pace, double[] paceOut, AsrAligner asr,
+               List<Span> more, boolean stream) throws IOException {
         StringBuilder text = new StringBuilder();
         List<String> texts = new ArrayList<>();
         List<Span> spans = new ArrayList<>();
@@ -233,12 +259,15 @@ final class GeminiBook {
         }
         Follow fo = asr != null && asr.loaded() ? new Follow(ch, from, texts, n0, partNo, f, asr) : null;
         if (fo != null) fo.start();
+        final Live lv = fo != null && stream ? new Live(from, from + n0, partNo, f) : null;
+        if (lv != null) streaming = lv;
         CloudVoice.Pcm pcm;
         final long t0 = System.currentTimeMillis();
         final long[] firstAudio = {-1};
         CloudVoice.Progress prog = (bytes) -> {
             if (firstAudio[0] < 0 && bytes > 0) firstAudio[0] = System.currentTimeMillis() - t0;
             if (fo != null) fo.arrived(bytes);
+            if (lv != null) lv.bytes = bytes;
         };
         boolean broke = false;
         try {

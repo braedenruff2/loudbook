@@ -30,7 +30,7 @@ for p in parts:
     first = [l.split("LoudbookTest: ")[1] for l in L if "start: first sound" in l]
     out.append("- " + (first[0] if first else "NO SOUND"))
     for l in L:
-        if any(k in l for k in ("gemini timing:", "not ready at sentence", "ready again from", "starting from sentence", "isn't in the recording")):
+        if any(k in l for k in ("gemini timing:", "not ready at sentence", "ready again from", "starting from sentence", "isn't in the recording", "playing as it arrives", "played as it arrived", "waiting for Google's audio")):
             out.append(f"- {ts(l) - t0:6.1f} s  " + l.split("LoudbookTest: ")[1])
     # what read each sentence, and stalls (a sentence heard later than the one before it could have ended)
     # (per chapter: sentence numbers start again after a page turn)

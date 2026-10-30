@@ -284,7 +284,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             // (the emulator test: Gemini against a stand-in Google on the test runner)
             String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date());
             prefs.edit().putBoolean("cloudOn", true).putString("cloudKey", "test-key").putString("gemHost", i.getStringExtra("gemhost"))
-                .putString("gemNoStream", i.getBooleanExtra("gemwhole", false) ? today : "").putBoolean("gemFill", i.getBooleanExtra("gemfill", true))
+                .putString("gemNoStream", i.getBooleanExtra("gemwhole", false) ? today : "").putBoolean("gemFill", i.getBooleanExtra("gemfill", false))
                 .putLong("gemRetryAt", 0).apply();
             CloudVoice.HOST = i.getStringExtra("gemhost");
             if (svc != null) svc.cloudChanged();
@@ -1094,8 +1094,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             prefs.getBoolean("gemBackfill", false), (b, on) -> prefs.edit().putBoolean("gemBackfill", on).apply()));
         box.addView(toggle("Exact sentence timing (the phone listens to each recording once to find where every sentence starts)",
             prefs.getBoolean("gemExact", true), (b, on) -> prefs.edit().putBoolean("gemExact", on).apply()));
-        box.addView(toggle("Start at once: while Gemini is still getting a chapter ready, the phone's voice reads, and Gemini takes over as soon as it can",
-            prefs.getBoolean("gemFill", true), (b, on) -> prefs.edit().putBoolean("gemFill", on).apply()));
+        box.addView(toggle("While Gemini is getting a chapter ready, the phone's voice reads (off: Gemini's own voice from the start, as soon as its audio arrives)",
+            prefs.getBoolean("gemFill", false), (b, on) -> prefs.edit().putBoolean("gemFill", on).apply()));
         Button gTimes = smallButton("Gemini timing (what took how long)");
         box.addView(gTimes);
         gTimes.setOnClickListener(v -> {
