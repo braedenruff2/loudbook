@@ -57,10 +57,22 @@ final class KindleLayout {
             int tail = Math.min(n.length(), 30);
             int g = norm.indexOf(n.substring(n.length() - tail), at);
             if (g >= 0 && g - at < 400) { int e = g + tail; out.add(new int[]{at, e, Math.max(0, n.length() - (e - at)), n.length()}); at = e; continue; }
+            // (the page's first sentence, with fewer than 30 of its letters on this page: "ment to me." after a break)
+            if (k == 0 && at == 0) {
+                int cut = -1;
+                for (int c = 1; c < n.length(); c++) { String sfx = n.substring(c); if (sfx.length() <= norm.length() && norm.substring(0, sfx.length()).equals(sfx)) { cut = c; break; } }
+                if (cut > 0) { int e = n.length() - cut; out.add(new int[]{0, e, cut, n.length()}); at = e; continue; }
+            }
             // or it runs on to the next page: the page ends with its start
             int head = Math.min(n.length(), 30);
             int h = norm.indexOf(n.substring(0, head), at);
             if (h >= 0 && h - at < 400 && n.startsWith(norm.substring(h))) { out.add(new int[]{h, norm.length(), 0, n.length()}); at = norm.length(); continue; }
+            // (fewer than 30 of its letters on this page: "You must there" at the foot of the page)
+            if (k == sentences.size() - 1) {
+                int hs = -1;
+                for (int c = at; c < norm.length() && c - at < 400; c++) if (n.startsWith(norm.substring(c))) { hs = c; break; }
+                if (hs >= 0) { out.add(new int[]{hs, norm.length(), 0, n.length()}); at = norm.length(); continue; }
+            }
             out.add(null);
         }
         return out;

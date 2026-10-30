@@ -58,6 +58,33 @@ public class UnitTest {
         check("straight quotes", str(Dialogue.split("He said \"stop it\" and left.", false)), "[n:He said][q:stop it][n:and left.]");
         check("inside a quote from before", str(Dialogue.split("And then we ran.\u201d She laughed.", true)), "[q:And then we ran.][n:She laughed.]");
         check("no quotes", str(Dialogue.split("The road was long.", false)), "[n:The road was long.]");
+        // the highlight follows the voice's own pauses: silence at either end doesn't count, and a pause at a comma or
+        // full stop is matched to it in the text (a straight line through the clip would run ahead at each pause)
+        {
+            int rate = 24000;
+            String[] wordsT = {"One", "two", "three,", "four", "five", "six.", "Seven", "eight."};
+            int[] gapMs = {30, 30, 200, 30, 30, 400, 30, 0};
+            java.util.List<Float> snd = new java.util.ArrayList<>();
+            java.util.function.IntConsumer hush = ms -> { for (int k = 0; k < ms * rate / 1000; k++) snd.add(0f); };
+            hush.accept(300);
+            long[] wordStart = new long[wordsT.length];
+            for (int w = 0; w < wordsT.length; w++) {
+                wordStart[w] = snd.size();
+                int letters = wordsT[w].replaceAll("[^A-Za-z]", "").length();
+                for (int k = 0; k < letters * 60 * rate / 1000; k++) snd.add((float) (0.3 * Math.sin(k * 0.12)));
+                hush.accept(gapMs[w]);
+            }
+            hush.accept(500);
+            float[] sm = new float[snd.size()];
+            for (int k = 0; k < sm.length; k++) sm[k] = snd.get(k);
+            SpeechTiming st = SpeechTiming.of("One two three, four five six. Seven eight.", sm, rate);
+            check("timing: pauses matched to the comma and the full stop", st.matched, 2);
+            check("timing: at the start of the speech, nothing said yet", Math.round(st.fracAt(wordStart[0]) * 100), 0);
+            check("timing: at 'four' (after the comma's pause), 11 of 32 letters said", Math.round(st.fracAt(wordStart[3] + 10) * 32), 11);
+            check("timing: at 'Seven' (after the full stop's pause), 22 of 32", Math.round(st.fracAt(wordStart[6] + 10) * 32), 22);
+            check("timing: in the trailing silence, all said", st.fracAt(sm.length - 10), 1.0f);
+            check("timing: the reverse, where 'four' starts", Math.abs(st.frameAt(11 / 32f) - wordStart[3]) < rate / 20, true);
+        }
         // Kindle page geometry: where sentences and words are, and what a tap points at
         java.util.List<String> ls = Arrays.asList("The road out of the valley was", "older than the town. Mara walked", "it every morning, and liked it.");
         java.util.List<float[]> bx = Arrays.asList(new float[]{40, 100, 400, 140}, new float[]{0, 140, 400, 180}, new float[]{0, 180, 380, 220});
@@ -73,6 +100,11 @@ public class UnitTest {
         int[] runOn = kl.spans(Arrays.asList("The road out of the valley was older than the town.", "Mara walked it every morning, and liked it, until the snow came.")).get(1);
         check("a sentence running on to the next page is found by its start", Arrays.toString(runOn), "[40, 74, 0, 50]");
         check("halfway through it, the word is past this page's part", KindleLayout.localFrac(runOn, 0.9f), 1.0f);
+        // ... also when only a few of its words are on this page (fewer than 30 letters), at the foot or the top of the page
+        int[] shortRun = kl.spans(Arrays.asList("The road out of the valley was older than the town. Mara walked it every morning,", "and liked it. Snow fell and fell for days on end.")).get(1);
+        check("a sentence with only a few words at the foot of the page is found", Arrays.toString(shortRun), "[64, 74, 0, 37]");
+        KindleLayout top = new KindleLayout(Arrays.asList("ment to me. The road out of the", "valley was old."), Arrays.asList(new float[]{0, 100, 400, 140}, new float[]{0, 140, 400, 180}), null);
+        check("a sentence with only a few words at the top of the page is found", Arrays.toString(top.spans(Arrays.asList("His attachment to me.", "The road out of the valley was old.")).get(0)), "[0, 8, 9, 17]");
         check("on the next page, the start isn't there", KindleLayout.localFrac(new int[]{0, 15, 34, 49}, 0.5f), -1.0f);
         check("on the next page, its end is", Math.round(KindleLayout.localFrac(new int[]{0, 15, 34, 49}, 0.9f) * 100), 67);
         // the sentence over a page break, whole, when the next page's start is known

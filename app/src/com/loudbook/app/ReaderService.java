@@ -360,6 +360,7 @@ public class ReaderService extends Service {
         stopPlayback();
         chapter = ch;
         heardIdx = -1;
+        heardTiming = null; timings.clear();
         pos = Math.max(0, Math.min(startAt, ch.size() - 1));
         dropClips();
         if (premade != null && startAt == 0) synchronized (clips) { clips.putAll(premade); }
@@ -583,15 +584,32 @@ public class ReaderService extends Service {
     /** The sentence being heard, its first frame and its length, for the highlight on Kindle's page. */
     private volatile long heardStart, heardLen;
     private volatile int heardIdx = -1;
+    /** How the voice moves through the sentence being heard (from its own pauses), if known; and each queued sentence's. */
+    private volatile SpeechTiming heardTiming;
+    private final java.util.Map<Integer, SpeechTiming> timings = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** How far through the sentence being heard the voice is (0..1), by the sound's own pauses when known. */
+    private float heardFrac(AudioTrack t) {
+        long head = t.getPlaybackHeadPosition() & 0xffffffffL;
+        SpeechTiming st = heardTiming;
+        if (st != null) return st.fracAt(head - heardStart);
+        return heardLen > 0 ? Math.max(0f, Math.min(1f, (head - heardStart) / (float) heardLen)) : 0f;
+    }
+
+    /** For the highlight on a web page: {sentence being heard, how far through it (0..1)}; null if nothing is. */
+    float[] now() {
+        AudioTrack t = track;
+        int i = heardIdx;
+        if (t == null || i < 0 || !playing) return null;
+        return new float[]{i, heardFrac(t)};
+    }
 
     /** For the highlight: {sentence, how far through it (0..1), page's first sentence, page's end}. */
     float[] kindleNow() {
         AudioTrack t = track;
         int i = heardIdx;
         if (t == null || i < 0) return null;
-        long head = t.getPlaybackHeadPosition() & 0xffffffffL;
-        float f = heardLen > 0 ? Math.max(0f, Math.min(1f, (head - heardStart) / (float) heardLen)) : 0f;
-        return new float[]{i, f, kindleFrom, kindleTo};
+        return new float[]{i, heardFrac(t), kindleFrom, kindleTo};
     }
 
     /** For the tests: the page's paragraphs and the sentences made of them (ends only). */
@@ -1377,7 +1395,13 @@ public class ReaderService extends Service {
                     if (next == pos) main.post(() -> status("", false));
                     AudioTrack t = ensureTrack(c.rate);
                     current = c;
-                    marks.add(new long[]{framesWritten, next, c.samples.length});
+                    try {
+                        SpeechTiming st = SpeechTiming.of(ch.chunks.get(next).text, c.samples, c.rate);
+                        timings.put(next, st);
+                        Log.i("LoudbookTest", "timing " + next + ": speech " + st.speechStart * 1000 / c.rate + "-" + st.speechEnd * 1000 / c.rate + " ms of "
+                            + c.samples.length * 1000L / c.rate + ", " + st.matched + " of " + SpeechTiming.breaks(ch.chunks.get(next).text).size() + " pauses matched");
+                    } catch (Throwable e) { timings.remove(next); }
+                    marks.add(new long[]{framesWritten, next, c.samples.length, 1});   // (1: a whole clip, timed by its sound)
                     if (!stream(t, c, myGen, ch, marks)) return;
                     if (!rest(t, gapAfter(ch, next), myGen, ch, marks)) return;
                 }
@@ -1450,8 +1474,7 @@ public class ReaderService extends Service {
     private void splitCheck(Chapter ch, AudioTrack t) {
         int si = splitIdx;
         if (si < 0 || splitTurned || heardIdx != si || kt == null || !"kindle".equals(ch.site)) return;
-        long head = t.getPlaybackHeadPosition() & 0xffffffffL;
-        float f = heardLen > 0 ? (head - heardStart) / (float) heardLen : 0f;
+        float f = heardFrac(t);
         float secs = heardLen / (float) Math.max(1, t.getSampleRate());
         float lead = secs > 0 ? Math.min(0.15f, 0.25f / secs) : 0f;              // (the turn takes a moment to show)
         if (f < splitFrac - lead) return;
@@ -1475,6 +1498,8 @@ public class ReaderService extends Service {
             long[] m = marks.poll();
             reached = (int) m[1];
             heardStart = m[0]; heardLen = m.length > 2 ? m[2] : 0; heardIdx = reached;
+            SpeechTiming st = timings.get(reached);
+            heardTiming = st != null && m.length > 3 && m[3] == 1 ? st : null;
         }
         if (reached < 0 || gen != myGen) return;
         final int here = reached;

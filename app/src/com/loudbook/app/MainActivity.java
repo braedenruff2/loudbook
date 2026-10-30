@@ -215,7 +215,27 @@ public class MainActivity extends Activity implements ReaderService.Listener {
 
     // ---------------------------------------------------------------- updates
     private boolean visible = false;
-    @Override protected void onStart() { super.onStart(); visible = true; if (svc != null) svc.setAppVisible(true); }
+    @Override protected void onStart() { super.onStart(); visible = true; if (svc != null) svc.setAppVisible(true); main.post(follow); }
+
+    // While reading, the mark on the page moves through the piece being read with the voice: the sentence in it, and the word.
+    private int followAt = -1, followK = -1;
+    private final Runnable follow = new Runnable() { @Override public void run() {
+        main.removeCallbacks(this);
+        if (!visible) return;
+        main.postDelayed(this, 90);
+        if (svc == null || web == null || !svc.isPlaying() || svc.isPaused()) return;
+        float[] n = svc.now();
+        Chapter ch = svc.chapter();
+        if (n == null || ch == null || "kindle".equals(ch.site)) return;
+        int i = (int) n[0];
+        if (i < 0 || i >= ch.size() || ch.chunks.get(i).block < 0) return;
+        String cur = web.getUrl();
+        if (cur == null || !ch.url.equals(cur)) return;
+        int k = Math.round(n[1] * 400);
+        if (i == followAt && k == followK) return;
+        followAt = i; followK = k;
+        web.evaluateJavascript("window.LB && LB.progress && LB.progress(" + n[1] + "," + i + ")", null);
+    } };
 
     @Override protected void onResume() {
         super.onResume();
@@ -471,7 +491,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         String cur = web.getUrl();
         if (cur != null && ch.url.equals(cur) && pos < ch.size()) {
             Chapter.Chunk c = ch.chunks.get(pos);
-            if (c.block >= 0) web.evaluateJavascript("window.LB && LB.highlight(" + c.block + "," + JSONObject.quote(c.text) + "," + ch.offsetInBlock(pos) + ")", null);
+            if (c.block >= 0) web.evaluateJavascript("window.LB && LB.highlight(" + c.block + "," + JSONObject.quote(c.text) + "," + ch.offsetInBlock(pos) + "," + pos + ")", null);
             else web.evaluateJavascript("window.LB && LB.clear()", null);
         }
         if (svc != null) statusText.setTag(ch.minutesLeft(pos, svc.speed()) + " min left");

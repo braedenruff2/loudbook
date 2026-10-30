@@ -132,14 +132,43 @@
     }
   }
 
-  // ---------- highlight: the paragraph gets a tint, the sentence a stronger mark ----------
+  // ---------- highlight: the paragraph gets a tint, the sentence being said a mark, and the word a stronger one ----------
+  // The app hands over each piece of text as the voice starts it (a piece can hold a few short sentences), then, while it
+  // plays, how far through it the voice is (LB.progress), worked out from the sound's own pauses: so the mark moves on
+  // sentence by sentence, and word by word, with the voice. Text is matched on letters and digits only, so a stat table's
+  // " — " or a quote mark the reader's copy has and the page doesn't (or the other way round) can't stop it.
   const canMark = typeof CSS !== 'undefined' && CSS.highlights && typeof Highlight === 'function';
   const squash = (t) => t.replace(/[\s​-‍﻿]+/g, '');
+  const isL = (c) => /[\p{L}\p{N}]/u.test(c);
+  const lettersOf = (t) => Array.from(t).filter(isL).join('');
   let markedRange = null;
+  // the piece of text marked now: its letters' places on the page, and where its sentences and words are (in letters)
+  let cur = null;
+  function rangeOf(p, a, b) {                                     // letters a..b-1 of the piece -> a DOM range
+    const [sn, so] = p.pos[p.map[p.at + a]];
+    let ei = p.map[p.at + b - 1];
+    // take in the closing marks right after the last letter (a full stop, a quote) if nothing separates them
+    while (ei + 1 < p.pos.length && !isL(p.pos[ei + 1][0].nodeValue[p.pos[ei + 1][1]]) && p.pos[ei + 1][0] === p.pos[ei][0] && p.pos[ei + 1][1] === p.pos[ei][1] + 1) ei++;
+    let si = p.map[p.at + a];
+    while (si > 0 && !isL(p.pos[si - 1][0].nodeValue[p.pos[si - 1][1]]) && p.pos[si - 1][0] === p.pos[si][0] && p.pos[si - 1][1] === p.pos[si][1] - 1) si--;
+    const [en, eo] = p.pos[ei];
+    const r = document.createRange();
+    r.setStart(p.pos[si][0], p.pos[si][1]); r.setEnd(en, eo + 1);
+    return r;
+  }
+  // [start, end) in letters of each sentence and each word of a piece of text
+  function partsOf(text) {
+    const sentences = [], wordsAt = [];
+    let n = 0;
+    for (const w of text.split(/\s+/)) { const k = lettersOf(w).length; if (k) { wordsAt.push([n, n + k]); n += k; } }
+    let m = 0;
+    for (const sn of text.split(/(?<=[.!?…]["'”’)\]]*)\s+(?=[^\s\p{Ll}])/u)) { const k = lettersOf(sn).length; if (k) { sentences.push([m, m + k]); m += k; } }
+    return { sentences, wordsAt, total: n };
+  }
   function markSentence(el, text, offset) {
-    markedRange = null;
+    markedRange = null; cur = null;
     if (!canMark) return false;
-    CSS.highlights.delete('loudbook-sentence');
+    CSS.highlights.delete('loudbook-sentence'); CSS.highlights.delete('loudbook-word');
     if (!text) return false;
     const pos = [];
     const walk = (node) => {
@@ -151,18 +180,54 @@
       }
     };
     walk(el);
-    const flat = pos.map(([n, k]) => n.nodeValue[k]).join('');
-    const key = squash(text);
+    const map = [];                                               // letter k of the paragraph -> its place in pos
+    let flat = '';
+    let from = 0;
+    for (let i = 0; i < pos.length; i++) { const c = pos[i][0].nodeValue[pos[i][1]]; if (isL(c)) { if (i < (offset || 0)) from = map.length + 1; map.push(i); flat += c; } }
+    const key = lettersOf(text);
     if (!key) return false;
-    let at = flat.indexOf(key, Math.max(0, (offset || 0) - 8));
+    let at = flat.indexOf(key, Math.max(0, from - 8));
     if (at < 0) at = flat.indexOf(key);
     if (at < 0) return false;
-    const [sn, so] = pos[at], [en, eo] = pos[at + key.length - 1];
-    const r = document.createRange();
-    r.setStart(sn, so); r.setEnd(en, eo + 1);
-    CSS.highlights.set('loudbook-sentence', new Highlight(r));
-    markedRange = r;
+    const p = { pos, map, at, len: key.length, ...partsOf(text), lit: -1, word: -1 };
+    if (p.total !== key.length) return false;
+    cur = p;
+    markedRange = rangeOf(p, 0, key.length);
+    showPart(0);
     return true;
+  }
+  // marks the sentence and the word at letter k of the piece being read
+  function showPart(k) {
+    const p = cur;
+    if (!p || !canMark) return;
+    let si = p.sentences.findIndex(([a, b]) => k < b);
+    if (si < 0) si = p.sentences.length - 1;
+    if (si !== p.lit) {
+      p.lit = si;
+      const [a, b] = p.sentences[si];
+      const r = rangeOf(p, a, b);
+      CSS.highlights.set('loudbook-sentence', new Highlight(r));
+      markedRange = r;
+    }
+    let wi = p.wordsAt.findIndex(([a, b]) => k < b);
+    if (wi < 0) wi = p.wordsAt.length - 1;
+    if (wi !== p.word && k >= 0) {
+      p.word = wi;
+      const [a, b] = p.wordsAt[wi];
+      CSS.highlights.set('loudbook-word', new Highlight(rangeOf(p, a, b)));
+    }
+  }
+  // how far through the piece being read the voice is (0..1): moves the marks on, and keeps them on screen
+  function progress(f, chunk) {
+    const p = cur;
+    if (!p || (chunk !== undefined && p.chunk !== undefined && chunk !== p.chunk)) return;   // (for a piece not marked yet)
+    const k = Math.max(0, Math.min(p.total - 1, Math.floor(f * p.total)));
+    const before = p.lit;
+    showPart(k);
+    if (p.lit !== before && markedRange) {
+      const r = markedRange.getBoundingClientRect();
+      if (r.top < 60 || r.bottom > innerHeight - 60) window.scrollBy({ top: r.top - innerHeight / 3, behavior: 'smooth' });
+    }
   }
   function unTint() { const p = blocks[activeIndex]; if (p && p.el && !p.shared) p.el.classList.remove('lb-active'); }
   // The paragraph that holds a sentence: the one numbered i, or, if this page was read on another
@@ -177,7 +242,7 @@
     for (let j = 0; j < blocks.length; j++) if (has(j)) return j;
     return i;
   }
-  function highlight(i, text, offset) {
+  function highlight(i, text, offset, chunk) {
     unTint();
     const j = blockOf(i, text);
     if (j !== i) offset = 0;                                       // (found elsewhere: look for it from the paragraph's start)
@@ -186,12 +251,14 @@
     const b = blocks[i];
     const el = b && elOf(b);
     if (!el) {
-      if (canMark) CSS.highlights.delete('loudbook-sentence');
+      cur = null;
+      if (canMark) { CSS.highlights.delete('loudbook-sentence'); CSS.highlights.delete('loudbook-word'); }
       if (b && b.pid) { const loaded = document.querySelectorAll('p[data-p-id]'); if (loaded.length) loaded[loaded.length - 1].scrollIntoView({ block: 'end' }); }
       return false;
     }
     if (!b.shared) el.classList.add('lb-active');
     const marked = markSentence(el, text, (offset || 0) + (b.shared && b.base > 0 ? b.base : 0));
+    if (cur) cur.chunk = chunk;
     const r = (b.shared && markedRange ? markedRange : el).getBoundingClientRect();
     if (r.top < 60 || r.bottom > innerHeight - 60) {
       if (b.shared && markedRange) window.scrollBy({ top: r.top - innerHeight / 3, behavior: 'smooth' });
@@ -199,7 +266,7 @@
     }
     return marked;
   }
-  function clear() { unTint(); activeIndex = -1; if (canMark) CSS.highlights.delete('loudbook-sentence'); }
+  function clear() { unTint(); activeIndex = -1; cur = null; if (canMark) { CSS.highlights.delete('loudbook-sentence'); CSS.highlights.delete('loudbook-word'); } }
 
   // tap-and-hold a paragraph -> "read from here" is handled by the app; it asks which block is here
   function blockAt(x, y) {
@@ -211,7 +278,8 @@
 
   const style = document.createElement('style');
   style.textContent = `.lb-active{background:rgba(232,170,70,.13)!important;box-shadow:-5px 0 0 rgba(232,170,70,.85)!important;border-radius:3px}
-    ::highlight(loudbook-sentence){background-color:rgba(232,170,70,.38)}`;
+    ::highlight(loudbook-sentence){background-color:rgba(232,170,70,.30)}
+    ::highlight(loudbook-word){background-color:rgba(232,170,70,.55);text-decoration:underline rgba(200,130,30,.9) 2px}`;
   (document.head || document.documentElement).appendChild(style);
 
   // sayText: what the voice is given for a bit of text (for the pronunciation tests)
@@ -222,5 +290,5 @@
     const i = blockAt(x, y);
     return JSON.stringify({ i, text: i >= 0 && blocks[i] ? blocks[i].text : '' });
   }
-  window.LB = { run, highlight, clear, blockAt, blockInfo, speakNumbers, words, sayText };
+  window.LB = { run, highlight, progress, clear, blockAt, blockInfo, speakNumbers, words, sayText };
 })();
