@@ -107,6 +107,12 @@ public class UnitTest {
         check("a sentence with only a few words at the top of the page is found", Arrays.toString(top.spans(Arrays.asList("His attachment to me.", "The road out of the valley was old.")).get(0)), "[0, 8, 9, 17]");
         check("on the next page, the start isn't there", KindleLayout.localFrac(new int[]{0, 15, 34, 49}, 0.5f), -1.0f);
         check("on the next page, its end is", Math.round(KindleLayout.localFrac(new int[]{0, 15, 34, 49}, 0.9f) * 100), 67);
+        {   // the page didn't turn after the sentence over the break was read whole: it isn't read again
+            KindleText kx = new KindleText("");
+            kx.chunks(Arrays.asList("It was late. He agreed with the plan"), false);
+            check("sentence over the break made", kx.bridge("and left.") != null, true);
+            check("no next page after it: nothing read again", kx.chunks(new java.util.ArrayList<>(), true).size(), 0);
+        }
         // continuous scrolling: the new screen starts with some of the last one again; only what's new is read
         check("scrolled screen: overlap with the last one dropped", KindleText.afterOverlap(
             Arrays.asList("The road out of the valley was older than the town.", "Mara walked it every morning, and liked it, until"),

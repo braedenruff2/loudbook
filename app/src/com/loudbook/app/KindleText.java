@@ -40,6 +40,8 @@ final class KindleText {
                 if (rest0.isEmpty()) paras.remove(0); else paras.set(0, rest0);
                 carry = "";
             }
+            // (no next page after all, but the sentence over the break was read whole already: not again)
+            if (paras.isEmpty()) carry = "";
             skip = null;
         }
         if (!carry.isEmpty()) {
@@ -242,6 +244,7 @@ final class KindleText {
         return out;
     }
 
+    String sayOf(String s) { return say(s); }
     private String say(String s) {
         String t = s;
         for (String[] f : fixes) t = t.replaceAll("(?i)\\b" + Pattern.quote(f[0]) + "\\b", Matcher.quoteReplacement(f[1]));

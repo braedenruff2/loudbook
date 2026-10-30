@@ -670,6 +670,21 @@ public class ReaderService extends Service {
                     if (said.size() == q.size()) { first.remove(at); first.addAll(at, said); }
                 }
             }
+            if (at == 0 && letter == 0 && first.size() > 1) {
+                // the page starts with the end of a word split over the page break ("cumstances which..."): start after it
+                Chapter.Chunk c0 = first.get(0);
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(\\p{Ll}{2,})(?=[\\s,;:.!?])").matcher(c0.text);
+                java.util.function.Predicate<String> dict = KindleText.dictionary;
+                if (m.find() && dict != null) {
+                    boolean word = true;
+                    try { word = dict.test(m.group(1)); } catch (RuntimeException ignored) { }
+                    String rest = c0.text.substring(m.end()).replaceFirst("^[\\s,;:]+", "");
+                    if (!word && rest.matches("(?s).*\\p{L}.*")) {
+                        java.util.List<Chapter.Chunk> fixed = spoken(java.util.Collections.singletonList(new Chapter.Chunk(c0.block, rest, kts.sayOf(rest))));
+                        if (fixed.size() == 1) { first.set(0, fixed.get(0)); Log.i("LoudbookTest", "kindle: the page starts with the end of a split word (\"" + m.group(1) + "\"): starting after it"); }
+                    }
+                }
+            }
             final int startAt = at;
             main.post(() -> {
                 Chapter ch = new Chapter("kindle:" + System.currentTimeMillis(), "kindle", p.title.isEmpty() ? "Kindle" : p.title, "Kindle", first);
@@ -746,6 +761,12 @@ public class ReaderService extends Service {
                 if (chapter != ch) return null;                                  // (a new start since)
                 KindleService k = KindleService.me;
                 KindleService.Page p = k == null ? new KindleService.Page() : k.nextPage(kindleSig);
+                if (p.paragraphs.isEmpty() && k != null && k.kindleVisible() && chapter == ch) {
+                    // (one more go after a moment before taking it as the end of the book: Kindle may have been busy)
+                    try { Thread.sleep(1500); } catch (InterruptedException ignored) { }
+                    Log.i("LoudbookTest", "kindle: the page didn't turn, trying again");
+                    p = k.nextPage(kindleSig);
+                }
                 if (p.paragraphs.isEmpty() && k != null && !k.kindleVisible()) {
                     // Kindle isn't on screen (he switched apps just as the page ended, or Kindle's own
                     // screens flickered): not the end of the book. Wait, and turn the page once Kindle is

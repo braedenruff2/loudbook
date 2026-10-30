@@ -1309,7 +1309,19 @@ public class KindleService extends AccessibilityService {
                         Log.i("LoudbookTest", "kindle turn: landed past the next page (it should start \"" + (want.length() > 40 ? want.substring(0, 40) : want) + "\"), going back one");
                         Page back = backPage(got.signature);
                         if (back != null && startsWith(back, want)) got = back;
-                        else if (back != null && !back.paragraphs.isEmpty()) Log.i("LoudbookTest", "kindle turn: the page before isn't it either, staying");
+                        else if (back != null && !back.paragraphs.isEmpty()) {
+                            // not it either: forward again, to where it was
+                            Log.i("LoudbookTest", "kindle turn: the page before isn't it either, forward again");
+                            AccessibilityNodeInfo r2 = kindleRoot();
+                            if (r2 != null && (scrollForward(r2) || swipe2())) {
+                                long until = System.currentTimeMillis() + 2500;
+                                while (System.currentTimeMillis() < until) {
+                                    pause(150);
+                                    Page f = readPage();
+                                    if (!f.paragraphs.isEmpty() && !f.signature.equals(back.signature)) { pause(250); Page f2 = readPage(); got = f2.paragraphs.isEmpty() ? f : f2; break; }
+                                }
+                            }
+                        }
                     }
                     if (want != null && !startsWith(got, want)) Log.i("LoudbookTest", "kindle turn: this page doesn't start as the last one said the next would");
                     clearFocus();

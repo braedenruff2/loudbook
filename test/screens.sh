@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Screenshots of Loudbook on an emulator (for reviewing how it looks): the start screen, a chapter
-# being read, and every part of Settings. (Edit this file to take a new set.) v3
+# being read (three moments, to see the sentence and word marks move), and every part of Settings. (Edit this file to take a new set.) v4
 set -x
 adb reverse tcp:8000 tcp:8000
 adb install -r build/Loudbook.apk
@@ -12,6 +12,10 @@ adb shell screencap -p /sdcard/s.png; adb pull /sdcard/s.png shots/01-start.png
 adb shell am start -n com.loudbook.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "http://localhost:8000/ch1.html" --ez play true
 sleep 12
 adb shell screencap -p /sdcard/s.png; adb pull /sdcard/s.png shots/02-reading.png
+sleep 2
+adb shell screencap -p /sdcard/s.png; adb pull /sdcard/s.png shots/02-reading-b.png
+sleep 3
+adb shell screencap -p /sdcard/s.png; adb pull /sdcard/s.png shots/02-reading-c.png
 adb shell input keyevent KEYCODE_MEDIA_PAUSE
 adb shell am start -n com.loudbook.app/.MainActivity --ez settings true
 sleep 5
