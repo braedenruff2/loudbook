@@ -1425,7 +1425,7 @@ public class ReaderService extends Service {
                     AudioTrack t = ensureTrack(c.rate);
                     current = c;
                     try {
-                        SpeechTiming st = SpeechTiming.of(ch.chunks.get(next).text, c.samples, c.rate);
+                        SpeechTiming st = SpeechTiming.of(ch.chunks.get(next).text, ch.chunks.get(next).say, c.samples, c.rate);
                         timings.put(next, st);
                         Log.i("LoudbookTest", "timing " + next + ": speech " + st.speechStart * 1000 / c.rate + "-" + st.speechEnd * 1000 / c.rate + " ms of "
                             + c.samples.length * 1000L / c.rate + ", " + st.matched + " of " + SpeechTiming.breaks(ch.chunks.get(next).text).size() + " pauses matched");

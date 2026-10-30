@@ -188,6 +188,22 @@
     if (!key) return false;
     let at = flat.indexOf(key, Math.max(0, from - 8));
     if (at < 0) at = flat.indexOf(key);
+    if (at < 0 && key.length >= 40) {
+      // (the page has words in the middle the reader's copy left out, e.g. a site's hidden "stolen from" line shown
+      // inside a paragraph: mark from where it starts to where it ends, as one piece, without the word mark)
+      const head = key.slice(0, 20), tail = key.slice(-20);
+      let a = flat.indexOf(head, Math.max(0, from - 8));
+      if (a < 0) a = flat.indexOf(head);
+      const b = a < 0 ? -1 : flat.indexOf(tail, a + 20);
+      if (a >= 0 && b > a && b + 20 - a < key.length * 2) {
+        const whole = { pos, map, at: a, len: b + 20 - a, sentences: [[0, b + 20 - a]], wordsAt: [], total: b + 20 - a, lit: -1, word: -1 };
+        cur = whole;
+        markedRange = rangeOf(whole, 0, whole.len);
+        CSS.highlights.set('loudbook-sentence', new Highlight(markedRange));
+        whole.lit = 0;
+        return true;
+      }
+    }
     if (at < 0) return false;
     const p = { pos, map, at, len: key.length, ...partsOf(text), lit: -1, word: -1 };
     if (p.total !== key.length) return false;
@@ -209,6 +225,7 @@
       CSS.highlights.set('loudbook-sentence', new Highlight(r));
       markedRange = r;
     }
+    if (!p.wordsAt.length) return;
     let wi = p.wordsAt.findIndex(([a, b]) => k < b);
     if (wi < 0) wi = p.wordsAt.length - 1;
     if (wi !== p.word && k >= 0) {

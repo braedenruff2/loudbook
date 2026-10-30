@@ -18,12 +18,40 @@ final class SpeechTiming {
     final long speechStart, speechEnd;
     final int matched;
 
+    /** How the said text's length maps onto the text's letters: {said fraction, text fraction} per word boundary (null: the same). */
+    private float[][] said2text;
+
     private SpeechTiming(long[] at, float[] frac, long s, long e, int matched) {
         this.at = at; this.frac = frac; speechStart = s; speechEnd = e; this.matched = matched;
     }
 
     /** The fraction of the text's letters said by a frame of the clip (0..1). */
-    float fracAt(long frame) {
+    float fracAt(long frame) { return toText(saidAt(frame)); }
+
+    private float toText(float w) {
+        float[][] m = said2text;
+        if (m == null) return w;
+        for (int i = 1; i < m.length; i++) {
+            if (w <= m[i][0]) {
+                float span = m[i][0] - m[i - 1][0];
+                return span <= 0 ? m[i][1] : m[i - 1][1] + (m[i][1] - m[i - 1][1]) * (w - m[i - 1][0]) / span;
+            }
+        }
+        return 1f;
+    }
+    private static float fromText(float[][] m, float t) {
+        if (m == null) return t;
+        for (int i = 1; i < m.length; i++) {
+            if (t <= m[i][1]) {
+                float span = m[i][1] - m[i - 1][1];
+                return span <= 0 ? m[i][0] : m[i - 1][0] + (m[i][0] - m[i - 1][0]) * (t - m[i - 1][1]) / span;
+            }
+        }
+        return 1f;
+    }
+
+    /** How far through the said text (by its letters) the voice is at a frame. */
+    private float saidAt(long frame) {
         if (frame <= at[0]) return frac[0];
         for (int i = 1; i < at.length; i++) {
             if (frame <= at[i]) {
@@ -36,7 +64,8 @@ final class SpeechTiming {
     }
 
     /** The frame where the voice gets to a fraction of the text's letters (the reverse of fracAt). */
-    long frameAt(float f) {
+    long frameAt(float t) {
+        float f = fromText(said2text, t);
         if (f <= frac[0]) return at[0];
         for (int i = 1; i < at.length; i++) {
             if (f < frac[i]) {                                               // (at a pause: where it ends, when the words go on)
@@ -81,7 +110,67 @@ final class SpeechTiming {
     }
 
     /** Works out the timing of a clip of speech (mono samples) of the text. */
-    static SpeechTiming of(String text, float[] s, int rate) {
+    static SpeechTiming of(String text, float[] s, int rate) { return of(text, null, s, rate); }
+
+    private static int lettersIn(String w) { int n = 0; for (int i = 0; i < w.length(); i++) if (letter(w.charAt(i))) n++; return n; }
+    private static String key(String w) { StringBuilder b = new StringBuilder(); for (int i = 0; i < w.length(); i++) if (letter(w.charAt(i))) b.append(Character.toLowerCase(w.charAt(i))); return b.toString(); }
+
+    /**
+     * The voice says some words longer or shorter than they're written ("Mr." is "Mister", "12" is
+     * "twelve", "STR" is "S-T-R"): each written word's share of the time, from what's said for it.
+     * The two are lined up word by word; where they differ, a run of written words shares what's
+     * said between the matching words around it. null if they're the same.
+     */
+    static float[][] said2text(String text, String said) {
+        if (said == null || said.equals(text)) return null;
+        List<String> tw = new ArrayList<>(), sw = new ArrayList<>();
+        for (String w : text.trim().split("\\s+")) if (lettersIn(w) > 0) tw.add(w);
+        for (String w : said.trim().split("\\s+")) if (lettersIn(w) > 0) sw.add(w);
+        if (tw.isEmpty() || sw.isEmpty()) return null;
+        float[] weight = new float[tw.size()];
+        int i = 0, j = 0;
+        while (i < tw.size() && j < sw.size()) {
+            if (key(tw.get(i)).equals(key(sw.get(j)))) { weight[i] += lettersIn(sw.get(j)); i++; j++; continue; }
+            // the nearest place they line up again (within a few words)
+            int bi = -1, bj = -1;
+            for (int d = 1; d <= 12 && bi < 0; d++)
+                for (int a = 0; a <= d; a++) {
+                    int ii = i + a, jj = j + (d - a);
+                    if (ii < tw.size() && jj < sw.size() && key(tw.get(ii)).equals(key(sw.get(jj))) && key(tw.get(ii)).length() > 0) { bi = ii; bj = jj; break; }
+                }
+            if (bi < 0) { bi = tw.size(); bj = sw.size(); }
+            int said_ = 0, written = 0;
+            for (int k = j; k < bj; k++) said_ += lettersIn(sw.get(k));
+            for (int k = i; k < bi; k++) written += lettersIn(tw.get(k));
+            if (bi == i) { if (i > 0) weight[i - 1] += said_; }                // (said, but nothing written: goes with the word before)
+            else for (int k = i; k < bi; k++) weight[k] += written > 0 ? said_ * lettersIn(tw.get(k)) / (float) written : 0;
+            i = bi; j = bj;
+        }
+        float tTotal = 0, wTotal = 0;
+        for (int k = 0; k < tw.size(); k++) { tTotal += lettersIn(tw.get(k)); wTotal += weight[k]; }
+        if (wTotal <= 0 || tTotal <= 0) return null;
+        float[][] m = new float[tw.size() + 1][2];
+        float tc = 0, wc = 0;
+        for (int k = 0; k < tw.size(); k++) {
+            tc += lettersIn(tw.get(k)); wc += weight[k];
+            m[k + 1][0] = wc / wTotal; m[k + 1][1] = tc / tTotal;
+        }
+        return m;
+    }
+
+    /** As above, with the text as the voice is given it (numbers in words, "Mister"...), for each word's share of the time. */
+    static SpeechTiming of(String text, String said, float[] s, int rate) {
+        SpeechTiming st = timed(text, said2text(text, said), s, rate);
+        return st;
+    }
+
+    private static SpeechTiming timed(String text, float[][] map, float[] s, int rate) {
+        SpeechTiming made = timed0(text, map, s, rate);
+        made.said2text = map;
+        return made;
+    }
+
+    private static SpeechTiming timed0(String text, float[][] map, float[] s, int rate) {
         int win = Math.max(1, rate / 100);                                   // 10 ms
         int nw = s.length / win;
         if (nw < 3) return new SpeechTiming(new long[]{0, Math.max(1, s.length)}, new float[]{0f, 1f}, 0, s.length, 0);
@@ -111,6 +200,7 @@ final class SpeechTiming {
         for (int[] p : pauses) speech -= p[1] - p[0];
         speech = Math.max(1, speech);
         List<float[]> br = breaks(text);
+        for (float[] b : br) b[0] = fromText(map, b[0]);                       // (where the voice says them)
         // match pauses to the text's breaks in order: each pause to the nearest break not yet used,
         // if it's near where the speech so far says it should be; longer pauses prefer sentence ends
         List<long[]> anchors = new ArrayList<>();

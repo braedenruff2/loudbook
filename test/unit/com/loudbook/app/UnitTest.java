@@ -85,6 +85,28 @@ public class UnitTest {
             check("timing: in the trailing silence, all said", st.fracAt(sm.length - 10), 1.0f);
             check("timing: the reverse, where 'four' starts", Math.abs(st.frameAt(11 / 32f) - wordStart[3]) < rate / 20, true);
         }
+        {   // words said longer than they're written ("Mr." -> "Mister", "12" -> "twelve") take their share of the time
+            int rate = 24000;
+            String[] said = {"Mister", "Smith", "had", "twelve", "apples,", "then", "left."};
+            int[] gapMs = {30, 30, 30, 30, 200, 30, 0};
+            java.util.List<Float> snd = new java.util.ArrayList<>();
+            for (int k = 0; k < 300 * rate / 1000; k++) snd.add(0f);
+            long[] ws = new long[said.length];
+            for (int w = 0; w < said.length; w++) {
+                ws[w] = snd.size();
+                int letters = said[w].replaceAll("[^A-Za-z]", "").length();
+                for (int k = 0; k < letters * 60 * rate / 1000; k++) snd.add((float) (0.3 * Math.sin(k * 0.12)));
+                for (int k = 0; k < gapMs[w] * rate / 1000; k++) snd.add(0f);
+            }
+            for (int k = 0; k < 300 * rate / 1000; k++) snd.add(0f);
+            float[] sm = new float[snd.size()];
+            for (int k = 0; k < sm.length; k++) sm[k] = snd.get(k);
+            SpeechTiming st = SpeechTiming.of("Mr. Smith had 12 apples, then left.", "Mister Smith had twelve apples, then left.", sm, rate);
+            check("timing by the said text: the comma's pause matched", st.matched, 1);
+            check("timing by the said text: at 'Smith', 2 of 26 written letters", Math.round(st.fracAt(ws[1] + 10) * 26), 2);
+            check("timing by the said text: at 'apples', 12 of 26", Math.round(st.fracAt(ws[4] + 10) * 26), 12);
+            check("timing by the said text: no change when said as written", SpeechTiming.said2text("a b", "a b") == null, true);
+        }
         // Kindle page geometry: where sentences and words are, and what a tap points at
         java.util.List<String> ls = Arrays.asList("The road out of the valley was", "older than the town. Mara walked", "it every morning, and liked it.");
         java.util.List<float[]> bx = Arrays.asList(new float[]{40, 100, 400, 140}, new float[]{0, 140, 400, 180}, new float[]{0, 180, 380, 220});
