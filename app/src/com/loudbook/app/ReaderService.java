@@ -403,6 +403,8 @@ public class ReaderService extends Service {
         if (!wake.isHeld()) wake.acquire(6 * 60 * 60 * 1000L);
         final int myGen = ++gen;
         playAt = System.currentTimeMillis();
+        // (Gemini: the recogniser that finds the sentences, loaded now rather than when the request goes)
+        if (cloudOn() && !asr.loaded()) asrThread.submit(() -> { asrReady(); return null; });
         player = new Thread(() -> loop(myGen), "loudbook-player");
         player.start();
         state();
@@ -1232,7 +1234,7 @@ public class ReaderService extends Service {
             long upTo;
             if (endAt >= 0) upTo = Math.min(have, endAt);
             else if (done) upTo = nextMark - 1 >= start && b.partOf(nextMark - 1) == lv.part ? b.endOf(nextMark - 1) : have;
-            else upTo = have - rate;                                  // (a second behind what's in: room for the sentences to be told apart)
+            else upTo = have - rate / 2;                              // (half a second behind what's in: Google sends it in pieces)
             if (at < upTo) {
                 int n = (int) Math.min(rate / 5, upTo - at);
                 float[] x;
@@ -1240,6 +1242,7 @@ public class ReaderService extends Service {
                 catch (IOException e) { Log.w(TAG, "gemini live", e); return nextMark; }
                 if (x.length == 0) { sleep(30); continue; }
                 if (t.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) t.play();
+                if (firstSoundFor != myGen) logFirstSound(myGen, true, false);
                 int off = 0;
                 while (off < x.length && gen == myGen) {
                     if (paused) { sleep(40); continue; }
@@ -1333,7 +1336,7 @@ public class ReaderService extends Service {
                     // waiting for its sentences to be told apart (the highlight catches up as they are)
                     GeminiBook lb = gem && !filling ? book : null;
                     GeminiBook.Live lv = lb == null ? null : lb.liveAt(next);
-                    if (lv != null && lv.bytes >= 24000) { liveNext = playLive(lb, lv, next, ch, myGen, marks); break; }
+                    if (lv != null && lv.bytes >= 72000) { liveNext = playLive(lb, lv, next, ch, myGen, marks); break; }   // (1.5 s in)
                     try { c = f.get(20, java.util.concurrent.TimeUnit.MILLISECONDS); break; }
                     catch (java.util.concurrent.TimeoutException te) { heard(ch, marks, myGen); }
                     catch (Exception e) { if (gen != myGen) return; Log.w(TAG, "sentence failed", e); c = null; break; }
