@@ -212,6 +212,11 @@ public class KindleService extends AccessibilityService {
         boolean reading = svc != null && svc.readingKindle();
         boolean speaking = reading && svc.isPlaying() && !svc.isPaused();
         long now = System.currentTimeMillis();
+        // (Kindle's "continuous scrolling turned off" notice over the book: pressed away, then the book opened again)
+        if ((reading || exploreOn) && !noticeBusy) {
+            noticeBusy = true;
+            new Thread(() -> { try { if (dismissScrollNotice()) { pause(800); reopenBook(); } } finally { noticeBusy = false; } }, "lb-kindle-notice").start();
+        }
         if (kindle) awayAt = 0; else if (awayAt == 0) awayAt = now;
         // Kindle's window goes for a moment when a screen reader comes or goes (it closes the book, and
         // Loudbook opens it again): that isn't leaving Kindle. Left = another app in front, or no Kindle for a while
@@ -250,6 +255,7 @@ public class KindleService extends AccessibilityService {
         if (bubble != null || hl != null || picker != null || exploreOn || reading || busy) main.postDelayed(tick, 500);
     }
     private long awayAt, pausedAt;
+    private volatile boolean noticeBusy;
 
     /** Another app (not Kindle, not Loudbook) is the one in front: he's left Kindle. */
     private boolean otherAppInFront() {
@@ -615,7 +621,11 @@ public class KindleService extends AccessibilityService {
             Page before = p;
             pause(400);
             Page q = readPage();
-            for (int i = 0; i < 40 && q.paragraphs.isEmpty(); i++) { pause(250); q = readPage(); }
+            for (int i = 0; i < 40 && q.paragraphs.isEmpty(); i++) {
+                pause(250);
+                if (dismissScrollNotice()) { pause(800); reopenBook(); }
+                q = readPage();
+            }
             if (!q.paragraphs.isEmpty()) {
                 if (!q.paragraphs.equals(before.paragraphs)) Log.i("LoudbookTest", "kindle: the text without a screen reader was an old page");
                 explored[0] = explored[1] = true;
@@ -627,12 +637,40 @@ public class KindleService extends AccessibilityService {
         if (p.paragraphs.isEmpty() && !exploreOn && kindleRoot() != null) {
             Log.i("LoudbookTest", "no text; trying explore-by-touch");
             main.post(() -> setExplore(true));
-            for (int i = 0; i < 36 && p.paragraphs.isEmpty(); i++) { pause(300); p = readPage(); }
+            for (int i = 0; i < 36 && p.paragraphs.isEmpty(); i++) {
+                pause(300);
+                if (dismissScrollNotice()) { pause(800); reopenBook(); }
+                p = readPage();
+            }
             explored[0] = explored[1] = !p.paragraphs.isEmpty();
             if (!explored[0]) main.post(() -> setExplore(false));
         } else if (!p.paragraphs.isEmpty() && exploreOn) explored[0] = needExplore;
         return p;
     }
+    /**
+     * Kindle can't scroll continuously for a screen reader: when screen-reader touch comes on it turns
+     * Continuous Scrolling off itself and says so in a notice ("We have turned off continuous
+     * scrolling..."), which then sits over the book. Loudbook presses its OK, so reading just goes on
+     * (one page at a time while Loudbook reads). true if there was one.
+     */
+    boolean dismissScrollNotice() {
+        try {
+            for (AccessibilityWindowInfo w : getWindows()) {
+                AccessibilityNodeInfo r = w.getRoot();
+                if (r == null || r.getPackageName() == null || !KINDLE.contentEquals(r.getPackageName())) continue;
+                List<AccessibilityNodeInfo> t = r.findAccessibilityNodeInfosByViewId(KINDLE + ":id/full_page_title");
+                if (t == null || t.isEmpty() || t.get(0).getText() == null || !t.get(0).getText().toString().toLowerCase(java.util.Locale.ROOT).contains("continuous")) continue;
+                List<AccessibilityNodeInfo> ok = r.findAccessibilityNodeInfosByViewId(KINDLE + ":id/full_page_button_positive");
+                if (ok == null || ok.isEmpty()) continue;
+                boolean done = ok.get(0).performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                if (!done) { Rect b = new Rect(); ok.get(0).getBoundsInScreen(b); done = taps(b.centerX(), b.centerY(), exploreOn ? 2 : 1); }
+                Log.i("LoudbookTest", "kindle: its \"continuous scrolling turned off\" notice " + (done ? "dismissed" : "couldn't be dismissed"));
+                return true;
+            }
+        } catch (Exception e) { Log.w(TAG, "scroll notice", e); }
+        return false;
+    }
+
     /** Kindle's page is drawn by its own renderer (KRFView), not text views. */
     private boolean krf() {
         AccessibilityNodeInfo r = kindleRoot();
@@ -694,6 +732,7 @@ public class KindleService extends AccessibilityService {
         long end = System.currentTimeMillis() + 5000;
         while (System.currentTimeMillis() < end) {
             pause(250);
+            if (dismissScrollNotice()) { pause(800); end = System.currentTimeMillis() + 5000; }
             AccessibilityNodeInfo root = kindleRoot();
             if (root == null) continue;
             if (findClass(root, "KRFView", 0) != null) continue;               // (still open, or open again)
