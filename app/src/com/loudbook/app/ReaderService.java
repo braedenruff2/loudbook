@@ -510,6 +510,9 @@ public class ReaderService extends Service {
     private Voice.Clip phoneInTurn(Chapter ch, int idx, java.util.function.BooleanSupplier stop) throws Exception {
         while (idx > pos + 2 && chapter == ch && !stop.getAsBoolean()) Thread.sleep(150);
         if (chapter != ch) throw new java.util.concurrent.CancellationException();
+        // (already read: the waiter only got here once its request was done. Making it again took
+        // the phone's voice away from the sentences still to come)
+        if (idx < pos - 1) throw new java.util.concurrent.CancellationException();
         if (stop.getAsBoolean()) return null;
         if (phoneRead.add(idx)) Log.i("LoudbookTest", "gemini: sentence " + idx + " isn't recorded; the phone's voice reads it");
         Future<Voice.Clip> f = fillFor(ch, idx);
@@ -1049,6 +1052,8 @@ public class ReaderService extends Service {
         while (k < ch.size() - 1 && t < wait && !b.has(k)) { t += Math.max(1, ch.chunks.get(k).say.length()) * phonePace + 0.3; k++; }
         // (from the start of a paragraph if one starts near there, so Gemini takes over at a natural place)
         for (int q = k; q < Math.min(ch.size(), k + 4); q++) if (q > 0 && ch.chunks.get(q).block != ch.chunks.get(q - 1).block) { k = q; break; }
+        // (a short chapter: not past its middle, so the request isn't a sentence or two at its very end)
+        k = Math.min(k, i + (ch.size() - i) / 2);
         if (k > i) Log.i("LoudbookTest", "gemini: starting from sentence " + k + " (about " + Math.round(wait) + " s ahead); the phone's voice reads up to it");
         return k;
     }

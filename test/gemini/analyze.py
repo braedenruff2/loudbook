@@ -33,16 +33,19 @@ for p in parts:
         if any(k in l for k in ("gemini timing:", "not ready at sentence", "ready again from", "starting from sentence", "isn't in the recording")):
             out.append(f"- {ts(l) - t0:6.1f} s  " + l.split("LoudbookTest: ")[1])
     # what read each sentence, and stalls (a sentence heard later than the one before it could have ended)
-    clips = {}
+    # (per chapter: sentence numbers start again after a page turn)
+    chap, clips, heard = 0, {}, []
     for l in L:
+        if "LoudbookTest: turned to " in l: chap += 1
         m = re.search(r"clip (\d+): ([\d.]+) s(?:, (.*))?$", l)
-        if m: clips[int(m.group(1))] = (float(m.group(2)), m.group(3) or "")
-    heard = [(ts(l), int(re.search(r"speaking (\d+):", l).group(1))) for l in L if re.search(r"LoudbookTest: speaking \d+:", l)]
+        if m: clips[(chap, int(m.group(1)))] = (float(m.group(2)), m.group(3) or "")
+        m = re.search(r"LoudbookTest: speaking (\d+):", l)
+        if m: heard.append((ts(l), (chap, int(m.group(1)))))
     stalls = []
     for (ta, a), (tb, b) in zip(heard, heard[1:]):
-        if b == a + 1 and a in clips and tb - ta > clips[a][0] + 1.1: stalls.append((tb - ta - clips[a][0], f"{a}->{b}: {tb - ta - clips[a][0]:.1f} s"))
-    src = "".join("G" if "gemini" in v[1] else "p" if "phone" in v[1] else "?" for k, v in sorted(clips.items()))
-    out.append(f"- sentences read (G Gemini, p phone): {src}")
+        if b == (a[0], a[1] + 1) and a in clips and tb - ta > clips[a][0] + 1.1: stalls.append((tb - ta - clips[a][0], f"{a[1]}->{b[1]}: {tb - ta - clips[a][0]:.1f} s"))
+    src = " | ".join("".join("G" if "gemini" in v[1] else "p" if "phone" in v[1] else "?" for k, v in sorted(clips.items()) if k[0] == c) for c in range(chap + 1))
+    out.append(f"- sentences read, per chapter (G Gemini, p phone): {src}")
     out.append(f"- stalls: {', '.join(x[1] for x in stalls) if stalls else 'none'}")
     # (a few seconds at the very start is the emulator's slow phone voice; a long one is a real problem)
     if any(x[0] > 8 for x in stalls): bad += 1
