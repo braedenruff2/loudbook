@@ -601,7 +601,7 @@ const UNITS = { km: ['kilometer', 'kilometers'], cm: ['centimeter', 'centimeters
   Mbps: ['megabit per second', 'megabits per second'], Gbps: ['gigabit per second', 'gigabits per second'], kW: ['kilowatt', 'kilowatts'], kWh: ['kilowatt-hour', 'kilowatt-hours'],
   MW: ['megawatt', 'megawatts'], ly: ['light-year', 'light-years'], kV: ['kilovolt', 'kilovolts'], mAh: ['milliamp-hour', 'milliamp-hours'], V: ['volt', 'volts'], W: ['watt', 'watts'] };
 
-const GRUNTS = [[/^[Hh](m+p+h|m+f)$/, 'humph'], [/^[Hh]mn?$/, 'hmm'], [/^([Mm]hm+|[Mm]m-?hm+)$/, 'mm-hmm'], [/^[Mm]m+$/, 'hmm'],
+const GRUNTS = [[/^[Hh](m+p+h|m+f)$/, 'humph'], [/^[Hh]mn?$/, 'hmm'], [/^([Mm]hm+|[Mm]m-?hm+|[Mm]m+-hm+)$/, 'um-hum'], [/^[Mm]m+$/, 'hmm'],
   [/^[Ss]hh+$/, 'shush'], [/^[Pp]+f+t?$/, 'puh'], [/^[Gg]rr+$/, 'grur'], [/^[Bb]rr+$/, 'burr'], [/^[Nn]+g+h$|^[Nn]n+g$|^[Nn]+h$/, 'ungh'],
   [/^[Tt]s?ch$/, 'tsk'], [/^[Hh]r+m+$/, 'hmm'], [/^[Uu]hh+$/, 'uh'], [/^[Ee]rr+$/, 'er'], [/^[Pp]s+t$/, 'psst'],
   // more the phone voice spelled out letter by letter ("Hnng" -> "H N N G", "Bzzt" -> "B Z Z T")
@@ -688,6 +688,7 @@ function tidy(t) {
     .replace(/([$£€])(\d[\d,.]*[kKmMbB]?)\s?[-–]\s?(?=\1\d)/g, '$1$2 to ')   // $10-$20 (was "ten dollars-twenty dollars")
     .replace(/(?<![\w-])(49|76)ers\b/g, (m, n) => (n === '49' ? 'Forty-Niners' : 'Seventy-Sixers'))   // the 49ers (was read as digits)
     .replace(/\b(?:Lv|Lvl|LVL|LV|lvl|lv)\.?\s*(?=\d|(?:MAX|Max|max)\b)/g, 'Level ')   // also Lv. MAX
+    .replace(/\bMAX\b/g, 'max')   // "Level MAX", "MAX HP": the voice spelled it M-A-X
     .replace(/(\w)\s@\s(?=[\d$£€])/g, '$1 at ')   // 12 potions @ 5g each
     .replace(/\b(HP|MP|SP|XP|EXP|EP|AP)\/(HP|MP|SP|XP|EXP|EP|AP)\b/g, '$1 and $2')   // HP/MP (not "slash")
     .replace(/\b([A-Z]{3})(?=\s*(?::|\+|-|—|–|\d))/g, (m, k) => STATS[k] || m)
@@ -1120,7 +1121,7 @@ return { parseFixes, makeSayer, tidy };
       .replace(/\b(\d{1,2}):(\d{2})\b/g, (_, h, m, at, all) => (+h === 0 && +m === 0 ? (/(?:\b(?:at|past|after|until|till|before|by|around|about|since)\s+)$/i.test(all.slice(Math.max(0, at - 9), at)) ? 'midnight' : 'zero zero') : words(+h) + (+m === 0 && +h >= 13 && +h <= 24 ? ' hundred' : +m === 0 ? (/^\s*(o'clock|o’clock|[ap]\.?m\b|[AP]M\b)/i.test(all.slice(at + 3 + h.length)) ? '' : " o'clock") : +m < 10 ? ' oh ' + words(+m) : ' ' + words(+m))))
       .replace(/\b(\d+)(st|nd|rd|th)\b/gi, (_, d) => ordinal(+d))
       // years before 1100 or after 2099, where it's clearly a year: "the year 1066", "the year 2525", "in 1066.", "800 AD" -> ten sixty-six, eight hundred AD
-      .replace(/\b([Yy]ear\s+(?:(?:was|is|of)\s+)?)(10\d\d|2[1-9]\d\d|[3-9]\d\d\d)\b(?![.,]?\d)|\b((?:[Ii]n|[Ss]ince|[Uu]ntil|[Cc]irca|[Bb]y)\s+)(10\d\d)(?=\s*(?:[,;:!?)]|\.(?!\d)|$)|\s+(?:the|a|an|he|she|they|it|we|I|his|her|their|there|when|after|before)\b)|(?<![\d,.])\b(\d{3,4})(?=\s?(?:AD|BC|BCE|CE|A\.D\.|B\.C\.)(?!\w))|((?:\bAD|\bA\.D\.)\s?)(\d{3,4})\b(?![.,]?\d)/g,
+      .replace(/\b([Yy]ear\s+(?:(?:was|is|of)\s+)?)(10\d\d|2[1-9]\d\d|[3-9]\d\d\d)\b(?![.,]?\d)|\b((?:[Ii]n|[Ss]ince|[Uu]ntil|[Cc]irca|[Bb]y)\s+)(10\d\d)(?=\s*(?:[,;:!?)]|\.(?!\d)|$)|\s+(?:the|a|an|and|or|he|she|they|it|we|I|his|her|their|there|when|after|before)\b)|(?<![\d,.])\b(\d{3,4})(?=\s?(?:AD|BC|BCE|CE|A\.D\.|B\.C\.)(?!\w))|((?:\bAD|\bA\.D\.)\s?)(\d{3,4})\b(?![.,]?\d)/g,
         (m, p1, y1, p2, y2, y3, p4, y4) => { const y = +(y1 || y2 || y3 || y4); return (p1 || p2 || p4 || '') + (y % 1000 === 0 || (y < 1000 && y % 100 === 0) ? words(y) : yearWords(y)); })
       .replace(/\b(1[1-9]\d\d|20\d\d)s?\b/g, (m, y) => { const w = yearWords(+y); return m.endsWith('s') ? (w.endsWith('y') ? w.slice(0, -1) + 'ies' : w + 's') : w; })
       .replace(/\b(\d)0['’]?s\b/g, (m, d) => (TENS[+d] || 'ten').replace(/y$/, 'ies') + (d === '1' ? 's' : ''))   // the 80s, the 70's
