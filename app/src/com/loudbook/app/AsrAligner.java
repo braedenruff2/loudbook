@@ -136,6 +136,94 @@ final class AsrAligner {
         List<Integer> ts = new ArrayList<>();
         for (int k = 0; k < sentences.size(); k++)
             for (String w : sentences.get(k).split("[\\s\\u2014\\u2013-]+")) { String n = norm(w); if (!n.isEmpty()) { tw.add(n); ts.add(k); } }
+        if (tw.size() < 8 || heard.size() < 8) return greedyStarts(heard, sentences);
+        return anchoredStarts(heard, tw, ts, sentences.size());
+    }
+
+    /**
+     * Text and words heard lined up by runs of three words in a row that agree (rare enough in a
+     * chapter to say where they are), keeping the longest chain that goes forwards in both; the
+     * words between two such runs are matched in order. A word the recogniser missed or got wrong,
+     * a title it didn't make out, a sentence Gemini skipped, or instructions it read out first,
+     * can't pull everything after it out of place. (Matching word by word, a missed "Chapter Two"
+     * matched the title's "the Mill" to the first sentence's, and from there on almost no sentence
+     * could be timed until the recording was complete.)
+     */
+    static double[] anchoredStarts(List<Word> heard, List<String> tw, List<Integer> ts, int nSent) {
+        int T = tw.size(), H = heard.size();
+        String[] hw = new String[H];
+        for (int i = 0; i < H; i++) hw[i] = norm(heard.get(i).w);
+        java.util.Map<String, List<Integer>> grams = new java.util.HashMap<>();
+        for (int i = 0; i + 2 < T; i++) grams.computeIfAbsent(tw.get(i) + " " + tw.get(i + 1) + " " + tw.get(i + 2), x -> new ArrayList<>()).add(i);
+        // candidate pairs {text i, heard m}, by m, then i falling (so one m can't take two)
+        List<int[]> pairs = new ArrayList<>();
+        for (int m = 0; m + 2 < H; m++) {
+            List<Integer> at = grams.get(hw[m] + " " + hw[m + 1] + " " + hw[m + 2]);
+            if (at == null || at.size() > 3) continue;
+            for (int q = at.size() - 1; q >= 0; q--) pairs.add(new int[]{at.get(q), m});
+        }
+        // the longest chain going forwards in both (patience sorting)
+        int P = pairs.size();
+        int[] tail = new int[P + 1], prev = new int[P];
+        int len = 0;
+        for (int p = 0; p < P; p++) {
+            int i = pairs.get(p)[0], lo = 1, hi = len;
+            while (lo <= hi) { int mid = (lo + hi) >>> 1; if (pairs.get(tail[mid])[0] < i) lo = mid + 1; else hi = mid - 1; }
+            prev[p] = lo > 1 ? tail[lo - 1] : -1;
+            tail[lo] = p;
+            if (lo > len) len = lo;
+        }
+        int[] match = new int[T];                         // heard word for each text word, or -1
+        java.util.Arrays.fill(match, -1);
+        boolean[] sure = new boolean[T];
+        for (int p = len > 0 ? tail[len] : -1; p >= 0; p = prev[p]) {
+            int i = pairs.get(p)[0], m = pairs.get(p)[1];
+            for (int d = 0; d < 3; d++) if (match[i + d] < 0) { match[i + d] = m + d; sure[i + d] = true; }
+        }
+        // between two sure stretches: the words in order (only short gaps, so a common word can't wander)
+        int a = -1;
+        for (int i = 0; i <= T; i++) {
+            if (i < T && !sure[i]) continue;
+            int ha = a < 0 ? -1 : match[a], hb = i < T ? match[i] : H;
+            if (i - a > 1 && hb - ha > 1 && i - a <= 12 && hb - ha <= 16) {
+                int m = ha + 1;
+                for (int k = a + 1; k < i && m < hb; k++)
+                    for (int mm = m; mm < Math.min(hb, m + 4); mm++) if (hw[mm].equals(tw.get(k))) { match[k] = mm; m = mm + 1; break; }
+            }
+            a = i;
+        }
+        double[] start = new double[nSent];
+        java.util.Arrays.fill(start, Double.NaN);
+        int[] first = new int[nSent];
+        java.util.Arrays.fill(first, -1);
+        for (int i = 0; i < T; i++) if (first[ts.get(i)] < 0) first[ts.get(i)] = i;
+        for (int k = 0; k < nSent; k++) {
+            int f = first[k];
+            if (f < 0) continue;
+            // its first word, or its second (a moment later), as long as a word near it agrees too
+            for (int d = 0; d <= 1 && f + d < T && ts.get(f + d) == k; d++) {
+                int i = f + d;
+                if (match[i] < 0) continue;
+                boolean backed = sure[i] || (i + 1 < T && match[i + 1] == match[i] + 1) || (i > 0 && match[i - 1] >= 0 && match[i - 1] == match[i] - 1);
+                if (!backed) continue;
+                start[k] = heard.get(match[i]).t - d * 0.3;
+                break;
+            }
+        }
+        double last = -1;
+        for (int k = 0; k < nSent; k++) {
+            if (Double.isNaN(start[k])) continue;
+            if (start[k] <= last + 0.15) start[k] = Double.NaN; else last = start[k];
+        }
+        return start;
+    }
+
+    /** Word-by-word matching (for a text too short for runs of three). */
+    static double[] greedyStarts(List<Word> heard, List<String> sentences) {
+        List<String> tw = new ArrayList<>();
+        List<Integer> ts = new ArrayList<>();
+        for (int k = 0; k < sentences.size(); k++)
+            for (String w : sentences.get(k).split("[\\s\\u2014\\u2013-]+")) { String n = norm(w); if (!n.isEmpty()) { tw.add(n); ts.add(k); } }
         String[] hw = new String[heard.size()];
         for (int i = 0; i < hw.length; i++) hw[i] = norm(heard.get(i).w);
         double[] start = new double[sentences.size()];
@@ -227,13 +315,15 @@ final class AsrAligner {
             known++;
             // (the recogniser reports a word about a quarter second after it begins)
             double word = st[k] - 0.22;
-            // cut in the middle of the pause just before the first word, if there is one
+            // cut in the pause just before the first word, if there is one: near its end (a moment
+            // before the voice), so the highlight moves to the sentence as it's heard, not half a
+            // pause early (a long pause between paragraphs put it most of a second ahead)
             double c = word - 0.05, best = Double.MAX_VALUE;
             for (double[] p : pauses) {
                 double end = p[0] + p[1] / 2;                       // where the pause ends
                 if (end > word + 0.25 || end < word - 0.6) continue;
                 double d = Math.abs(end - word);
-                if (d < best) { best = d; c = p[0]; }
+                if (d < best) { best = d; c = Math.max(p[0], end - 0.15); }
             }
             at[k] = Math.max(0, c);
         }

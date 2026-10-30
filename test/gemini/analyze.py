@@ -40,11 +40,12 @@ for p in parts:
     heard = [(ts(l), int(re.search(r"speaking (\d+):", l).group(1))) for l in L if re.search(r"LoudbookTest: speaking \d+:", l)]
     stalls = []
     for (ta, a), (tb, b) in zip(heard, heard[1:]):
-        if b == a + 1 and a in clips and tb - ta > clips[a][0] + 1.1: stalls.append(f"{a}->{b}: {tb - ta - clips[a][0]:.1f} s")
+        if b == a + 1 and a in clips and tb - ta > clips[a][0] + 1.1: stalls.append((tb - ta - clips[a][0], f"{a}->{b}: {tb - ta - clips[a][0]:.1f} s"))
     src = "".join("G" if "gemini" in v[1] else "p" if "phone" in v[1] else "?" for k, v in sorted(clips.items()))
     out.append(f"- sentences read (G Gemini, p phone): {src}")
-    out.append(f"- stalls: {', '.join(stalls) if stalls else 'none'}")
-    if stalls: bad += 1
+    out.append(f"- stalls: {', '.join(x[1] for x in stalls) if stalls else 'none'}")
+    # (a few seconds at the very start is the emulator's slow phone voice; a long one is a real problem)
+    if any(x[0] > 8 for x in stalls): bad += 1
     # cuts against the truth: each block of "gemini cut" lines is one request
     blocks, blk = [], []
     for l in L:

@@ -1073,6 +1073,10 @@ public class ReaderService extends Service {
         GeminiBook b = bookFor(ch);
         double ahead = 0;
         int k = here;
+        // (the phone's voice is reading up to where Gemini's recording starts: count from there, or
+        // this asks again for the part the phone's voice is reading)
+        int nh = b.nextHave(here, ch.size());
+        if (!b.has(here) && nh < ch.size() && !prefs.getBoolean("gemBackfill", false)) k = nh;
         for (; k < ch.size() && b.has(k); k++) ahead += b.secondsOf(k);
         Chapter c = ch; GeminiBook cb = b; int miss = k;
         if (k >= ch.size()) {
