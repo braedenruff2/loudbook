@@ -213,12 +213,14 @@ public class KindleService extends AccessibilityService {
         boolean speaking = reading && svc.isPlaying() && !svc.isPaused();
         long now = System.currentTimeMillis();
         if (kindle) awayAt = 0; else if (awayAt == 0) awayAt = now;
+        // Kindle's window goes for a moment when a screen reader comes or goes (it closes the book, and
+        // Loudbook opens it again): that isn't leaving Kindle. Left = another app in front, or no Kindle for a while
+        boolean left = !kindle && (otherAppInFront() ? now - awayAt > 600 : now - awayAt > 5000);
         if (!kindle) {
             // not on Kindle: nothing of Loudbook's stays on the screen
             hideHighlight(); hidePicker();
-            if (exploreOn) { Log.i("LoudbookTest", "kindle: left Kindle, screen-reader touch off"); setExplore(false); }
-            // (a moment's grace: Kindle's own screens can come and go while it opens a book)
-            if (speaking && now - awayAt > 2500 && !busy) { Log.i("LoudbookTest", "kindle: left Kindle, reading paused"); svc.pause(); speaking = false; }
+            if (exploreOn && left) { Log.i("LoudbookTest", "kindle: left Kindle, screen-reader touch off"); setExplore(false); }
+            if (speaking && left && now - awayAt > 2500 && !busy) { Log.i("LoudbookTest", "kindle: left Kindle, reading paused"); svc.pause(); speaking = false; }
         } else if (reading) main.post(paint); else hideHighlight();
         if (kindle && loudbookOpen() || speaking) showBubble(); else hideBubble();
         // explore-by-touch only while reading Kindle (so the phone works normally the rest of the time)
@@ -228,9 +230,9 @@ public class KindleService extends AccessibilityService {
         // (kept on while paused, for a while, as long as Kindle is on screen: Kindle closes the book
         // each time it switches; paused for long, it goes off so Kindle's own buttons work normally)
         if (speaking || !reading) { pausedAt = 0; restWhilePaused = false; } else if (pausedAt == 0) pausedAt = now;
-        if (pausedAt > 0 && (now - pausedAt > 45_000 || !kindle)) restWhilePaused = true;     // (back on when reading goes on: see tapped)
-        boolean explore = needExplore && reading && kindle && !restWhilePaused;
-        if (explore != exploreOn && (!settling || !kindle)) setExplore(explore);
+        if (pausedAt > 0 && (now - pausedAt > 45_000 || left)) restWhilePaused = true;     // (back on when reading goes on: see tapped)
+        boolean explore = needExplore && reading && (kindle || !left) && !restWhilePaused;
+        if (explore != exploreOn && (!settling || left)) setExplore(explore);
         if (bubble != null) {
             boolean on = speaking;
             bubble.setText(on ? "❚❚" : "▶");
@@ -248,6 +250,19 @@ public class KindleService extends AccessibilityService {
         if (bubble != null || hl != null || picker != null || exploreOn || reading || busy) main.postDelayed(tick, 500);
     }
     private long awayAt, pausedAt;
+
+    /** Another app (not Kindle, not Loudbook) is the one in front: he's left Kindle. */
+    private boolean otherAppInFront() {
+        try {
+            for (AccessibilityWindowInfo w : getWindows()) {
+                if (w.getType() != AccessibilityWindowInfo.TYPE_APPLICATION || !(w.isActive() || w.isFocused())) continue;
+                AccessibilityNodeInfo r = w.getRoot();
+                CharSequence pk = r == null ? null : r.getPackageName();
+                if (pk != null && !KINDLE.contentEquals(pk) && !getPackageName().contentEquals(pk)) return true;
+            }
+        } catch (Exception ignored) { }
+        return false;
+    }
     private boolean restWhilePaused;
 
     /** Loudbook's screen is open, or in recent apps (not swiped away, and opened since the phone started). */
@@ -779,6 +794,7 @@ public class KindleService extends AccessibilityService {
     /** This page is the one being read now: its header and footer are known from here on. */
     void accept(Page p) {
         lastEdges = p.edges;
+        expectNext = p.nextStart;
         shown = null; spansFor = -1;          // (the last page's places are no good now: no highlight until this page's are known)
         // where this page's lines are, for the highlight (exact character boxes take a moment: off the main thread)
         new Thread(() -> {
@@ -789,6 +805,24 @@ public class KindleService extends AccessibilityService {
         }, "lb-kindle-layout").start();
     }
     private volatile Page shownPage;
+    /** How the page after the one being read starts (Kindle shares it unseen), to check a turn landed on it. */
+    private volatile String expectNext;
+
+    /** Whether a page starts with the text expected (letters only; the first 30 or so are enough). */
+    static boolean startsWith(Page p, String expect) {
+        if (expect == null || p.paragraphs.isEmpty()) return true;
+        String e = KindleLayout.normOf(expect), got = KindleLayout.normOf(String.join(" ", p.paragraphs));
+        if (e.length() < 8) return true;                           // (too little to tell by)
+        e = e.substring(0, Math.min(30, e.length()));
+        int at = got.indexOf(e);
+        return at >= 0 && at < 40;                                    // (a heading or page number above it is fine)
+    }
+    /** Whether a page holds the text expected anywhere (it's further on than the page turned to). */
+    static boolean holds(Page p, String expect) {
+        if (expect == null) return false;
+        String e = KindleLayout.normOf(expect);
+        return e.length() >= 8 && KindleLayout.normOf(String.join(" ", p.paragraphs)).contains(e.substring(0, Math.min(30, e.length())));
+    }
     private static int loggedNext;   // (say how the next page starts once, not on every look)
 
     /** Test builds: where the page's lines and letters were placed (kindle-layout.json, for checking the highlight). */
@@ -1230,6 +1264,15 @@ public class KindleService extends AccessibilityService {
                     try { Thread.sleep(250); } catch (InterruptedException ignored) { }   // let it finish drawing
                     Page q = readPage();
                     Page got = q.paragraphs.isEmpty() ? p : q;
+                    // it went two pages (a turn that was slow to show, then another way of turning): go back one
+                    String want = expectNext;
+                    if (want != null && !startsWith(got, want) && attempt > 0) {
+                        Log.i("LoudbookTest", "kindle turn: landed past the next page (it should start \"" + (want.length() > 40 ? want.substring(0, 40) : want) + "\"), going back one");
+                        Page back = backPage(got.signature);
+                        if (back != null && startsWith(back, want)) got = back;
+                        else if (back != null && !back.paragraphs.isEmpty()) Log.i("LoudbookTest", "kindle turn: the page before isn't it either, staying");
+                    }
+                    if (want != null && !startsWith(got, want)) Log.i("LoudbookTest", "kindle turn: this page doesn't start as the last one said the next would");
                     clearFocus();
                     accept(got);
                     return got;
@@ -1242,7 +1285,34 @@ public class KindleService extends AccessibilityService {
         return new Page();
     }
 
-    private static boolean scrollForward(AccessibilityNodeInfo root) {
+    /** Turns back one page (after a turn that went two): the page now shown, or null if it didn't turn. */
+    private Page backPage(String beforeSig) {
+        AccessibilityNodeInfo root = kindleRoot();
+        if (root == null) return null;
+        boolean sent = scroll(root, AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD);
+        if (!sent) {
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            int w = dm.widthPixels, h = dm.heightPixels;
+            GestureDescription.Builder gb = new GestureDescription.Builder();
+            for (int k = 0; k < 2; k++) { Path a = new Path(); a.moveTo(w * 0.2f, h * (0.45f + 0.1f * k)); a.lineTo(w * 0.8f, h * (0.45f + 0.1f * k)); gb.addStroke(new GestureDescription.StrokeDescription(a, 0, 250)); }
+            sent = dispatchGesture(gb.build(), null, null);
+        }
+        if (!sent) return null;
+        long end = System.currentTimeMillis() + 3000;
+        while (System.currentTimeMillis() < end) {
+            try { Thread.sleep(150); } catch (InterruptedException e) { return null; }
+            Page p = readPage();
+            if (!p.paragraphs.isEmpty() && !p.signature.equals(beforeSig)) {
+                try { Thread.sleep(250); } catch (InterruptedException ignored) { }
+                Page q = readPage();
+                return q.paragraphs.isEmpty() ? p : q;
+            }
+        }
+        return null;
+    }
+
+    private static boolean scrollForward(AccessibilityNodeInfo root) { return scroll(root, AccessibilityNodeInfo.ACTION_SCROLL_FORWARD); }
+    private static boolean scroll(AccessibilityNodeInfo root, int action) {
         if (root == null) return false;
         Rect screen = new Rect(), r = new Rect();
         root.getBoundsInScreen(screen);
@@ -1258,7 +1328,7 @@ public class KindleService extends AccessibilityService {
                 n.performAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS);
                 try { Thread.sleep(120); } catch (InterruptedException ignored) { }
                 n.refresh();
-                boolean ok = n.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
+                boolean ok = n.performAction(action);
                 n.performAction(AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS);   // (no focus box left on the page)
                 if (ok) return true;
             }

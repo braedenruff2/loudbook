@@ -107,6 +107,16 @@ public class UnitTest {
         check("a sentence with only a few words at the top of the page is found", Arrays.toString(top.spans(Arrays.asList("His attachment to me.", "The road out of the valley was old.")).get(0)), "[0, 8, 9, 17]");
         check("on the next page, the start isn't there", KindleLayout.localFrac(new int[]{0, 15, 34, 49}, 0.5f), -1.0f);
         check("on the next page, its end is", Math.round(KindleLayout.localFrac(new int[]{0, 15, 34, 49}, 0.9f) * 100), 67);
+        // continuous scrolling: the new screen starts with some of the last one again; only what's new is read
+        check("scrolled screen: overlap with the last one dropped", KindleText.afterOverlap(
+            Arrays.asList("The road out of the valley was older than the town.", "Mara walked it every morning, and liked it, until"),
+            Arrays.asList("Mara walked it every morning, and liked it, until the snow came.", "Then she stayed in.")),
+            "[the snow came., Then she stayed in.]");
+        check("scrolled screen: a whole paragraph read already is dropped", KindleText.afterOverlap(
+            Arrays.asList("The road out of the valley was older than the town.", "Mara walked it every morning, and liked it."),
+            Arrays.asList("Mara walked it every morning, and liked it.", "Then she stayed in.")), "[Then she stayed in.]");
+        check("turned page (no overlap): unchanged", KindleText.afterOverlap(
+            Arrays.asList("The road out of the valley was older than the town."), Arrays.asList("Mara walked it every morning.")), "[Mara walked it every morning.]");
         // the sentence over a page break, whole, when the next page's start is known
         KindleText kb = new KindleText("");
         java.util.List<Chapter.Chunk> pgb = kb.chunks(Arrays.asList("It was late. He agreed with Mr. Morris"), false);

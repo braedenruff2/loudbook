@@ -171,6 +171,43 @@ final class KindleText {
         return carry + " " + next;
     }
 
+    /**
+     * The new page's paragraphs from where the last page's text ends, if the new page begins with
+     * some of the last one again (Kindle's continuous scrolling moves the text up by less than a
+     * screen, and a paragraph cut by the screen's edge is shared by both): those words were read
+     * already. Unchanged if the pages don't overlap (Kindle's page turns). Matched on letters only.
+     */
+    static List<String> afterOverlap(List<String> prev, List<String> next) {
+        if (prev == null || prev.isEmpty() || next.isEmpty()) return next;
+        String pn = KindleLayout.normOf(String.join(" ", prev));
+        if (pn.length() < 25) return next;
+        String key = pn.substring(pn.length() - 20);
+        // where each letter of the new page is: {paragraph, character}
+        StringBuilder nn = new StringBuilder();
+        List<int[]> at = new ArrayList<>();
+        for (int i = 0; i < next.size(); i++) {
+            String t = next.get(i);
+            for (int c = 0; c < t.length(); c++) if (Character.isLetterOrDigit(t.charAt(c))) { nn.append(Character.toLowerCase(t.charAt(c))); at.add(new int[]{i, c}); }
+        }
+        // the last page's end found in the new one, and how far back the two go on matching: the
+        // overlap must reach back to the new page's start (the text above it is the same), or be long
+        int best = -1, bestLen = 0;
+        for (int f = nn.indexOf(key); f >= 0; f = nn.indexOf(key, f + 1)) {
+            int e = f + key.length(), n = 0;
+            while (n < e && n < pn.length() && nn.charAt(e - 1 - n) == pn.charAt(pn.length() - 1 - n)) n++;
+            if ((n == e || n >= 60) && n > bestLen) { best = e; bestLen = n; }
+        }
+        if (best < 0) return next;
+        int[] last = at.get(best - 1);
+        List<String> out = new ArrayList<>();
+        String rest = next.get(last[0]).substring(last[1] + 1);
+        // (the marks right after the last word read, a full stop or a closing quote, go with it)
+        rest = rest.replaceFirst("^[.,;:!?\u2026\"'\u201d\u2019)\\]]*", "").trim();
+        if (!rest.isEmpty()) out.add(rest);
+        for (int i = last[0] + 1; i < next.size(); i++) out.add(next.get(i));
+        return out;
+    }
+
     private static boolean startsLower(String s) { return !s.isEmpty() && Character.isLowerCase(s.charAt(0)); }
 
     /** A paragraph's sentences: short ones joined, long ones split at a comma or similar. */

@@ -642,6 +642,7 @@ public class ReaderService extends Service {
         if (raw.isEmpty()) raw = new KindleText(prefs.getString("fixes", "")).chunks(p.paragraphs, true);
         logKindle("start", p.paragraphs, raw);
         kindleSig = p.signature;
+        kindleParas = p.paragraphs;
         kindleEnded = false; kindleBusy = false; kindleHidden = false;
         splitIdx = -1; splitTurned = false;
         final java.util.List<Chapter.Chunk> page = raw;
@@ -716,6 +717,8 @@ public class ReaderService extends Service {
 
     /** Turns Kindle's page and adds its sentences to what's being read. */
     private volatile boolean kindleQueued;
+    /** The paragraphs on the Kindle screen being read (to tell what's new on the next one). */
+    private volatile java.util.List<String> kindleParas;
     /** The page couldn't be turned because Kindle wasn't on screen: turn it when Kindle's back. */
     private volatile boolean kindleHidden;
     /** Waits (paused) while Kindle is away, then turns the page once it's back and reading goes on. false = interrupted. */
@@ -757,8 +760,13 @@ public class ReaderService extends Service {
                     if (k == null || !k.kindleVisible()) main.post(() -> status("Kindle isn't on screen, so the page can't be turned. Open it to carry on.", false));
                 } else {
                     kindleSig = p.signature;
-                    java.util.List<Chapter.Chunk> got = kt.chunks(p.paragraphs, false);
-                    logKindle("turned", p.paragraphs, got);
+                    // (with Kindle's continuous scrolling the new screen can start with the end of the last one again)
+                    java.util.List<String> paras = KindleText.afterOverlap(kindleParas, p.paragraphs);
+                    if (paras.size() != p.paragraphs.size() || (!paras.isEmpty() && !paras.get(0).equals(p.paragraphs.get(0))))
+                        Log.i("LoudbookTest", "kindle: this screen starts with words already read, from: " + ends(paras.isEmpty() ? "" : paras.get(0)));
+                    kindleParas = p.paragraphs;
+                    java.util.List<Chapter.Chunk> got = kt.chunks(paras, false);
+                    logKindle("turned", paras, got);
                     Chapter.Chunk bridge = kt.bridge(p.nextStart);
                     java.util.List<Chapter.Chunk> more = new java.util.ArrayList<>(spoken(got));
                     float frac = addBridge(more, bridge);
