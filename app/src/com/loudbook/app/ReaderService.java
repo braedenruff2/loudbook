@@ -893,7 +893,10 @@ public class ReaderService extends Service {
     private synchronized Future<?> request(Chapter ch, GeminiBook b, int i, boolean follow, boolean now) {
         inflight.removeIf(r -> r.f.isDone());
         int at = pos;
-        if (now && ch == chapter && i >= at && i - at <= READ_AHEAD && b.nextHave(at, ch.size()) > i) i = Math.max(i, leadFrom(ch, b, at));
+        // (from where reading is, not from i: the sentences ahead are waited for all at once, and when sentence 2's waiter got
+        // here first the request started at 2, and sentences 0-1 waited for all of it, then the phone's voice read them: a minute
+        // of silence at the start, gemini-test 2026-10-30. With the phone's voice filling in, leadFrom says where Gemini takes over)
+        if (now && ch == chapter && i >= at && i - at <= READ_AHEAD && b.nextHave(at, ch.size()) > i) i = leadFrom(ch, b, at);
         List<GeminiBook.Span> plan = plan(ch, b, i, sizeFor(ch, b, i));
         Req r = new Req();
         for (GeminiBook.Span sp : plan) r.covers.add(new Object[]{GeminiBook.key(sp.ch.url, cVoice(), cModel(), cStyle()), sp.from, sp.to});

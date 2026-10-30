@@ -29,6 +29,10 @@ for p in parts:
     t0 = ts(L[0]) if L else 0
     first = [l.split("LoudbookTest: ")[1] for l in L if "start: first sound" in l]
     out.append("- " + (first[0] if first else "NO SOUND"))
+    # (a start that waits far longer than Google takes for its first audio: sentences left waiting on a request that
+    # doesn't hold them, 2026-10-30. The stand-in takes ~8 s streamed, ~30 s all at once)
+    waits = [int(m.group(1)) for x in first for m in [re.search(r"after (\d+) ms", x)] if m]
+    if waits and max(waits) > 45000: out.append(f"- PROBLEM: {max(waits) / 1000:.0f} s of silence at the start"); bad += 1
     for l in L:
         if any(k in l for k in ("gemini timing:", "not ready at sentence", "ready again from", "starting from sentence", "isn't in the recording", "playing as it arrives", "played as it arrived", "waiting for Google's audio")):
             out.append(f"- {ts(l) - t0:6.1f} s  " + l.split("LoudbookTest: ")[1])

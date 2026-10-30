@@ -1196,25 +1196,34 @@ return { parseFixes, makeSayer, tidy };
   let markedRange = null;
   // the piece of text marked now: its letters' places on the page, and where its sentences and words are (in letters)
   let cur = null;
+  // two characters side by side on the page: next to each other in one text node, or the last of one node and the first of
+  // the next ("<em>Longbourn</em>.": the full stop after an italic word is still the sentence's)
+  const touch = ([n1, o1], [n2, o2]) => (n1 === n2 ? o2 === o1 + 1 : o1 === n1.nodeValue.length - 1 && o2 === 0);
   function rangeOf(p, a, b) {                                     // letters a..b-1 of the piece -> a DOM range
     const [sn, so] = p.pos[p.map[p.at + a]];
     let ei = p.map[p.at + b - 1];
     // take in the closing marks right after the last letter (a full stop, a quote) if nothing separates them
-    while (ei + 1 < p.pos.length && !isL(p.pos[ei + 1][0].nodeValue[p.pos[ei + 1][1]]) && p.pos[ei + 1][0] === p.pos[ei][0] && p.pos[ei + 1][1] === p.pos[ei][1] + 1) ei++;
+    while (ei + 1 < p.pos.length && !isL(p.pos[ei + 1][0].nodeValue[p.pos[ei + 1][1]]) && touch(p.pos[ei], p.pos[ei + 1])) ei++;
     let si = p.map[p.at + a];
-    while (si > 0 && !isL(p.pos[si - 1][0].nodeValue[p.pos[si - 1][1]]) && p.pos[si - 1][0] === p.pos[si][0] && p.pos[si - 1][1] === p.pos[si][1] - 1) si--;
+    while (si > 0 && !isL(p.pos[si - 1][0].nodeValue[p.pos[si - 1][1]]) && touch(p.pos[si - 1], p.pos[si])) si--;
     const [en, eo] = p.pos[ei];
     const r = document.createRange();
     r.setStart(p.pos[si][0], p.pos[si][1]); r.setEnd(en, eo + 1);
     return r;
   }
   // [start, end) in letters of each sentence and each word of a piece of text
+  const ABBR = /(?:\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Mt|vs|etc|Vol|Ch|Lt|Col|Gen|Sgt|Capt|Rev|Hon|approx|lvl|Lv|Lvl)|(?:^|[\s"'“‘(])(?!I\.)\p{Lu})\.$/u;
   function partsOf(text) {
     const sentences = [], wordsAt = [];
     let n = 0;
     for (const w of text.split(/\s+/)) { const k = lettersOf(w).length; if (k) { wordsAt.push([n, n + k]); n += k; } }
     let m = 0;
-    for (const sn of text.split(/(?<=[.!?…]["'”’)\]]*)\s+(?=[^\s\p{Ll}])/u)) { const k = lettersOf(sn).length; if (k) { sentences.push([m, m + k]); m += k; } }
+    // ("Mr. Collins", "Dr. Kim", "J. Smith", "Lvl. 5": a short form's full stop doesn't end the sentence)
+    const parts = [];
+    for (const sn of text.split(/(?<=[.!?…]["'”’)\]]*)\s+(?=[^\s\p{Ll}])/u)) {
+      if (parts.length && ABBR.test(parts[parts.length - 1])) parts[parts.length - 1] += ' ' + sn; else parts.push(sn);
+    }
+    for (const sn of parts) { const k = lettersOf(sn).length; if (k) { sentences.push([m, m + k]); m += k; } }
     return { sentences, wordsAt, total: n };
   }
   function markSentence(el, text, offset) {
