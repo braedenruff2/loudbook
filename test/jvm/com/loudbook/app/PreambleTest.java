@@ -21,7 +21,7 @@ public class PreambleTest {
                 .setTokens(k + "/tokens.txt").setLexicon(k + "/lexicon-us-en.txt").setDataDir(k + "/espeak-ng-data").build())
             .setNumThreads(2).setDebug(false).build()).build());
         AsrAligner asr = new AsrAligner();
-        asr.load(new java.io.File(files, "asr"));
+        asr.load(new java.io.File(files, "asr")); AsrTest.warm(asr);
         String style = CloudVoice.DEFAULT_STYLE;
         String[][] leads = {{"none", null}, {"whole instructions", style}, {"a few words", "Natural and engaging."}};
         String[] text = AsrTest.TEXT;

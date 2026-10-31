@@ -5,6 +5,13 @@ import com.k2fsa.sherpa.onnx.*;
 /** Makes a "chapter" recording with Kokoro (sentences with uneven pauses, like a narrator), then
  *  times the sentences two ways: by pauses alone (Align) and with the recogniser (AsrAligner). */
 public class AsrTest {
+    /** The app's warm-up speech for the recogniser (run from the repository's top folder, as CI does). */
+    static void warm(AsrAligner asr) throws java.io.IOException {
+        java.io.File w = new java.io.File("app/assets/" + AsrAligner.WARM);
+        if (!w.isFile()) throw new java.io.FileNotFoundException(w.getAbsolutePath() + " (run from the repository's top folder)");
+        asr.warm(java.nio.file.Files.readAllBytes(w.toPath()));
+    }
+
     static final String[] TEXT = {
         "The rain had stopped by the time Mara reached the bridge.",
         "She waited.",
@@ -62,7 +69,7 @@ public class AsrTest {
         System.out.println("pause timing: found " + r.count + " of " + N + " (really " + cutSentence + " whole ones), cut short " + r.cutShort);
         AsrAligner asr = new AsrAligner();
         long t0 = System.currentTimeMillis();
-        asr.load(new java.io.File(files, "asr"));
+        asr.load(new java.io.File(files, "asr")); AsrTest.warm(asr);
         java.util.List<AsrAligner.Word> words = asr.words(p, 0, p.samples());
         System.out.println("recogniser: " + words.size() + " words in " + (System.currentTimeMillis() - t0) + " ms for " + (int) (p.samples() / rate) + " s; first: " + words.subList(0, Math.min(10, words.size())));
         double[] st = AsrAligner.sentenceStarts(words, java.util.Arrays.asList(all).subList(0, r.count));

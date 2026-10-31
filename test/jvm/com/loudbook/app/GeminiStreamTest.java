@@ -43,7 +43,7 @@ public class GeminiStreamTest {
         Chapter ch = new Chapter("https://example.com/ch1", "test", "Chapter", "Story", chunks);
 
         AsrAligner asr = new AsrAligner();
-        asr.load(new java.io.File(files, "asr"));
+        asr.load(new java.io.File(files, "asr")); AsrTest.warm(asr);
 
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", ex -> {
@@ -174,8 +174,8 @@ public class GeminiStreamTest {
             System.out.println("   first sentence: " + d0);
             String[] tw0 = text[from].split(" ");
             String w0 = (AsrAligner.norm(tw0[0]) + " " + AsrAligner.norm(tw0[1])).toLowerCase(java.util.Locale.US);
-            // (the recogniser still misses the start now and then, "He turned it over twice" at 7 here,
-            // so this is counted over the runs: before it was primed it missed it every time)
+            // (counted over the runs, so one miss shows which: "He turned it over twice" at 7 was missed
+            // when the recogniser was primed with the recording's own start, not with its warm-up)
             runs0++; if (d0.contains("heard: " + w0)) heard0++; else System.out.println("   (its first words weren't heard)");
             if (run[0].equals("streamed")) {
                 // moving the highlight by hand: a second into sentence 6, "On" from 5 keeps 6 where it is
@@ -243,7 +243,7 @@ public class GeminiStreamTest {
             check("packed: the next chapter's recording is kept", again.recorded() == c2.size());
         }
         server.stop(0);
-        check("the first words of the recording are heard in all but one run (" + heard0 + " of " + runs0 + ")", heard0 >= runs0 - 1);
+        check("the first words of the recording are heard in every run (" + heard0 + " of " + runs0 + ")", heard0 == runs0);
         System.out.println(bad == 0 ? "ALL OK" : bad + " FAILED");
         System.exit(bad == 0 ? 0 : 1);
     }

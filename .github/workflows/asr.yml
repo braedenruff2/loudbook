@@ -4,7 +4,7 @@ name: Sentence timing model
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/asr.yml', 'app/src/com/loudbook/app/AsrAligner.java', 'app/src/com/loudbook/app/Align.java', 'app/src/com/loudbook/app/CloudVoice.java', 'test/jvm/com/loudbook/app/AsrTest.java', 'test/jvm/com/loudbook/app/PreambleTest.java', 'test/jvm/com/loudbook/app/GeminiStreamTest.java', 'app/src/com/loudbook/app/GeminiBook.java']
+    paths: ['.github/workflows/asr.yml', 'app/src/com/loudbook/app/AsrAligner.java', 'app/src/com/loudbook/app/Align.java', 'app/src/com/loudbook/app/CloudVoice.java', 'test/jvm/com/loudbook/app/AsrTest.java', 'test/jvm/com/loudbook/app/PreambleTest.java', 'test/jvm/com/loudbook/app/GeminiStreamTest.java', 'app/src/com/loudbook/app/GeminiBook.java', 'app/assets/web/asr-warm.pcm']
   workflow_dispatch:
 permissions:
   contents: write

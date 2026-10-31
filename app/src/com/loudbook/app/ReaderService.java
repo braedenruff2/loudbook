@@ -107,6 +107,11 @@ public class ReaderService extends Service {
     @Override public void onCreate() {
         super.onCreate();
         prefs = getSharedPreferences("lb", MODE_PRIVATE);
+        try (java.io.InputStream in = getAssets().open(AsrAligner.WARM)) {          // (the recogniser's warm-up speech)
+            java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[16384]; for (int n; (n = in.read(buf)) > 0; ) o.write(buf, 0, n);
+            asr.warm(o.toByteArray());
+        } catch (IOException e) { Log.w(TAG, "recogniser warm-up", e); }
         speed = prefs.getFloat("speed", 1f);
         pauseScale = prefs.getFloat("pauseScale", 1f);
         cloudRetryAt = prefs.getLong("gemRetryAt", 0);

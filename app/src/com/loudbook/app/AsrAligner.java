@@ -74,13 +74,26 @@ final class AsrAligner {
         // The recogniser doesn't make out the first two or three seconds of a stream: "Then a man
         // stepped out of the fog. He was tall and thin" came out as "and thin", "They all studied
         // this place with fascination" as "ination" (so the first sentences of every recording were
-        // placed by their length, not by their words). Heard a second time it gets them all, so the
-        // first 3 s are fed first, then half a second of quiet, then the recording from its start;
-        // what's heard of that first pass is dropped, and times are from the recording's start.
+        // placed by their length, not by their words). So it hears a few seconds of other speech
+        // first (the warm-up), then half a second of quiet, then the recording; what it heard of the
+        // warm-up is dropped, and times are from the recording's start. (Without the warm-up: the
+        // first 3 s of the recording, quiet, then the recording from its start. That still missed
+        // the start of 1 recording in 10, the warm-up none of 60, 2026-10-31.)
         private static final int PRIME = RATE * 3;
         private float[] head = new float[0];              // the first 3 s (16 kHz), until they're fed
         private double offset = -1;                        // where the recording itself starts in the stream (s); -1: not yet
-        Live(int rate) { synchronized (AsrAligner.this) { s = rec.createStream(); } this.rate = rate; }
+        Live(int rate) {
+            this.rate = rate;
+            synchronized (AsrAligner.this) {
+                s = rec.createStream();
+                if (warm != null) {
+                    s.acceptWaveform(warm, RATE);
+                    s.acceptWaveform(new float[RATE / 2], RATE);
+                    offset = (warm.length + RATE / 2) / (double) RATE;
+                    while (rec.isReady(s)) rec.decode(s);
+                }
+            }
+        }
 
         void feed(float[] x) {
             double ratio = (double) rate / RATE;
@@ -139,6 +152,19 @@ final class AsrAligner {
     }
 
     boolean loaded() { return rec != null; }
+
+    // A few seconds of other speech (Kokoro: "Here is a little speech, so the listener is warmed up
+    // before the recording starts."), heard before each recording: see Live.
+    private float[] warm;
+    static final String WARM = "web/asr-warm.pcm";            // (in the app's assets; 16-bit, 16 kHz, mono)
+
+    /** The warm-up speech, 16-bit little-endian PCM at 16 kHz. */
+    synchronized void warm(byte[] pcm) {
+        if (pcm == null || pcm.length < 2) { warm = null; return; }
+        float[] w = new float[pcm.length / 2];
+        for (int i = 0; i < w.length; i++) w[i] = (short) ((pcm[2 * i] & 0xff) | (pcm[2 * i + 1] << 8)) / 32768f;
+        warm = w;
+    }
 
     static List<Word> wordsOf(String[] tok, float[] ts) {
         List<Word> out = new ArrayList<>();
