@@ -1004,6 +1004,9 @@ function tidy(t) {
     .replace(/(^|[\s"“'‘(])([Ee])w+(?=[\s"”'’.,!?…)]|$)/g, (m, pre, e) => pre + e + 'e-yew')   // "Ew, gross" (said "you")
     .replace(/\b([Kk])u(?:fu)+\b/g, (m, k) => k + 'oo' + '-foo'.repeat((m.length - 2) / 2)).replace(/\b([Gg])a((?:ha){2,})\b/g, (m, g, h) => g + 'ah' + '-ha'.repeat(h.length / 2)).replace(/\b([Uu])wa+h*(?=[\s!?.,…"”'’)]|$)/g, (m, u) => (u === 'U' ? 'O' : 'o') + 'o-wah')   // "Kufufu" ("cue-fu-fu"), "Gahaha", "Uwah" ("you-wah")
     .replace(/\b([Nn])ani(?=\?|!|\s*$)/g, '$1ah-nee').replace(/\b([Yy])osh\b/g, '$1ohsh')
+    // grunts and screams: "Hnn" / "Hn" / "Nn" (spelled out "H-N-N") -> "hmm", "Gyaa!" ("jai-ah") -> "ghee-yah"
+    .replace(/(^|[\s"“'‘(])([HhNn])n+(?=[\s"”'’.,!?…)]|$)/g, (m, pre, h) => pre + (h === h.toUpperCase() ? 'Hmm' : 'hmm'))
+    .replace(/\b([Gg])ya+h*(?=[\s"”'’.,!?…)]|$)/g, (m, g) => g + 'hee-yah')
     .replace(/\bXiao(?=[a-z]{2,}\b)(?!mi\b)/g, 'Sheeyow-')   // Xiaofan, Xiaochun ("zai-ah-fan"); Xiaomi is fine
     .replace(/(\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|few|several|dozen|many))(\s+)li\b/g, '$1$2lee')   // a hundred li (distance, "lie")
     .replace(/\b(Xiao|Qiao|Xian|Qian|Xiang|Qiang|Xia|Xing|Xin|Xue|Xie|Xuan|Xun|Xu|Xi|Qing|Qin|Qiu|Quan)\b/g, (m) => ({ Xiang: 'Shee-ahng', Qiang: 'Chee-ahng', Xue: 'Shoo-weh', Xie: 'Shee-eh', Xuan: 'Shoo-ahn', Xun: 'Shoon', Quan: 'Choo-wen', Xiao: 'Sheeyow', Qiao: 'Cheeyow', Xian: 'Shee-en', Qian: 'Chee-en', Xia: 'Shee-ah', Xing: 'Shing', Xin: 'Shin', Xu: 'Shoo', Xi: 'Shee', Qing: 'Ching', Qin: 'Chin', Qiu: 'Chee-oo' })[m])
