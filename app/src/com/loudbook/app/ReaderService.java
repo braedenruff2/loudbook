@@ -966,7 +966,10 @@ public class ReaderService extends Service {
             if (t > f && t < end) {
                 int rest = 0;
                 for (int q = t; q < end; q++) rest += c.chunks.get(q).say.length() + 1;
-                if (rest <= Math.max(120, Math.min(400, cap / 6))) { used += rest; t = end; }
+                // (two sentences, 181 letters, after a 900-letter request all at once were still left over:
+                // the limit was a sixth of that, gemini-test 2026-10-31. Now a quarter, or any two sentences
+                // that aren't long)
+                if (rest <= Math.max(250, Math.min(500, cap / 4)) || end - t <= 2 && rest <= 600) { used += rest; t = end; }
             }
             if (t > f) out.add(new GeminiBook.Span(c, cb, f, t));
             if (t < c.size() || used >= cap * 0.95 || !autoNext) break;   // stopped inside this chapter
