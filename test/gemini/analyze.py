@@ -41,6 +41,10 @@ for p in parts:
             out.append(f"- {ts(l) - t0:6.1f} s  " + l.split("LoudbookTest: ")[1])
     # (the stand-in Google never leaves a sentence out: a sentence "not in the recording" means a
     # request started past one that wasn't recorded yet, 2026-10-31)
+    # (the stand-in Google never fails: a request that "failed" is the app throwing its recording away,
+    # "16-16" with nothing made out by the recogniser, 2026-10-31)
+    fails = [l.split("LoudbookTest: ")[1] for l in L if re.search(r"gemini: the request for sentences .* failed", l)]
+    for x in fails: out.append("- PROBLEM: " + x); bad += 1
     gaps = [l.split("LoudbookTest: ")[1] for l in L if "isn't in the recording" in l]
     if gaps: out.append(f"- PROBLEM: {len(gaps)} sentence(s) skipped by the requests and read by the phone's voice"); bad += 1
     # (a request for just the last sentence or two, straight after one that stopped short of them: a request of
@@ -72,6 +76,8 @@ for p in parts:
         if b == (a[0], a[1] + 1) and a in clips and tb - ta > clips[a][0] + 1.1: stalls.append((tb - ta - clips[a][0], f"{a[1]}->{b[1]}: {tb - ta - clips[a][0]:.1f} s"))
     src = " | ".join("".join("G" if "gemini" in v[1] else "p" if "phone" in v[1] else "?" for k, v in sorted(clips.items()) if k[0] == c) for c in range(chap + 1))
     out.append(f"- sentences read, per chapter (G Gemini, p phone): {src}")
+    # (a sentence logged as neither: Gemini was taken for off, which it never is in this test)
+    if "?" in src: out.append("- PROBLEM: sentences read as if Gemini were off (?)"); bad += 1
     out.append(f"- stalls: {', '.join(x[1] for x in stalls) if stalls else 'none'}")
     # (a few seconds at the very start is the emulator's slow phone voice; a long one is a real problem)
     if any(x[0] > 8 for x in stalls): bad += 1

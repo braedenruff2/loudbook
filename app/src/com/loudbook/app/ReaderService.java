@@ -290,12 +290,12 @@ public class ReaderService extends Service {
 
     /** A short sample in the chosen voice. */
     void preview() {
-        if ((!voice.ready() && !cloudOn()) || playing) return;
+        if ((!voice.ready() && !cloudAsk()) || playing) return;
         final int myGen = ++gen;
         synth.submit(() -> {
             String hello = "Hello. This is how I sound when I read your chapters to you.";
             Voice.Clip c;
-            if (cloudOn()) {
+            if (cloudAsk()) {
                 try {
                     countRequest();
                     CloudVoice.Audio a = CloudVoice.speak(prefs.getString("cloudKey", ""), prefs.getString("cloudModel", "gemini-3.8-flash-tts"),
@@ -837,10 +837,17 @@ public class ReaderService extends Service {
     volatile long cloudRetryAt = 0;
     volatile String cloudStatus = "";
 
+    /** Gemini is the voice (what it has recorded is played, even while a request can't be made). */
     boolean cloudOn() {
-        return prefs.getBoolean("cloudOn", false) && !prefs.getString("cloudKey", "").trim().isEmpty()
-            && System.currentTimeMillis() >= cloudRetryAt;
+        return prefs.getBoolean("cloudOn", false) && !prefs.getString("cloudKey", "").trim().isEmpty();
     }
+    /**
+     * And a request can be made now (not waiting after a failed one, or until the free requests are
+     * back). (This used to be cloudOn() too: one failed request turned Gemini off for a minute, so the
+     * sentences it had recorded already were taken for the phone's voice, and any made meanwhile were
+     * the phone's, gemini-test 2026-10-31)
+     */
+    boolean cloudAsk() { return cloudOn() && System.currentTimeMillis() >= cloudRetryAt; }
     void cloudChanged() { cloudRetryAt = 0; cloudError = ""; dropClips(); if (cloudOn()) asrReady(); if (playing && !paused) seek(pos); }
     private String cVoice() { return prefs.getString("cloudVoice", "Sulafat"); }
     private String cModel() { return prefs.getString("cloudModel", "gemini-3.8-flash-tts"); }
@@ -886,6 +893,12 @@ public class ReaderService extends Service {
         for (Req r : inflight) for (Object[] c : r.covers) if (k.equals(c[0]) && i > (int) c[1] && i - (int) c[2] < 40) return r.f;   // wait: it may run on far enough
         // just before one on its way (it was started a little ahead, while the phone's voice reads up to it)
         for (Req r : inflight) for (Object[] c : r.covers) if (k.equals(c[0]) && i < (int) c[1] && (int) c[1] - i < 80) return r.f;
+        if (!cloudAsk()) {
+            // (no request now, after one failed or with the day's used up: the phone's voice reads it)
+            java.util.concurrent.FutureTask<Object> no = new java.util.concurrent.FutureTask<>(() -> { throw new IOException("Gemini can't be asked again yet"); });
+            no.run();
+            return no;
+        }
         return request(ch, b, i, true, true);
     }
 
@@ -1043,6 +1056,9 @@ public class ReaderService extends Service {
         } catch (Exception ex) {
             cloudError = String.valueOf(ex.getMessage());
             cloudRetryAt = System.currentTimeMillis() + 60_000;
+            // (said nowhere before: a request that failed left only the phone's voice to show for it)
+            Log.i("LoudbookTest", "gemini: the request for sentences " + from + "-" + (to - 1) + " failed: " + cloudError + "; no request for a minute");
+            trail("Google's recording of sentences " + from + "-" + (to - 1) + " failed: " + cloudError);
             main.post(() -> status("Gemini: " + cloudError + ". Another voice reads for now.", false));
             throw ex;
         }
@@ -1173,7 +1189,7 @@ public class ReaderService extends Service {
      * chapter turn.
      */
     private void recordAhead(Chapter ch, int here) {
-        if (!cloudOn() || !prefs.getBoolean("gemPrefetch", true) || "kindle".equals(ch.site) || "text".equals(ch.site)) return;
+        if (!cloudAsk() || !prefs.getBoolean("gemPrefetch", true) || "kindle".equals(ch.site) || "text".equals(ch.site)) return;
         if (requesting()) return;
         GeminiBook b = bookFor(ch);
         double ahead = 0;
@@ -1263,7 +1279,7 @@ public class ReaderService extends Service {
     /** The next chapter's text, loaded by the screen near the end of this one: record ahead into it. */
     void cloudPrefetch(Chapter n) {
         Chapter ch = chapter;
-        if (!cloudOn() || n == null || ch == null || !n.url.equals(ch.nextUrl)) return;
+        if (!cloudAsk() || n == null || ch == null || !n.url.equals(ch.nextUrl)) return;
         if (nextCh == null) { nextFor = n.url; nextCh = n; }
         final int here = pos;
         waiters.submit(() -> { recordAhead(ch, here); return null; });
@@ -1615,7 +1631,7 @@ public class ReaderService extends Service {
         { Chapter.Chunk cc = ch.chunks.get(here); String said = cc.text;
           Log.i("LoudbookTest", ("kindle".equals(ch.site) ? "kindle " : "") + "speaking " + here + ": " + (said.length() > 60 ? said.substring(0, 60) : said)
               + (cc.say.equals(cc.text) ? "" : "  [said: " + (cc.say.length() > 70 ? cc.say.substring(0, 70) : cc.say) + "]")); }
-        if (cloudOn() && here != aheadAsked && !"kindle".equals(ch.site)) {
+        if (cloudAsk() && here != aheadAsked && !"kindle".equals(ch.site)) {
             aheadAsked = here;
             waiters.submit(() -> { try { recordAhead(ch, here); } catch (Throwable e) { Log.w(TAG, "record ahead", e); } return null; });
             // (the next chapter's text, for packing it in: the screen's browser loads it if the quiet one couldn't)

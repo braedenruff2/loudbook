@@ -357,6 +357,15 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 readThisBtn.setVisibility(View.GONE);
             }
             @Override public void onPageFinished(WebView v, String url) { inject(url); }
+            @Override public void onReceivedError(WebView v, WebResourceRequest r, android.webkit.WebResourceError e) {
+                // the chapter being read didn't load (no signal): its text, read ahead, is shown instead
+                // of the browser's error page, so it can still be followed and highlighted. (The error
+                // page was read as the chapter: "its words weren't found on the page", chapter-test 2026-10-31)
+                if (!r.isForMainFrame()) return;
+                String u = r.getUrl().toString(), why = String.valueOf(e.getDescription());
+                if (why.contains("ABORTED")) return;                  // (a load stopped for another: not a failure)
+                main.post(() -> showOffline(u, why));
+            }
             @Override public void doUpdateVisitedHistory(WebView v, String url, boolean reload) {
                 // sites that change chapter without a page load (history.pushState)
                 if (!reload && url.startsWith("http") && (pageChapter == null || !url.equals(pageChapter.url))) main.postDelayed(() -> inject(web.getUrl()), 1200);
@@ -384,6 +393,38 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             });
             return true;
         });
+    }
+
+    /** The chapter being read, from its copy read ahead, when its page can't be loaded. */
+    private void showOffline(String url, String why) {
+        if (url.equals(awaitingTurn)) {
+            // (the next chapter, not read ahead: it can't be read without its page)
+            awaitingTurn = null;
+            onStatus("Couldn't open the next chapter (" + why + "). Check the connection, then press play.", true);
+            if (svc != null) { svc.trail("page: the next chapter (" + url + ") couldn't be loaded: " + why); svc.pause(); }
+            return;
+        }
+        Chapter c = svc != null ? svc.chapter() : null;
+        if (c == null || !c.url.equals(url) || "kindle".equals(c.site) || c.chunks.isEmpty()) return;
+        svc.trail("page: " + url + " couldn't be loaded (" + why + "): its text is shown from the copy read ahead");
+        int max = -1;
+        for (Chapter.Chunk k : c.chunks) max = Math.max(max, k.block);
+        StringBuilder[] para = new StringBuilder[max + 1];
+        for (Chapter.Chunk k : c.chunks) if (k.block >= 0) para[k.block] = para[k.block] == null ? new StringBuilder(k.text) : para[k.block].append(' ').append(k.text);
+        StringBuilder h = new StringBuilder("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
+        // (bridge.js takes the paragraphs from here, numbered as the chapter's are)
+        h.append("<meta name=\"loudbook-offline\" data-site=\"").append(TextUtils.htmlEncode(c.site == null ? "" : c.site))
+            .append("\" data-fiction=\"").append(TextUtils.htmlEncode(c.fiction == null ? "" : c.fiction))
+            .append("\" data-next=\"").append(TextUtils.htmlEncode(c.nextUrl == null ? "" : c.nextUrl))
+            .append("\" data-prev=\"").append(TextUtils.htmlEncode(c.prevUrl == null ? "" : c.prevUrl)).append("\">");
+        h.append("<title>").append(TextUtils.htmlEncode(c.title == null ? "" : c.title)).append("</title><style>")
+            .append("body{background:#14120F;color:#EDE6DA;font:18px/1.6 sans-serif;margin:16px;overflow-wrap:break-word}")
+            .append("h1{font-size:1.3em;line-height:1.3}.lb-note{opacity:.65;font-size:.85em}</style></head><body>");
+        h.append("<p class=\"lb-note\">No connection: this is the chapter as it was read ahead.</p><h1>")
+            .append(TextUtils.htmlEncode(c.title == null ? "" : c.title)).append("</h1>");
+        for (StringBuilder p : para) h.append("<p data-lb-block>").append(p == null ? "" : TextUtils.htmlEncode(p.toString())).append("</p>");
+        h.append("</body></html>");
+        web.loadDataWithBaseURL(url, h.toString(), "text/html", "utf-8", url);
     }
 
     private void inject(String url) { inject(web, url); }
@@ -440,6 +481,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     private String resumeOnLoad = null;
 
     private void gotChapter(Chapter ch) {
+        // (the browser's own error page, read as if it were a chapter: "This site can't be reached")
+        if (ch.url == null || !ch.url.startsWith("http")) return;
         pageChapter = ch;
         if (awaitingTurn != null) {
             // the page we opened because the last chapter ended

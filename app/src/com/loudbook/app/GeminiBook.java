@@ -560,6 +560,26 @@ final class GeminiBook {
                 starts[count] = Math.min(total, Math.max(starts[count], starts[count - 1] + 1));
             } else starts = new long[]{0};
         }
+        if (count == 0 && fo != null && !broke && total > pcm.rate / 2) {
+            // the recogniser made out none of it (a sentence or two too short or unclear for it:
+            // "She left." heard as "she laughed"): if the recording is about as long as the text at
+            // this reader's pace, cut it at its pauses by length, as without a recogniser. (This
+            // used to throw the recording away, so the request was wasted and Gemini stopped for a
+            // minute: sentences it had recorded already were read by the phone's voice, gemini-test
+            // 2026-10-31)
+            int letters = 0; for (int c : chars) letters += Math.max(1, c);
+            double secs = total / (double) pcm.rate, want = letters * (pace > 0 ? pace : 0.065);
+            if (secs > want * 0.5 && secs < want * 2 + 1.5) {
+                Align.Result r = Align.align(pcm, chars, pace, CloudVoice.preambleChars(style));
+                count = r.count;
+                starts = new long[count + 1];
+                for (int k = 0; k < count; k++) starts[k] = Math.max(k == 0 ? 0 : starts[k - 1] + 1, r.start[k]);
+                if (count > 0) starts[count] = r.cutShort ? r.end[count - 1] : total;
+                java.util.Arrays.fill(how, 'a');
+                if (paceOut != null) paceOut[0] = 0;
+                note = "the recogniser made out none of it: cut by length";
+            }
+        }
         if (count == 0) {
             synchronized (this) { if (parts.size() == partNo + 1) parts.remove(partNo); }
             throw new IOException("Gemini's recording didn't match the chapter text");

@@ -20,6 +20,10 @@ adb reverse --remove tcp:8000 || true
 adb shell log -t LoudbookTest "=== no signal from here ==="
 sleep 150
 adb logcat -d > logcat.txt
+# (with no signal the pages of the chapters loaded ahead can't load: each is shown from its copy, and
+# highlighted there. They used to be the browser's error page, "its words weren't found on the page")
+awk '/=== no signal from here ===/{f=1} f' logcat.txt > nosignal.txt
+echo "no signal: chapters shown from their copy: $(grep -c 'shown from the copy read ahead' nosignal.txt), sentences not found on the page: $(grep -c "words weren't found" nosignal.txt)" > offline.txt
 # cold start: Loudbook closed, opened again, play pressed with nothing open -> carries on with the last story
 adb reverse tcp:8000 tcp:8000
 adb shell am force-stop com.loudbook.app

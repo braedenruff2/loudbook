@@ -1180,6 +1180,13 @@ return { parseFixes, makeSayer, tidy };
   let activeIndex = -1;
 
   async function extract() {
+    // the app's own copy of a chapter whose page couldn't be loaded (no signal): its paragraphs as they are
+    const off = document.querySelector('meta[name="loudbook-offline"]');
+    if (off) {
+      blocks = Array.from(document.querySelectorAll('[data-lb-block]')).map((el) => ({ el, text: el.textContent }));
+      return { blocks, roots: [], site: off.dataset.site || '', siteName: '', title: document.title, fiction: off.dataset.fiction || '',
+        nextUrl: off.dataset.next || null, prevUrl: off.dataset.prev || null };
+    }
     let r = S.extract(document, location.href, hiddenEl);
     if (r.roots.length && !r.blocks.length) r = S.extract(document, location.href, displayNone);
     blocks = r.blocks;

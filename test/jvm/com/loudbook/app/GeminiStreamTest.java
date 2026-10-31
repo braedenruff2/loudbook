@@ -242,6 +242,41 @@ public class GeminiStreamTest {
             GeminiBook again = GeminiBook.open(files, "book-p2");
             check("packed: the next chapter's recording is kept", again.recorded() == c2.size());
         }
+        {
+            // a request for one short sentence the recogniser can't make out ("She left." is heard as
+            // "she laughed"): kept, cut by length, not thrown away (that wasted the request and turned
+            // Gemini off for a minute, gemini-test 2026-10-31). A recording far too long for the text
+            // still isn't taken for it
+            String say = "She left.";
+            List<Chapter.Chunk> one = new ArrayList<>();
+            one.add(new Chapter.Chunk(0, say, say));
+            for (String how : new String[]{"streamed", "all at once", "far too long"}) {
+                mode = how.equals("streamed") ? "streamed" : "all at once";
+                CloudVoice.lastWay = -1;
+                java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+                for (int g = 0; g < rate * 3 / 10; g++) { out.write(0); out.write(0); }
+                String[] spoken = how.equals("far too long") ? java.util.Arrays.copyOf(text, 3) : new String[]{say};
+                for (String s : spoken) {
+                    float[] x = Voice.trim(tts.generate(s, 3, 1.0f).getSamples(), rate);
+                    for (float f : x) { short sh = (short) (f * 32767); out.write(sh & 0xff); out.write((sh >> 8) & 0xff); }
+                    for (int g = 0; g < rate * 4 / 10; g++) { out.write(0); out.write(0); }
+                }
+                pcm = out.toByteArray();
+                stopAt = -1;
+                Chapter c1 = new Chapter("https://example.com/short-" + how.replace(' ', '-'), "test", "One", "Story", one);
+                java.io.File d1 = new java.io.File(files, "book-short-" + how.replace(' ', '-'));
+                deleteAll(d1);
+                GeminiBook b1 = GeminiBook.open(files, d1.getName());
+                b1.bind(c1);
+                GeminiBook.Made m = null;
+                String err = "";
+                try { m = b1.fetch(c1, 0, 1, "test-key", "gemini-3.8-flash-tts", "Sulafat", style, 0, new double[1], asr, new ArrayList<>(), how.equals("streamed")); }
+                catch (java.io.IOException e) { err = e.getMessage(); }
+                System.out.println("== one short sentence, " + how + ": " + (m == null ? "not kept (" + err + ")" : m.count + " kept, " + b1.describe(0)));
+                if (how.equals("far too long")) check("one sentence, a recording far too long for it: not taken for it", m == null);
+                else check("one short sentence not made out by the recogniser, " + how + ": kept", m != null && m.count == 1 && b1.has(0));
+            }
+        }
         server.stop(0);
         check("the first words of the recording are heard in every run (" + heard0 + " of " + runs0 + ")", heard0 == runs0);
         System.out.println(bad == 0 ? "ALL OK" : bad + " FAILED");

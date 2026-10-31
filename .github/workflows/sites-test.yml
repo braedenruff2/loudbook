@@ -20,3 +20,4 @@ jobs:
         run: |
           mkdir -p /tmp/js && cd /tmp/js && npm i --no-save --silent jsdom@24
           cd "$GITHUB_WORKSPACE" && NODE_PATH=/tmp/js/node_modules node test/sites/run.js
+          NODE_PATH=/tmp/js/node_modules node test/sites/offline.js
