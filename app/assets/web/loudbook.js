@@ -1150,7 +1150,7 @@ return { parseFixes, makeSayer, tidy };
   // A number that starts a sentence is said with a capital ("He fell. Three men died."): lowercase, the voice ran the two
   // sentences together with no pause ("fell three men"). \u0001 marks where such a number starts until it is words.
   function speakNumbers(t) {
-    return numbersToWords(t.replace(/((?<!\b(?:[A-Za-z]|[ivxlc]+|[Vv]er|[Cc]hapt|Cf|approx|pp|vs|ca|[Nn]os?|[Vv]ols?|[Cc]h|[Cc]hap|[Pp]g|[Ff]igs?|[Ee]qs?|[Ee]x|[Rr]ef|[Aa]rt|[Pp]ara|[Oo]p|cf|ft|lbs?|oz|est|[Tt]el|[Ee]xt|[Pp]t|[Ee]p|[Ll]vl?|[Rr]m|[Aa]pt|St|Dr|Mr|Mrs|Ms|Prof|Gen|Col|Capt|Sgt|Lt|Mt|Ave|Rd|[Gg]r))[.!?]["”’')\]]*\s+)(?=\$?\d)/g, '$1\u0001'))
+    return numbersToWords(t.replace(/((?:(?<!\b(?:[A-Za-z]|[ivxlc]+|[Vv]er|[Cc]hapt|Cf|approx|pp|vs|ca|[Nn]os?|[Vv]ols?|[Cc]h|[Cc]hap|[Pp]g|[Ff]igs?|[Ee]qs?|[Ee]x|[Rr]ef|[Aa]rt|[Pp]ara|[Oo]p|cf|ft|lbs?|oz|est|[Tt]el|[Ee]xt|[Pp]t|[Ee]p|[Ll]vl?|[Rr]m|[Aa]pt|St|Dr|Mr|Mrs|Ms|Prof|Gen|Col|Capt|Sgt|Lt|Mt|Ave|Rd|[Gg]r))[.!?]|[.!?]["”’')\]]+)\s+)(?=\$?\d)/g, '$1\u0001'))
       .replace(/\u0001([a-z])/g, (m, c) => c.toUpperCase()).replace(/\u0001/g, '');
   }
   function numbersToWords(t) {
