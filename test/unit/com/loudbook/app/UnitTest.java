@@ -107,6 +107,17 @@ public class UnitTest {
             check("timing by the said text: at 'apples', 12 of 26", Math.round(st.fracAt(ws[4] + 10) * 26), 12);
             check("timing by the said text: no change when said as written", SpeechTiming.said2text("a b", "a b") == null, true);
             check("timing: \"Mr.\" isn't a place to pause", SpeechTiming.breaks("Mr. Collins then returned, slowly.").size(), 1);
+            // a sentence that ends in "No." or "I." still ends there (the voice pauses): only "No. 5", "J. Smith" are short forms
+            check("timing: \"No.\" ending a sentence is a pause", SpeechTiming.breaks("He said no. Then he left.").size(), 1);
+            check("timing: \"No. 5\" isn't", SpeechTiming.breaks("Order No. 5 came, late.").size(), 1);
+            check("timing: \"I.\" ending a sentence is a pause", SpeechTiming.breaks("Neither did I. She laughed.").size(), 1);
+            check("timing: an initial isn't", SpeechTiming.breaks("J. Smith came.").size(), 0);
+            check("timing: \"Ch. 3\" isn't", SpeechTiming.breaks("See Ch. 3 now.").size(), 0);
+            // said words with nothing written before the first written word (or after the last) still count
+            float[][] pre = SpeechTiming.said2text("Hello there", "Um Hello there");
+            check("timing by the said text: a said word before the first written one goes with it", Math.round(pre[1][0] * 100), 58);
+            float[][] post = SpeechTiming.said2text("Hello there", "Hello there friend");
+            check("timing by the said text: a said word after the last written one goes with it", Math.round(post[1][0] * 100), 31);
         }
         // Kindle page geometry: where sentences and words are, and what a tap points at
         java.util.List<String> ls = Arrays.asList("The road out of the valley was", "older than the town. Mara walked", "it every morning, and liked it.");
@@ -155,6 +166,15 @@ public class UnitTest {
         check("page break: where the next page starts in it", kb.bridgeHead, 25);
         java.util.List<Chapter.Chunk> pg2 = kb.chunks(Arrays.asList("immediately; that he is to take possession. \u201cWhat is his name?\u201d"), false);
         check("page break: the next page goes on after it", pg2.size() + " " + pg2.get(0).text, "1 \u201cWhat is his name?\u201d");
+        {   // the next page's start, as shared before the turn, with other quote marks than the page itself: not read twice
+            KindleText kq2 = new KindleText("");
+            kq2.chunks(Arrays.asList("It was late. Then he said"), false);
+            check("page break, other quotes: sentence over it", kq2.bridge("\u201cno.\u201d She left the room.").text, "Then he said \u201cno.\u201d");
+            java.util.List<Chapter.Chunk> q2 = kq2.chunks(Arrays.asList("\"no.\" She left the room."), false);
+            check("page break, other quotes: the next page goes on after it", q2.size() + " " + q2.get(0).text, "1 She left the room.");
+            check("letters at the start: a different start isn't taken", KindleText.afterLetters("and right.", "and left."), -1);
+            check("letters at the start: marks after them go too", KindleText.afterLetters("No!\u201d he said.", "\"No!\""), 4);
+        }
         // a word hyphenated over the page break comes as two pieces ("there" | "fore"): one word again
         check("split word, no dictionary: two words", KindleText.joinBreak("You must there", "fore allow me"), "You must there fore allow me");
         java.util.Set<String> dict = new java.util.HashSet<>(Arrays.asList("therefore", "attachment", "often", "sand", "fora"));

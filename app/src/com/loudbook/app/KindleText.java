@@ -35,8 +35,9 @@ final class KindleText {
             // the start of this page was already read with the sentence that ran over the page
             // break (see bridge): carry on after it
             String s0 = paras.isEmpty() ? "" : paras.get(0);
-            if (s0.startsWith(skip)) {
-                String rest0 = s0.substring(skip.length()).trim();
+            int after = s0.startsWith(skip) ? skip.length() : afterLetters(s0, skip);
+            if (after >= 0) {
+                String rest0 = s0.substring(after).trim();
                 if (rest0.isEmpty()) paras.remove(0); else paras.set(0, rest0);
                 carry = "";
             }
@@ -87,6 +88,24 @@ final class KindleText {
     }
 
     private String skip;
+    /**
+     * Where s ends up after the letters of head, if s starts with them (marks, spaces and quotes may
+     * differ: "said \u201cno.\u201d" and "said \"no.\""); the marks right after them go too. -1 if not.
+     */
+    static int afterLetters(String s, String head) {
+        String h = KindleLayout.normOf(head);
+        if (h.isEmpty()) return -1;
+        int k = 0, i = 0;
+        for (; i < s.length() && k < h.length(); i++) {
+            char c = s.charAt(i);
+            if (!Character.isLetterOrDigit(c)) continue;
+            if (Character.toLowerCase(c) != h.charAt(k)) return -1;
+            k++;
+        }
+        if (k < h.length()) return -1;
+        while (i < s.length() && ".,;:!?\u2026\"'\u201d\u2019)]".indexOf(s.charAt(i)) >= 0) i++;
+        return i;
+    }
     /** Length of the bridge's part on this page, for when to turn it. */
     int bridgeHead;
     /**

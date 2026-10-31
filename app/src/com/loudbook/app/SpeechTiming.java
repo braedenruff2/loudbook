@@ -111,13 +111,22 @@ final class SpeechTiming {
     }
 
     private static final java.util.Set<String> ABBREV = new java.util.HashSet<>(java.util.Arrays.asList(
-        "mr", "mrs", "ms", "dr", "st", "mt", "jr", "sr", "prof", "vs", "etc", "no", "vol", "ch", "lt", "col", "gen", "sgt", "capt", "rev", "hon", "lvl", "lv"));
+        "mr", "mrs", "ms", "dr", "st", "mt", "jr", "sr", "prof", "vs", "etc", "lt", "col", "gen", "sgt", "capt", "rev", "hon"));
+    /** Short forms that come before a number ("No. 5", "Vol. 2", "Lvl. 30"); before anything else the full stop ends a sentence. */
+    private static final java.util.Set<String> NUMBERED = new java.util.HashSet<>(java.util.Arrays.asList("no", "vol", "ch", "lvl", "lv", "pg", "pp", "fig"));
     /** The full stop at i ends a short form ("Mr.", "Dr.", an initial "J."), not a sentence. */
     private static boolean abbreviation(String text, int i) {
         int a = i;
         while (a > 0 && Character.isLetter(text.charAt(a - 1))) a--;
         String w = text.substring(a, i);
-        return (w.length() == 1 && Character.isUpperCase(w.charAt(0))) || ABBREV.contains(w.toLowerCase(java.util.Locale.ROOT));
+        String lw = w.toLowerCase(java.util.Locale.ROOT);
+        if (NUMBERED.contains(lw)) {                                          // ("No. 5", "Ch. 3": a short form only before a number;
+            int k = i + 1;                                                    //  "He said no. Then..." ends a sentence)
+            while (k < text.length() && Character.isWhitespace(text.charAt(k))) k++;
+            return k < text.length() && (Character.isDigit(text.charAt(k)) || text.charAt(k) == '#');
+        }
+        if (w.equals("I")) return false;                                      // ("Neither did I." ends a sentence; not an initial)
+        return (w.length() == 1 && Character.isUpperCase(w.charAt(0))) || ABBREV.contains(lw);
     }
 
     /** Works out the timing of a clip of speech (mono samples) of the text. */
@@ -153,10 +162,11 @@ final class SpeechTiming {
             int said_ = 0, written = 0;
             for (int k = j; k < bj; k++) said_ += lettersIn(sw.get(k));
             for (int k = i; k < bi; k++) written += lettersIn(tw.get(k));
-            if (bi == i) { if (i > 0) weight[i - 1] += said_; }                // (said, but nothing written: goes with the word before)
+            if (bi == i) weight[Math.max(0, i - 1)] += said_;                  // (said, but nothing written: goes with the word before, or the first)
             else for (int k = i; k < bi; k++) weight[k] += written > 0 ? said_ * lettersIn(tw.get(k)) / (float) written : 0;
             i = bi; j = bj;
         }
+        for (; j < sw.size(); j++) weight[tw.size() - 1] += lettersIn(sw.get(j));   // (said after the last written word: goes with it)
         float tTotal = 0, wTotal = 0;
         for (int k = 0; k < tw.size(); k++) { tTotal += lettersIn(tw.get(k)); wTotal += weight[k]; }
         if (wTotal <= 0 || tTotal <= 0) return null;
