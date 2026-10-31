@@ -43,6 +43,17 @@ for p in parts:
     # request started past one that wasn't recorded yet, 2026-10-31)
     gaps = [l.split("LoudbookTest: ")[1] for l in L if "isn't in the recording" in l]
     if gaps: out.append(f"- PROBLEM: {len(gaps)} sentence(s) skipped by the requests and read by the phone's voice"); bad += 1
+    # (a request for just the last sentence or two, straight after one that stopped short of them: a request of
+    # its own, and its wait, for a few seconds of audio. "16-16" after "7-15", gemini-test 2026-10-31)
+    prev, stopped = None, False
+    for l in L:
+        if "stopped early" in l or "was left out" in l: stopped = True
+        m = re.search(r"asked Google for sentences (\d+)-(\d+)", l)
+        if not m: continue
+        a, z = int(m.group(1)), int(m.group(2))
+        if prev is not None and a == prev + 1 and z - a <= 1 and not stopped:
+            out.append(f"- PROBLEM: a request just for sentence(s) {a}-{z}, left over by the one before"); bad += 1
+        prev, stopped = z, False
     # (the recogniser should hear the start of each recording, so its first sentence is timed by its
     # words. It still misses one now and then, so this is a note, not a problem)
     unheard = [l for l in L if re.search(r"hearing \d+ .*part \d+, 0\.0-[\d.]+ s, by length", l)]

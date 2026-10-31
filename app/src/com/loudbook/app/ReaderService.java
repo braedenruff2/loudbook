@@ -914,7 +914,8 @@ public class ReaderService extends Service {
             // that got here first: sentence 9's waiter asked from 9 while 7 and 8 were missing too,
             // so the phone's voice read them, then a request just for them followed. gemini-test 2026-10-31)
             int m = b.nextMissing(at, i);
-            while (m < i && covered(ch, m)) m = b.nextMissing(m + 1, i);
+            // (not one the phone's voice is reading already, or one an earlier request holds)
+            while (m < i && (covered(ch, m) || phoneRead.contains(m))) m = b.nextMissing(m + 1, i);
             if (m < i) i = m;
         }
         List<GeminiBook.Span> plan = plan(ch, b, i, sizeFor(ch, b, i));
@@ -941,6 +942,14 @@ public class ReaderService extends Service {
         for (int hops = 0; hops < 5 && c != null; hops++) {
             int end = cb.nextHave(f, c.size()), t = f;
             while (t < end && (out.isEmpty() && t == f || used + c.chunks.get(t).say.length() <= cap)) { used += c.chunks.get(t).say.length() + 1; t++; }
+            // (not a sentence or two left over before the end, or before what's recorded already: that would be a
+            // request of its own, with its wait and one of today's requests, for a few seconds of audio.
+            // "Then even that was gone." alone after 7-15, gemini-test 2026-10-31)
+            if (t > f && t < end) {
+                int rest = 0;
+                for (int q = t; q < end; q++) rest += c.chunks.get(q).say.length() + 1;
+                if (rest <= Math.max(120, Math.min(400, cap / 6))) { used += rest; t = end; }
+            }
             if (t > f) out.add(new GeminiBook.Span(c, cb, f, t));
             if (t < c.size() || used >= cap * 0.95 || !autoNext) break;   // stopped inside this chapter
             // room left: on into the next chapter, if its text is here already
