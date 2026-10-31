@@ -550,6 +550,18 @@ function romanValue(r) {
   return n;
 }
 function romans(t) {
+  // a heading numbered with a Roman numeral: "II. The Road", "IV. Into the Dark" (the voice said "Roman two");
+  // a lone "I." / "V." / "X." only when the line looks like a heading (short, no full stop at the end)
+  t = t.replace(/^([IVX]{1,6}|[IVX]*L[IVX]{0,4})\.\s+(?=["“‘']?\p{Lu})/u, (m, r) => {
+    if (!ROMAN.test(r) || r === 'L') return m;
+    const rest = t.slice(m.length);
+    if (r.length === 1 && (/[.!?…]["”’')\]]*$/.test(rest) || rest.split(/\s+/).length > 8 || /^[A-Z]\./.test(rest))) return m;
+    return romanValue(r) + '. ';
+  });
+  // a drip, not a four: "an IV", "IV drip", "IVs" (the voice said "Roman four")
+  t = t.replace(/\b(an|the|his|her|their|my|your|our|its|another|one|new)\s+(IV)(s?)(?![\p{L}\p{N}''’])/giu, (m, w, iv, s) => iv !== 'IV' ? m : w + (s ? " I-V's" : ' I-V'))
+    .replace(/\bIV(s?)\s+(?=(?:drips?|bags?|lines?|fluids?|poles?|needles?|stands?|tubes?|tubing|antibiotics|sedation|access|catheters?|pumps?)\b)/gu, (m, s) => (s ? "I-V's " : 'I-V '))
+    .replace(/\bIVs(?![\p{L}\p{N}])/gu, "I-V's");
   // a single I/V/X after a monarch's name with the title: "King Henry V", "Queen Elizabeth I", "Emperor Charles V"
   t = t.replace(/\b(King|Queen|Pope|Emperor|Empress|Tsar|Czar|Tsarina|Pharaoh|Kaiser|Sultan|Shah|Prince|Princess|Duke|Duchess)(\s+[A-Z][a-z]+)\s+([IVX])\b(?![''’\w])(?!\s+(?:am|think|guess|mean|know|suppose|said|say)\b)/g,
     (m, title, name, r) => title + name + ' the ' + romanValue(r) + ord(romanValue(r)));
