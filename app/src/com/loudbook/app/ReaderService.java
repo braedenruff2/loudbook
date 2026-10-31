@@ -1342,7 +1342,7 @@ public class ReaderService extends Service {
         trail("Gemini plays as it arrives, from sentence " + start + String.format(java.util.Locale.US, " (%.1f s into its recording; %.1f s in so far)", at / 24000.0, lv.bytes / 2 / 24000.0));
         final long base = framesWritten - at;                    // (track frame of the recording's sample 0)
         marks.add(new long[]{framesWritten, start, 0});
-        int nextMark = start + 1;
+        int nextMark = start + 1, marked = start + 1;    // (filed up to; highlights put in up to)
         long endAt = -1;
         boolean starved = false;
         Log.i("LoudbookTest", "gemini: playing as it arrives, from sentence " + start + " (" + lv.bytes / 2 / rate + " s in so far)");
@@ -1352,10 +1352,23 @@ public class ReaderService extends Service {
             while (nextMark < lv.to && b.has(nextMark) && b.partOf(nextMark) == lv.part) {
                 long s = b.startOf(nextMark);
                 long len = Math.max(0, b.endOf(nextMark) - s);
-                marks.add(new long[]{base + s, nextMark, len});
-                srcOf.put(nextMark, "Gemini as it arrives, " + b.describe(nextMark) + (base + s < framesWritten ? String.format(java.util.Locale.US, " (found %.1f s after the voice got there)", (framesWritten - base - s) / (double) rate) : ""));
+                String late = lateBy(t, base + s, rate);
+                if (nextMark >= marked) marks.add(new long[]{base + s, nextMark, len});
+                srcOf.put(nextMark, "Gemini as it arrives, " + b.describe(nextMark) + (nextMark >= marked ? late : marked > nextMark ? " (highlighted when its start was heard)" : ""));
                 Log.i("LoudbookTest", "clip " + nextMark + ": " + Math.round(len * 100.0 / rate) / 100.0 + " s, gemini (as it arrives)");
                 nextMark++;
+                marked = Math.max(marked, nextMark);
+            }
+            // (and the one after the last filed: it's filed only once the sentence after it is heard, but
+            // where it starts is known already, where the one before it ends. Waiting for it to be filed
+            // left the title highlighted 5 s into the first sentence, gemini-test 2026-10-31; with Google
+            // sending no faster than it's heard, every highlight would come a whole sentence late)
+            if (marked == nextMark && nextMark < lv.to && nextMark - 1 >= start && b.has(nextMark - 1) && b.partOf(nextMark - 1) == lv.part) {
+                long s = b.endOf(nextMark - 1);
+                long len = (long) (Math.max(1, ch.chunks.get(nextMark).say.length()) * gemPace() * rate);
+                marks.add(new long[]{base + s, nextMark, len});
+                srcOf.put(nextMark, "Gemini as it arrives, its start heard at " + String.format(java.util.Locale.US, "%.1f s", s / (double) rate) + lateBy(t, base + s, rate));
+                marked = nextMark + 1;
             }
             if (nextMark >= lv.to) endAt = b.endOf(lv.to - 1);                // (the end of this chapter's part)
             boolean done = lv.done;
@@ -1388,8 +1401,17 @@ public class ReaderService extends Service {
             sleep(30);
         }
         if (gen != myGen) return -1;
+        // (a highlight put in for a sentence that wasn't filed in the end (Google stopped in it): not this one's to show)
+        final int stop = nextMark;
+        if (marked > stop) marks.removeIf(m -> m[1] >= stop);
         Log.i("LoudbookTest", "gemini: played as it arrived up to sentence " + (nextMark - 1));
         return nextMark;
+    }
+
+    /** " (found 1.2 s after the voice got there)" if the speaker has gone past track frame f already, else "". */
+    private static String lateBy(AudioTrack t, long f, int rate) {
+        long head = t.getPlaybackHeadPosition() & 0xffffffffL;
+        return head > f ? String.format(java.util.Locale.US, " (found %.1f s after the voice got there)", (head - f) / (double) rate) : "";
     }
 
     /** Seconds of audio queued in the track and not heard yet. */

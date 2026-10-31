@@ -58,6 +58,12 @@ for p in parts:
         if prev is not None and a == prev + 1 and z - a <= 1 and not stopped:
             out.append(f"- PROBLEM: a request just for sentence(s) {a}-{z}, left over by the one before"); bad += 1
         prev, stopped = z, False
+    # (a highlight put in after the voice had got to its sentence: the title stayed highlighted 5 s into the
+    # first sentence, as a sentence was highlighted only once the one after it was heard, gemini-test 2026-10-31)
+    late = [(float(m.group(1)), l) for l in L for m in [re.search(r"trail: hearing .*found ([\d.]+) s after the voice got there", l)] if m]
+    big = [x for x in late if x[0] > 3]
+    if big: out.append(f"- PROBLEM: {len(big)} highlight(s) more than 3 s late, the worst {max(x[0] for x in big):.1f} s: " + big[0][1].split("trail: ")[1][:90]); bad += 1
+    elif late: out.append(f"- note: {len(late)} highlight(s) a little late, the worst {max(x[0] for x in late):.1f} s")
     # (the recogniser should hear the start of each recording, so its first sentence is timed by its
     # words. It still misses one now and then, so this is a note, not a problem)
     unheard = [l for l in L if re.search(r"hearing \d+ .*part \d+, 0\.0-[\d.]+ s, by length", l)]
