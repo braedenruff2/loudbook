@@ -967,6 +967,7 @@ function tidy(t) {
     .replace(/\b([Kk])i\b/g, '$1ee').replace(/\b([Nn]in|[Tt]ai|[Gg]en|[Kk]en)?([Jj])utsu\b/g, (m, pre, j) => (pre ? pre + '-' : '') + j + 'oot-soo')
     .replace(/\b([Yy])oukai\b/g, '$1oh-kai').replace(/\b([Qq])ilin(s?)\b/g, (m, q, s) => (q === 'Q' ? 'C' : 'c') + 'hee-lin' + s).replace(/\b([Ss])huriken(s?)\b/g, '$1hoo-ree-ken$2').replace(/\b([Kk])unai\b/g, '$1oo-nai')
     .replace(/\b([Ss])hinigami(s?)\b/g, '$1hee-nee-gah-mee$2').replace(/\bMj[oö]ll?nir\b/g, 'Mee-yol-neer').replace(/\b([Oo])uroboros\b/g, (m, o) => (o === 'O' ? 'Y' : 'y') + 'oor-rob-or-ross')   // "yoo-kai", "chee-lin" (was "kill-in"), "shyoor-eye-ken", "kun-eye", "shy-nih-gami", "M-jolnir", "ow-er-ob-er-ohz"
+    .replace(/\b([Kk])elpie(s?)\b/g, '$1elpee$2').replace(/\b([Jj])[oö]tunn?(s?)\b/g, (m, j, s) => (j === 'J' ? 'Y' : 'y') + 'o-tun' + s).replace(/\b([Gg])aruda(s?)\b/g, '$1ah-roo-dah$2').replace(/\b([Aa])sura(s?)\b/g, '$1h-soo-rah$2').replace(/\b([Hh])uli(?=\s+[Jj]ing\b)/g, '$1oo-lee')   // "kel-pie", "jah-tun", "gar-yoo-da", "a-syoor-a", "hyoo-lee"
     .replace(/\bHUD(s?)\b/g, 'hud$1').replace(/(^|[\s"“'‘(])EZ(?=[\s"”'’.,!?)]|$)/g, '$1E-Z')
     .replace(/\bBBQs?\b/g, (m) => 'barbecue' + m.slice(3)).replace(/\bETAs?\b/g, (m) => 'E-TA' + m.slice(3)).replace(/\beta(?=\s+\d)/g, 'E-TA')   // "B-B-Q", "eeta" (eta 10: "omw, eta 10")
     .replace(/\bELO\b/g, 'Eelo').replace(/(?<=\w\s)af(?=[.,!?;:"”'’)]|\s*$)/g, 'A-F')   // game rating ("E-L-O"), "OP af." ("aff")
