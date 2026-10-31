@@ -58,6 +58,8 @@ public class NewChapters extends JobService {
     }
 
     private ChapterFetcher fetcher;
+    // (Android stopped the job: the fetcher's "stopped" answer mustn't go on to the next story)
+    private volatile boolean stopped;
 
     @Override public boolean onStartJob(JobParameters params) {
         SharedPreferences p = Voice.prefs(this);
@@ -69,16 +71,19 @@ public class NewChapters extends JobService {
         } catch (Exception e) { return false; }
         Log.i("LoudbookTest", "new-chapter check: " + watch.size() + " stories to look at");
         if (watch.isEmpty()) return false;
+        stopped = false;
         fetcher = new ChapterFetcher(this);
         next(watch, 0, params);
         return true;
     }
 
     private void next(List<JSONObject> watch, int i, JobParameters params) {
+        if (stopped) return;
         if (i >= watch.size()) { fetcher.destroy(); jobFinished(params, false); return; }
         JSONObject s = watch.get(i);
         String url = s.optString("url");
         fetcher.fresh(url, (ch, err) -> {
+            if (stopped) { Log.i("LoudbookTest", "new-chapter check stopped by Android; it tries again later"); return; }
             if (ch != null && ch.nextUrl != null) {
                 Log.i("LoudbookTest", "new chapter of " + s.optString("fiction") + ": " + ch.nextUrl);
                 notify(s.optString("fiction"), ch.nextUrl, i);
@@ -104,6 +109,7 @@ public class NewChapters extends JobService {
     }
 
     @Override public boolean onStopJob(JobParameters params) {
+        stopped = true;
         if (fetcher != null) fetcher.destroy();
         return true;                                   // try again later
     }
