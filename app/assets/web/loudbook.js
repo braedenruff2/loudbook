@@ -965,6 +965,8 @@ function tidy(t) {
     // more myth and anime words: "kitsune" ("kit-sewn"), "cockatrice" ("cock-ay-tris"), "Cthulhu", "ki" ("kai"), "jutsu" ("jut-soo")
     .replace(/\b([Kk])itsune(s?)\b/g, '$1itsoonay$2').replace(/\b([Cc])ockatrice(s?)\b/g, '$1ockatryce$2').replace(/\bCthulhu\b/g, 'Kuh-thoo-loo').replace(/\b([Yy])okai\b/g, '$1oh-kai')
     .replace(/\b([Kk])i\b/g, '$1ee').replace(/\b([Nn]in|[Tt]ai|[Gg]en|[Kk]en)?([Jj])utsu\b/g, (m, pre, j) => (pre ? pre + '-' : '') + j + 'oot-soo')
+    .replace(/\b([Yy])oukai\b/g, '$1oh-kai').replace(/\b([Qq])ilin(s?)\b/g, (m, q, s) => (q === 'Q' ? 'C' : 'c') + 'hee-lin' + s).replace(/\b([Ss])huriken(s?)\b/g, '$1hoo-ree-ken$2').replace(/\b([Kk])unai\b/g, '$1oo-nai')
+    .replace(/\b([Ss])hinigami(s?)\b/g, '$1hee-nee-gah-mee$2').replace(/\bMj[oö]ll?nir\b/g, 'Mee-yol-neer').replace(/\b([Oo])uroboros\b/g, (m, o) => (o === 'O' ? 'Y' : 'y') + 'oor-rob-or-ross')   // "yoo-kai", "chee-lin" (was "kill-in"), "shyoor-eye-ken", "kun-eye", "shy-nih-gami", "M-jolnir", "ow-er-ob-er-ohz"
     .replace(/\bHUD(s?)\b/g, 'hud$1').replace(/(^|[\s"“'‘(])EZ(?=[\s"”'’.,!?)]|$)/g, '$1E-Z')
     .replace(/\bBBQs?\b/g, (m) => 'barbecue' + m.slice(3)).replace(/\bETAs?\b/g, (m) => 'E-TA' + m.slice(3)).replace(/\beta(?=\s+\d)/g, 'E-TA')   // "B-B-Q", "eeta" (eta 10: "omw, eta 10")
     .replace(/\bELO\b/g, 'Eelo').replace(/(?<=\w\s)af(?=[.,!?;:"”'’)]|\s*$)/g, 'A-F')   // game rating ("E-L-O"), "OP af." ("aff")
@@ -986,6 +988,8 @@ function tidy(t) {
     // more laughs and anime words: "Hehe" ("hee-hee"), "Ehehe" ("eh-heh"), "Ufufu" ("you-fu-fu"), "Kukuku" ("cue-koo-koo"), "Nani" ("nanny"), "Yosh" ("yawsh")
     .replace(/\b([Ee]?)([Hh])e((?:he)+)\b/g, (m, e, h, rest) => (e ? (e === 'E' ? 'H' : h) : h) + 'eh' + '-heh'.repeat(rest.length / 2 + (e ? 1 : 0)))
     .replace(/\b([Uu])fu(?:fu)+\b/g, (m, u) => (u === 'U' ? 'O' : 'o') + 'o' + '-foo'.repeat((m.length - 1) / 2)).replace(/\b([Kk])u(?:ku){2,}\b/g, (m, k) => k + 'oo' + '-koo'.repeat(m.length / 2 - 1))
+    .replace(/(^|[\s"“'‘(])([Ee])w+(?=[\s"”'’.,!?…)]|$)/g, (m, pre, e) => pre + e + 'e-yew')   // "Ew, gross" (said "you")
+    .replace(/\b([Kk])u(?:fu)+\b/g, (m, k) => k + 'oo' + '-foo'.repeat((m.length - 2) / 2)).replace(/\b([Gg])a((?:ha){2,})\b/g, (m, g, h) => g + 'ah' + '-ha'.repeat(h.length / 2)).replace(/\b([Uu])wa+h*(?=[\s!?.,…"”'’)]|$)/g, (m, u) => (u === 'U' ? 'O' : 'o') + 'o-wah')   // "Kufufu" ("cue-fu-fu"), "Gahaha", "Uwah" ("you-wah")
     .replace(/\b([Nn])ani(?=\?|!|\s*$)/g, '$1ah-nee').replace(/\b([Yy])osh\b/g, '$1ohsh')
     .replace(/\bXiao(?=[a-z]{2,}\b)(?!mi\b)/g, 'Sheeyow-')   // Xiaofan, Xiaochun ("zai-ah-fan"); Xiaomi is fine
     .replace(/(\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|few|several|dozen|many))(\s+)li\b/g, '$1$2lee')   // a hundred li (distance, "lie")
