@@ -518,6 +518,8 @@ function parseFixes(text) {
 }
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const atStart = (all, at) => /(?:^|[.!?]["”’')\]]*\s+)$/.test(all.slice(Math.max(0, at - 12), at)) && !/\b(?:Mr|Mrs|Ms|Dr|St)\.\s+$/.test(all.slice(Math.max(0, at - 12), at));   // a sentence starts here
+const capAt = (w, all, at) => (atStart(all, at) ? w[0].toUpperCase() + w.slice(1) : w);   // "Tbh" -> "To be honest": lowercase, the voice ran it into the sentence before
 
 function makeSayer(fixes = [], { tidy: doTidy = true } = {}) {
   const rules = fixes
@@ -980,6 +982,9 @@ function tidy(t) {
     .replace(/\b([Yy])oukai\b/g, '$1oh-kai').replace(/\b([Qq])ilin(s?)\b/g, (m, q, s) => (q === 'Q' ? 'C' : 'c') + 'hee-lin' + s).replace(/\b([Ss])huriken(s?)\b/g, '$1hoo-ree-ken$2').replace(/\b([Kk])unai\b/g, '$1oo-nai')
     .replace(/\b([Ss])hinigami(s?)\b/g, '$1hee-nee-gah-mee$2').replace(/\bMj[oö]ll?nir\b/g, 'Mee-yol-neer').replace(/\b([Oo])uroboros\b/g, (m, o) => (o === 'O' ? 'Y' : 'y') + 'oor-rob-or-ross')   // "yoo-kai", "chee-lin" (was "kill-in"), "shyoor-eye-ken", "kun-eye", "shy-nih-gami", "M-jolnir", "ow-er-ob-er-ohz"
     .replace(/\b([Kk])elpie(s?)\b/g, '$1elpee$2').replace(/\b([Jj])[oö]tunn?(s?)\b/g, (m, j, s) => (j === 'J' ? 'Y' : 'y') + 'o-tun' + s).replace(/\b([Gg])aruda(s?)\b/g, '$1ah-roo-dah$2').replace(/\b([Aa])sura(s?)\b/g, '$1h-soo-rah$2').replace(/\b([Hh])uli(?=\s+[Jj]ing\b)/g, '$1oo-lee')   // "kel-pie", "jah-tun", "gar-yoo-da", "a-syoor-a", "hyoo-lee"
+    // Kuiper belt ("kwee-per"), Odin's ravens ("hue-jin", "mew-nin"), zweihander ("zway-"), Kusanagi ("kew-"), Cu Chulainn ("chew-lane")
+    .replace(/\bKuiper\b/g, 'Kyper').replace(/\bHuginn\b/g, 'Hoo-ghin').replace(/\bMuninn\b/g, 'Moo-nin').replace(/\b([Zz])weih[aä]nder(s?)\b/g, '$1wy-hander$2')
+    .replace(/\bKusanagi\b/g, 'Koo-sah-nah-ghee').replace(/\bC[uú] Chulainn\b/g, 'Coo Hullin')
     .replace(/\bHUD(s?)\b/g, 'hud$1').replace(/(^|[\s"“'‘(])EZ(?=[\s"”'’.,!?)]|$)/g, '$1E-Z')
     .replace(/\bBBQs?\b/g, (m) => 'barbecue' + m.slice(3)).replace(/\bETAs?\b/g, (m) => 'E-TA' + m.slice(3)).replace(/\beta(?=\s+\d)/g, 'E-TA')   // "B-B-Q", "eeta" (eta 10: "omw, eta 10")
     .replace(/\bELO\b/g, 'Eelo').replace(/(?<=\w\s)af(?=[.,!?;:"”'’)]|\s*$)/g, 'A-F')   // game rating ("E-L-O"), "OP af." ("aff")
@@ -1010,9 +1015,9 @@ function tidy(t) {
     .replace(/\bXiao(?=[a-z]{2,}\b)(?!mi\b)/g, 'Sheeyow-')   // Xiaofan, Xiaochun ("zai-ah-fan"); Xiaomi is fine
     .replace(/(\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|few|several|dozen|many))(\s+)li\b/g, '$1$2lee')   // a hundred li (distance, "lie")
     .replace(/\b(Xiao|Qiao|Xian|Qian|Xiang|Qiang|Xia|Xing|Xin|Xue|Xie|Xuan|Xun|Xu|Xi|Qing|Qin|Qiu|Quan)\b/g, (m) => ({ Xiang: 'Shee-ahng', Qiang: 'Chee-ahng', Xue: 'Shoo-weh', Xie: 'Shee-eh', Xuan: 'Shoo-ahn', Xun: 'Shoon', Quan: 'Choo-wen', Xiao: 'Sheeyow', Qiao: 'Cheeyow', Xian: 'Shee-en', Qian: 'Chee-en', Xia: 'Shee-ah', Xing: 'Shing', Xin: 'Shin', Xu: 'Shoo', Xi: 'Shee', Qing: 'Ching', Qin: 'Chin', Qiu: 'Chee-oo' })[m])
-    .replace(/\bIRL\b/g, 'I-R-L').replace(/\b(?:idk|IDK)\b/g, 'I-D-K').replace(/\b(?:brb|BRB)\b/g, 'be right back').replace(/\b(?:afk|AFK)\b/g, 'A-F-K').replace(/(^|[\s"“'‘(])np(?=[\s"”'’.,!?)]|$)/g, '$1no problem')
-    .replace(/\b(omg|OMG|wtf|WTF|lmao|LMAO)\b/g, (m) => m.toUpperCase().split('').join('-')).replace(/(\d)-yrs?-old\b/g, '$1-year-old')   // O-M-G (the voice said "omg"), a 30-yr-old
-    .replace(/\b(?:tbh|TBH)\b/g, 'to be honest').replace(/\b(?:imo|IMHO|imho)\b/g, (m) => (m.length > 3 ? 'in my humble opinion' : 'in my opinion'))
+    .replace(/\b(?:IRL|Irl)\b/g, 'I-R-L').replace(/\b(?:idk|IDK|Idk)\b/g, 'I-D-K').replace(/\b(?:brb|BRB|Brb)\b/g, (m, at, all) => capAt('be right back', all, at)).replace(/\b(?:afk|AFK|Afk)\b/g, 'A-F-K').replace(/(^|[\s"“'‘(])np(?=[\s"”'’.,!?)]|$)/g, '$1no problem')
+    .replace(/\b(omg|OMG|Omg|wtf|WTF|Wtf|lmao|LMAO|Lmao)\b/g, (m) => m.toUpperCase().split('').join('-')).replace(/(\d)-yrs?-old\b/g, '$1-year-old')   // O-M-G (the voice said "omg"), a 30-yr-old
+    .replace(/\b(?:tbh|TBH|Tbh)\b/g, (m, at, all) => capAt('to be honest', all, at)).replace(/\b(?:imo|IMHO|imho|Imo|Imho)\b/g, (m, at, all) => capAt(m.length > 3 ? 'in my humble opinion' : 'in my opinion', all, at))   // "Idk," "Tbh," at the start of a line: "aidk", "T-B-H"
     .replace(/\b(?:AFAIK|afaik)\b/g, 'as far as I know').replace(/\b(?:IIRC|iirc)\b/g, 'I-I-R-C').replace(/(^|[\s"“'‘(])irl(?=[\s"”'’.,!?)]|$)/g, '$1I-R-L')   // "a-fake", "ih-urk", "url"
     .replace(/\b([Ll])vl(s?)\b/g, '$1evel$2').replace(/\bLVL(?=\s+UP\b)/g, 'LEVEL')   // "two new lvls", "LVL UP!" (Lvl 5 is done above): "L-V-L"
     .replace(/\bcf\.(?=\s)/g, 'compare').replace(/\bviz\.(?=\s)/g, 'namely')   // "see-eff", "viz"
@@ -1142,7 +1147,13 @@ return { parseFixes, makeSayer, tidy };
     const w = words(n);
     return w.replace(/(\w+)$/, (m) => ORD[m] || (m.endsWith('y') ? m.slice(0, -1) + 'ieth' : m + 'th'));
   }
+  // A number that starts a sentence is said with a capital ("He fell. Three men died."): lowercase, the voice ran the two
+  // sentences together with no pause ("fell three men"). \u0001 marks where such a number starts until it is words.
   function speakNumbers(t) {
+    return numbersToWords(t.replace(/((?<!\b(?:[A-Za-z]|[ivxlc]+|[Vv]er|[Cc]hapt|Cf|approx|pp|vs|ca|[Nn]os?|[Vv]ols?|[Cc]h|[Cc]hap|[Pp]g|[Ff]igs?|[Ee]qs?|[Ee]x|[Rr]ef|[Aa]rt|[Pp]ara|[Oo]p|cf|ft|lbs?|oz|est|[Tt]el|[Ee]xt|[Pp]t|[Ee]p|[Ll]vl?|[Rr]m|[Aa]pt|St|Dr|Mr|Mrs|Ms|Prof|Gen|Col|Capt|Sgt|Lt|Mt|Ave|Rd|[Gg]r))[.!?]["”’')\]]*\s+)(?=\$?\d)/g, '$1\u0001'))
+      .replace(/\u0001([a-z])/g, (m, c) => c.toUpperCase()).replace(/\u0001/g, '');
+  }
+  function numbersToWords(t) {
     return t
       .replace(/(\d)\s?%/g, '$1 percent')                     // before the digits become words
       .replace(/\$(\d[\d,]*)(?:\.(\d{2}))?\b/g, (_, d, c) => { const n = +d.replace(/,/g, ''); if (n === 0 && c && +c) return words(+c) + (+c === 1 ? ' cent' : ' cents');   // $0.99 -> ninety-nine cents

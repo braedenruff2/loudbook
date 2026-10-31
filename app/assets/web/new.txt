@@ -1,3 +1,4 @@
+A number that starts a sentence ("He fell. 3 men died.") no longer runs into the sentence before it. Chat shorthand at the start of a line ("Idk", "Tbh", "Brb", "Wtf") is said right, and Kuiper, Huginn, Muninn, zweihander, Kusanagi and Cu Chulainn too.
 Chapter headings numbered "II. The Road" are read "two. The Road" (was "Roman two"), and a hospital "IV" is "I-V", not "Roman four". Grunts like "Hnn" say "hmm" (were spelled out) and "Gyaa!" is a scream.
 More anime and myth words said right: shuriken, kunai, shinigami, youkai, qilin, Mjolnir, ouroboros, kelpie, jotunn, garuda, asura; "Uwah", "Kufufu", "Gahaha" and "Ew" too.
 Says "Mm-hmm" as a sound instead of spelling it out, "Level MAX" as "level max", years like 1066 as "ten sixty-six", and fantasy words the right way: lich, phylactery, kitsune, cockatrice, Cthulhu, ki, jutsu; "HUD" and "EZ" too. Laughs like "Hehe", "Ufufu" and "Kukuku" sound like laughs.
