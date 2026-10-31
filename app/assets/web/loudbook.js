@@ -1410,7 +1410,7 @@ return { parseFixes, makeSayer, tidy };
     const i = blockAt(x, y);
     return JSON.stringify({ i, text: i >= 0 && blocks[i] ? blocks[i].text : '' });
   }
-  window.LB = { run, highlight, progress, clear, blockAt, blockInfo, speakNumbers, words, sayText, at: () => activeIndex };
+  window.LB = { run, highlight, progress, clear, blockAt, blockInfo, speakNumbers, words, sayText, at: () => activeIndex, count: () => blocks.length };
 })();
 
 }

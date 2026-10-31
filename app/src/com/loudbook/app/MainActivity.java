@@ -493,7 +493,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         chapterText.setText(ch.title);
         if (pos >= 0 && pos < ch.size()) nowText.setText(ch.chunks.get(pos).text);
         String cur = web.getUrl();
-        if (cur != null && !ch.url.equals(cur) && svc != null && svc.isPlaying() && !"kindle".equals(ch.site) && !(cur + "|" + ch.url).equals(pageWarned)) {
+        // (shared text has no page of its own)
+        if (cur != null && !ch.url.equals(cur) && svc != null && svc.isPlaying() && !"kindle".equals(ch.site) && !ch.url.startsWith("text:") && !(cur + "|" + ch.url).equals(pageWarned)) {
             pageWarned = cur + "|" + ch.url;
             svc.trail("page: the page shown (" + cur + ") isn't the chapter being read (" + ch.url + "): no highlight on it");
         }
@@ -502,7 +503,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             final int fpos = pos, fblock = c.block;
             // (the page says which paragraph it marked, and whether it found the sentence's words there, for the trail)
             if (c.block >= 0) web.evaluateJavascript("(function(){if(!window.LB)return '';var m=LB.highlight(" + c.block + "," + JSONObject.quote(c.text) + "," + ch.offsetInBlock(pos) + "," + pos
-                + ");return (m?1:0)+','+(LB.at?LB.at():-2);})()", r -> pageCheck(fpos, fblock, r));
+                + ");return (m?1:0)+','+(LB.at?LB.at():-2)+','+(LB.count?LB.count():-1);})()", r -> pageCheck(fpos, fblock, r));
             else web.evaluateJavascript("window.LB && LB.clear()", null);
         }
         if (svc != null) statusText.setTag(ch.minutesLeft(pos, svc.speed()) + " min left");
@@ -511,12 +512,20 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     }
 
     /** The page's answer to a highlight: anything unusual goes in the trail (Settings > Gemini timing). */
+    private int pageUnread = -1;
     private void pageCheck(int pos, int block, String r) {
         if (svc == null || r == null) return;
         String v = r.replace("\"", "");
         String[] a = v.split(",");
         if (a.length < 2) { if (svc.isPlaying()) svc.trail("page: sentence " + pos + ": the page's reader script isn't there (no highlight)"); return; }
         boolean marked = a[0].equals("1");
+        // (the page's script hasn't read the page yet: it's still loading, or the app is in the background,
+        // where the page waits. Not "its words weren't found", chapter-test 2026-10-31)
+        if (!marked && a.length >= 3 && a[2].trim().equals("0")) {
+            if (pos != pageUnread) svc.trail("page: sentence " + pos + ": the page hasn't been read by its script yet (still loading, or the app is in the background): no highlight until it is");
+            pageUnread = pos;
+            return;
+        }
         int at; try { at = Integer.parseInt(a[1].trim()); } catch (NumberFormatException e) { at = -2; }
         if (marked && (at == block || at == -2)) return;
         svc.trail("page: sentence " + pos + (at != block && at != -2 ? " found in paragraph " + at + " (its own number is " + block + ")" : "")
