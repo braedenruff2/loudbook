@@ -601,7 +601,7 @@ const UNITS = { km: ['kilometer', 'kilometers'], cm: ['centimeter', 'centimeters
   Mbps: ['megabit per second', 'megabits per second'], Gbps: ['gigabit per second', 'gigabits per second'], kW: ['kilowatt', 'kilowatts'], kWh: ['kilowatt-hour', 'kilowatt-hours'],
   MW: ['megawatt', 'megawatts'], ly: ['light-year', 'light-years'], kV: ['kilovolt', 'kilovolts'], mAh: ['milliamp-hour', 'milliamp-hours'], V: ['volt', 'volts'], W: ['watt', 'watts'] };
 
-const GRUNTS = [[/^[Hh](m+p+h|m+f)$/, 'humph'], [/^[Hh]mn?$/, 'hmm'], [/^([Mm]hm+|[Mm]m-?hm+|[Mm]m+-hm+)$/, 'um-hum'], [/^[Mm]m+$/, 'hmm'],
+const GRUNTS = [[/^[Hh](m+p+h|m+f|r+m+p+h)$/, 'humph'], [/^[Hh]mn?$/, 'hmm'], [/^([Mm]hm+|[Mm]m-?hm+|[Mm]m+-hm+)$/, 'um-hum'], [/^[Mm]m+$/, 'hmm'],
   [/^[Ss]hh+$/, 'shush'], [/^[Pp]+f+t?$/, 'puh'], [/^[Gg]rr+$/, 'grur'], [/^[Bb]rr+$/, 'burr'], [/^[Nn]+g+h$|^[Nn]n+g$|^[Nn]+h$/, 'ungh'],
   [/^[Tt]s?ch$/, 'tsk'], [/^[Hh]r+m+$/, 'hmm'], [/^[Uu]hh+$/, 'uh'], [/^[Ee]rr+$/, 'er'], [/^[Pp]s+t$/, 'psst'],
   // more the phone voice spelled out letter by letter ("Hnng" -> "H N N G", "Bzzt" -> "B Z Z T")
@@ -960,6 +960,12 @@ function tidy(t) {
     .replace(/\bHoT(s?)\b/g, 'hot$1').replace(/\b([Ii])sekai(s?)\b/g, (m, i, p) => (i === 'I' ? 'E' : 'e') + 'esekai' + p).replace(/\bn00b(s?)\b/g, 'noob$1').replace(/\bpwn(ed|s)?\b/g, (m, e) => (e === 'ed' ? 'pohnd' : e ? 'pones' : 'pone'))   // "eye-skai", "N zero zero B", "P W ned"
    .replace(/\b(PvPvE|PvP|PvE|GvG|GvE|RvR)(s?)\b/g, (m, w, s) => w.toUpperCase() + s)   // heal over time ("ho-tee"), "pee-vee pee"
     .replace(/\bPK(ers?|ing)\b/g, 'PK-$1')   // player killer: "pee-ker"
+    // fantasy words the voice gets wrong: "lich" (German "ch"), "phylactery" ("file-actery"), the game's "HUD" ("H-U-D"), "EZ" ("ez")
+    .replace(/\b([Dd]emi|[Aa]rch)?([Ll])ich(?=(?:es|s|['’]s)?\b)/g, (m, pre, l) => (pre ? pre + (/^demi$/i.test(pre) ? '-' : '') : '') + l + 'itch').replace(/\b([Pp])hylacter(y|ies)\b/g, (m, p, e) => (p === 'P' ? 'F' : 'f') + 'ill-acter' + e)
+    // more myth and anime words: "kitsune" ("kit-sewn"), "cockatrice" ("cock-ay-tris"), "Cthulhu", "ki" ("kai"), "jutsu" ("jut-soo")
+    .replace(/\b([Kk])itsune(s?)\b/g, '$1itsoonay$2').replace(/\b([Cc])ockatrice(s?)\b/g, '$1ockatryce$2').replace(/\bCthulhu\b/g, 'Kuh-thoo-loo').replace(/\b([Yy])okai\b/g, '$1oh-kai')
+    .replace(/\b([Kk])i\b/g, '$1ee').replace(/\b([Nn]in|[Tt]ai|[Gg]en|[Kk]en)?([Jj])utsu\b/g, (m, pre, j) => (pre ? pre + '-' : '') + j + 'oot-soo')
+    .replace(/\bHUD(s?)\b/g, 'hud$1').replace(/(^|[\s"“'‘(])EZ(?=[\s"”'’.,!?)]|$)/g, '$1E-Z')
     .replace(/\bBBQs?\b/g, (m) => 'barbecue' + m.slice(3)).replace(/\bETAs?\b/g, (m) => 'E-TA' + m.slice(3)).replace(/\beta(?=\s+\d)/g, 'E-TA')   // "B-B-Q", "eeta" (eta 10: "omw, eta 10")
     .replace(/\bELO\b/g, 'Eelo').replace(/(?<=\w\s)af(?=[.,!?;:"”'’)]|\s*$)/g, 'A-F')   // game rating ("E-L-O"), "OP af." ("aff")
     // cultivation (xianxia) words and Chinese names the voice says the English way: qi "kai", Xiao "zai-oh", Qing "king"
@@ -977,6 +983,10 @@ function tidy(t) {
     })
     .replace(/(?<!-)\b([Nn])(ee|ii)(?=-(?:san|chan|sama)\b)/g, (m, n, v) => n + (v === 'ee' ? 'eh' : 'ee'))   // Nee-san (sister) "nay", Nii-san (brother) "nee-eye"
     .replace(/\b([Kk])e(?:ke){2,}\b/g, '$1eh-keh-keh')   // goblin laugh "Kekeke": "kek"
+    // more laughs and anime words: "Hehe" ("hee-hee"), "Ehehe" ("eh-heh"), "Ufufu" ("you-fu-fu"), "Kukuku" ("cue-koo-koo"), "Nani" ("nanny"), "Yosh" ("yawsh")
+    .replace(/\b([Ee]?)([Hh])e((?:he)+)\b/g, (m, e, h, rest) => (e ? (e === 'E' ? 'H' : h) : h) + 'eh' + '-heh'.repeat(rest.length / 2 + (e ? 1 : 0)))
+    .replace(/\b([Uu])fu(?:fu)+\b/g, (m, u) => (u === 'U' ? 'O' : 'o') + 'o' + '-foo'.repeat((m.length - 1) / 2)).replace(/\b([Kk])u(?:ku){2,}\b/g, (m, k) => k + 'oo' + '-koo'.repeat(m.length / 2 - 1))
+    .replace(/\b([Nn])ani(?=\?|!|\s*$)/g, '$1ah-nee').replace(/\b([Yy])osh\b/g, '$1ohsh')
     .replace(/\bXiao(?=[a-z]{2,}\b)(?!mi\b)/g, 'Sheeyow-')   // Xiaofan, Xiaochun ("zai-ah-fan"); Xiaomi is fine
     .replace(/(\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|few|several|dozen|many))(\s+)li\b/g, '$1$2lee')   // a hundred li (distance, "lie")
     .replace(/\b(Xiao|Qiao|Xian|Qian|Xiang|Qiang|Xia|Xing|Xin|Xue|Xie|Xuan|Xun|Xu|Xi|Qing|Qin|Qiu|Quan)\b/g, (m) => ({ Xiang: 'Shee-ahng', Qiang: 'Chee-ahng', Xue: 'Shoo-weh', Xie: 'Shee-eh', Xuan: 'Shoo-ahn', Xun: 'Shoon', Quan: 'Choo-wen', Xiao: 'Sheeyow', Qiao: 'Cheeyow', Xian: 'Shee-en', Qian: 'Chee-en', Xia: 'Shee-ah', Xing: 'Shing', Xin: 'Shin', Xu: 'Shoo', Xi: 'Shee', Qing: 'Ching', Qin: 'Chin', Qiu: 'Chee-oo' })[m])

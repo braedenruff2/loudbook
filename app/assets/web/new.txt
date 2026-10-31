@@ -1,4 +1,4 @@
-Says "Mm-hmm" as a sound instead of spelling it out, "Level MAX" as "level max", and years like 1066 as "ten sixty-six".
+Says "Mm-hmm" as a sound instead of spelling it out, "Level MAX" as "level max", years like 1066 as "ten sixty-six", and fantasy words the right way: lich, phylactery, kitsune, cockatrice, Cthulhu, ki, jutsu; "HUD" and "EZ" too. Laughs like "Hehe", "Ufufu" and "Kukuku" sound like laughs.
 Gemini: no more long silence when a chapter starts. The first sentences used to wait for the whole recording when Loudbook asked Google from a few sentences in.
 Web chapters: the sentence mark no longer stops at "Mr." / "Dr." / an initial ("J. Smith") and takes in the full stop after an italic word.
 Word highlight keeps pace through numbers and abbreviations too ("Level 12", "Mr.", "STR"): each word gets the time the voice actually spends saying it.
