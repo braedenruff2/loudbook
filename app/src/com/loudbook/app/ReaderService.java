@@ -1271,10 +1271,18 @@ public class ReaderService extends Service {
      */
     private AsrAligner asrSoon() {
         if (asr.loaded() || !prefs.getBoolean("gemExact", true)) return asrNow();
-        if (!AsrAligner.downloaded(new File(getFilesDir(), "asr"))) return asrNow();
-        if (!asr.loading) asrThread.submit(() -> { asrReady(); return null; });
-        for (int k = 0; k < 40 && !asr.loading && !asr.loaded(); k++) sleep(5);       // (so the request sees it loading)
-        return asr.loading || asr.loaded() ? asr : asrNow();
+        File d = new File(getFilesDir(), "asr");
+        if (asr.loading) return asr;
+        // (not on the phone yet: it's fetched (20 MB, once) and loaded while Google makes the recording.
+        // The first request on a new phone waited for both: 11 s after play, gemini-test 2026-10-31)
+        if (!AsrAligner.downloaded(d)) asrReady();                      // (starts fetching it, if it isn't already)
+        asr.loading = true;
+        asrThread.submit(() -> {                                        // (after the fetch: one thread)
+            try { if (!AsrAligner.downloaded(d)) for (int k = 0; k < 900 && asrFetching; k++) Thread.sleep(100); asrReady(); }
+            finally { if (!asr.loaded()) asr.loading = false; }
+            return null;
+        });
+        return asr;
     }
 
     private void refineLater(Chapter ch, GeminiBook b, GeminiBook.Made m) {

@@ -679,7 +679,7 @@ final class GeminiBook {
                 // (the recogniser may still be loading (7 s on the test's phone): the request went
                 // without waiting for it, and what has arrived meanwhile is listened to from the file
                 // once it's ready. Waiting first put 7 s before every first request, gemini-test 2026-10-31)
-                for (long t0 = System.currentTimeMillis(); !asr.loaded() && System.currentTimeMillis() - t0 < 60_000; ) Thread.sleep(50);
+                for (long t0 = System.currentTimeMillis(); !asr.loaded() && asr.loading && System.currentTimeMillis() - t0 < 120_000; ) Thread.sleep(50);
                 if (!asr.loaded()) { System.err.println("Loudbook: gemini follow: the recogniser didn't load"); return; }
                 live = asr.new Live(rate);
                 while (true) {
