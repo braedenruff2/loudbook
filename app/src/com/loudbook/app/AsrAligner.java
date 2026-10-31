@@ -71,6 +71,15 @@ final class AsrAligner {
         private final OnlineStream s;
         private final int rate;
         private boolean done;
+        // The recogniser doesn't make out the first two or three seconds of a stream: "Then a man
+        // stepped out of the fog. He was tall and thin" came out as "and thin", "They all studied
+        // this place with fascination" as "ination" (so the first sentences of every recording were
+        // placed by their length, not by their words). Heard a second time it gets them all, so the
+        // first 3 s are fed first, then half a second of quiet, then the recording from its start;
+        // what's heard of that first pass is dropped, and times are from the recording's start.
+        private static final int PRIME = RATE * 3;
+        private float[] head = new float[0];              // the first 3 s (16 kHz), until they're fed
+        private double offset = -1;                        // where the recording itself starts in the stream (s); -1: not yet
         Live(int rate) { synchronized (AsrAligner.this) { s = rec.createStream(); } this.rate = rate; }
 
         void feed(float[] x) {
@@ -82,9 +91,27 @@ final class AsrAligner {
                 y[i] = (float) (x[Math.min(j, x.length - 1)] * (1 - f) + x[Math.min(j + 1, x.length - 1)] * f);
             }
             synchronized (AsrAligner.this) {
+                if (offset < 0) {
+                    float[] h = java.util.Arrays.copyOf(head, head.length + y.length);
+                    System.arraycopy(y, 0, h, head.length, y.length);
+                    head = h;
+                    if (head.length >= PRIME) prime();
+                    return;
+                }
                 s.acceptWaveform(y, RATE);
                 while (rec.isReady(s)) rec.decode(s);
             }
+        }
+
+        /** The first seconds, then quiet, then the recording from its start (held: AsrAligner's lock). */
+        private void prime() {
+            int n = Math.min(head.length, PRIME);
+            s.acceptWaveform(java.util.Arrays.copyOf(head, n), RATE);
+            s.acceptWaveform(new float[RATE / 2], RATE);
+            offset = (n + RATE / 2) / (double) RATE;
+            s.acceptWaveform(head, RATE);
+            head = new float[0];
+            while (rec.isReady(s)) rec.decode(s);
         }
 
         /** The recording is complete: the last words come out. */
@@ -92,6 +119,7 @@ final class AsrAligner {
             synchronized (AsrAligner.this) {
                 if (done) return;
                 done = true;
+                if (offset < 0) { if (head.length > 0) prime(); else offset = 0; }
                 s.acceptWaveform(new float[RATE / 2], RATE);
                 s.inputFinished();
                 while (rec.isReady(s)) rec.decode(s);
@@ -100,8 +128,11 @@ final class AsrAligner {
 
         List<Word> words() {
             OnlineRecognizerResult r;
-            synchronized (AsrAligner.this) { r = rec.getResult(s); }
-            return wordsOf(r.getTokens(), r.getTimestamps());
+            double off;
+            synchronized (AsrAligner.this) { if (offset < 0) return new ArrayList<>(); off = offset; r = rec.getResult(s); }
+            List<Word> out = new ArrayList<>();
+            for (Word w : wordsOf(r.getTokens(), r.getTimestamps())) if (w.t >= off - 0.05) out.add(new Word(w.w, Math.max(0, w.t - off)));
+            return out;
         }
 
         void release() { synchronized (AsrAligner.this) { s.release(); } }

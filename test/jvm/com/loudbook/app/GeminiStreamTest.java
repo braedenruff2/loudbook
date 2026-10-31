@@ -21,6 +21,7 @@ import java.util.List;
  */
 public class GeminiStreamTest {
     static int bad = 0;
+    static int runs0, heard0;
     static void check(String what, boolean ok) { System.out.println((ok ? "ok   " : "FAIL ") + what); if (!ok) bad++; }
 
     static volatile String mode;                      // how the stand-in answers
@@ -167,6 +168,15 @@ public class GeminiStreamTest {
             check(run[0] + ": no sentence is off (every start within half a second)", worst < 0.5);
             Voice.Clip c = b.clip(text.length - 1);
             check(run[0] + ": the last clip has the end of the recording", c.samples.length > rate / 2);
+            // the recogniser hears the very start of a recording too (it used to miss the first 2-3 s,
+            // so the first sentences of each recording were placed by length, not by their words)
+            String d0 = b.describe(from);
+            System.out.println("   first sentence: " + d0);
+            String[] tw0 = text[from].split(" ");
+            String w0 = (AsrAligner.norm(tw0[0]) + " " + AsrAligner.norm(tw0[1])).toLowerCase(java.util.Locale.US);
+            // (the recogniser still misses the start now and then, "He turned it over twice" at 7 here,
+            // so this is counted over the runs: before it was primed it missed it every time)
+            runs0++; if (d0.contains("heard: " + w0)) heard0++; else System.out.println("   (its first words weren't heard)");
             if (run[0].equals("streamed")) {
                 // moving the highlight by hand: a second into sentence 6, "On" from 5 keeps 6 where it is
                 long x = Math.round((truth[6] + 1.0) * rate);
@@ -233,6 +243,7 @@ public class GeminiStreamTest {
             check("packed: the next chapter's recording is kept", again.recorded() == c2.size());
         }
         server.stop(0);
+        check("the first words of the recording are heard in all but one run (" + heard0 + " of " + runs0 + ")", heard0 >= runs0 - 1);
         System.out.println(bad == 0 ? "ALL OK" : bad + " FAILED");
         System.exit(bad == 0 ? 0 : 1);
     }

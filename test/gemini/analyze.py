@@ -27,7 +27,10 @@ for p in parts:
     out.append(f"### {p['name']}")
     L = p["lines"]
     t0 = ts(L[0]) if L else 0
-    first = [l.split("LoudbookTest: ")[1] for l in L if "start: first sound" in l]
+    # (from the last "play" in the first few seconds: the test's own switch to the stand-in Google
+    # replays the chapter that was on for a moment first, and its sound came after 19 ms)
+    plays = [i for i, l in enumerate(L) if "trail: play:" in l and ts(l) is not None and ts(l) - t0 < 3]
+    first = [l.split("LoudbookTest: ")[1] for l in L[(plays[-1] if plays else 0):] if "start: first sound" in l]
     out.append("- " + (first[0] if first else "NO SOUND"))
     # (a start that waits far longer than Google takes for its first audio: sentences left waiting on a request that
     # doesn't hold them, 2026-10-30. The stand-in takes ~8 s streamed, ~30 s all at once)
@@ -36,6 +39,14 @@ for p in parts:
     for l in L:
         if any(k in l for k in ("gemini timing:", "not ready at sentence", "ready again from", "starting from sentence", "isn't in the recording", "playing as it arrives", "played as it arrived", "waiting for Google's audio")):
             out.append(f"- {ts(l) - t0:6.1f} s  " + l.split("LoudbookTest: ")[1])
+    # (the stand-in Google never leaves a sentence out: a sentence "not in the recording" means a
+    # request started past one that wasn't recorded yet, 2026-10-31)
+    gaps = [l.split("LoudbookTest: ")[1] for l in L if "isn't in the recording" in l]
+    if gaps: out.append(f"- PROBLEM: {len(gaps)} sentence(s) skipped by the requests and read by the phone's voice"); bad += 1
+    # (the recogniser should hear the start of each recording, so its first sentence is timed by its
+    # words. It still misses one now and then, so this is a note, not a problem)
+    unheard = [l for l in L if re.search(r"hearing \d+ .*part \d+, 0\.0-[\d.]+ s, by length", l)]
+    if unheard: out.append(f"- note: {len(unheard)} recording(s) whose first words the recogniser didn't hear")
     # what read each sentence, and stalls (a sentence heard later than the one before it could have ended)
     # (per chapter: sentence numbers start again after a page turn)
     chap, clips, heard = 0, {}, []

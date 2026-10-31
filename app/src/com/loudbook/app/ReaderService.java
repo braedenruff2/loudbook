@@ -488,6 +488,7 @@ public class ReaderService extends Service {
                             int after = b.nextHave(idx, ch.size());
                             if (first >= 0 && first < idx && after < ch.size() && after - idx <= 3 && !covered(ch, idx)) {
                                 Log.i("LoudbookTest", "gemini: sentence " + idx + " isn't in the recording; the phone's voice reads it");
+                                phoneRead.add(idx);
                                 return learned(makeVoiced(ch, idx, text, want, sp), want);
                             }
                             // the request that covers it (its sentences are ready one by one as it arrives)
@@ -499,6 +500,7 @@ public class ReaderService extends Service {
                     } catch (java.util.concurrent.ExecutionException | IOException e) {
                         // Google failed: another voice reads it (in turn, not every sentence ahead at once)
                         if (chapter == ch) { Voice.Clip pc = phoneInTurn(ch, idx, () -> false); if (pc != null) return pc; }
+                        phoneRead.add(idx);
                         return learned(makeHere(text, want, sp), want);
                     }
                 });
@@ -907,6 +909,14 @@ public class ReaderService extends Service {
         // here first the request started at 2, and sentences 0-1 waited for all of it, then the phone's voice read them: a minute
         // of silence at the start, gemini-test 2026-10-30. With the phone's voice filling in, leadFrom says where Gemini takes over)
         if (now && ch == chapter && i >= at && i - at <= READ_AHEAD && b.nextHave(at, ch.size()) > i) i = leadFrom(ch, b, at);
+        else if (now && ch == chapter && i > at && i - at <= READ_AHEAD + 2) {
+            // (from the first sentence not recorded yet after where reading is, not from the waiter
+            // that got here first: sentence 9's waiter asked from 9 while 7 and 8 were missing too,
+            // so the phone's voice read them, then a request just for them followed. gemini-test 2026-10-31)
+            int m = b.nextMissing(at, i);
+            while (m < i && covered(ch, m)) m = b.nextMissing(m + 1, i);
+            if (m < i) i = m;
+        }
         List<GeminiBook.Span> plan = plan(ch, b, i, sizeFor(ch, b, i));
         Req r = new Req();
         for (GeminiBook.Span sp : plan) r.covers.add(new Object[]{GeminiBook.key(sp.ch.url, cVoice(), cModel(), cStyle()), sp.from, sp.to});
@@ -1159,6 +1169,14 @@ public class ReaderService extends Service {
         int nh = b.nextHave(here, ch.size());
         if (!b.has(here) && nh < ch.size() && !prefs.getBoolean("gemBackfill", false)) k = nh;
         for (; k < ch.size() && b.has(k); k++) ahead += b.secondsOf(k);
+        // (a gap of a sentence or two inside the recording is read by the phone's voice, as clipFor
+        // does: not a request of its own. The recording goes on after it)
+        for (int hop = 0; hop < 4 && k < ch.size() && k > b.firstHave(ch.size()); hop++) {
+            int after = b.nextHave(k, ch.size());
+            if (after >= ch.size() || after - k > 3) break;
+            for (int q = k; q < after; q++) ahead += ch.chunks.get(q).say.length() * 0.068;
+            for (k = after; k < ch.size() && b.has(k); k++) ahead += b.secondsOf(k);
+        }
         Chapter c = ch; GeminiBook cb = b; int miss = k;
         if (k >= ch.size()) {
             if (!autoNext) return;
@@ -1459,6 +1477,7 @@ public class ReaderService extends Service {
                 } else clipOffset.remove(next);
                 if (c != null) {
                     GeminiBook bk = book;
+                    if (gem && !byPhone && bk != null && !bk.has(next)) byPhone = true;      // (not Gemini's: it isn't in the recording)
                     srcOf.put(next, gem && !byPhone ? "Gemini, " + (bk != null ? bk.describe(next) : "") : gem ? "the phone's voice (Gemini not ready)" : "the phone's voice");
                     Log.i("LoudbookTest", "clip " + next + ": " + Math.round(c.seconds() * 100) / 100.0 + " s" + (!gem ? "" : byPhone ? ", phone's voice" : ", gemini"));
                     if (next == pos) main.post(() -> status("", false));
