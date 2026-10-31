@@ -26,7 +26,9 @@ final class AsrAligner {
 
     static final class Word { final String w; final double t; Word(String w, double t) { this.w = w; this.t = t; } public String toString() { return w + "@" + String.format(java.util.Locale.US, "%.2f", t); } }
 
-    private OnlineRecognizer rec;
+    private volatile OnlineRecognizer rec;
+    /** Being loaded now (on another thread): a request can go without waiting for it. */
+    volatile boolean loading;
 
     static boolean downloaded(File d) { for (String f : FILES) if (!new File(d, f).isFile()) return false; return true; }
 
@@ -38,7 +40,12 @@ final class AsrAligner {
         }
     }
 
-    synchronized void load(File d) {
+    void load(File d) {
+        if (rec != null) return;
+        loading = true;
+        try { loadNow(d); } finally { loading = false; }
+    }
+    private synchronized void loadNow(File d) {
         if (rec != null) return;
         OnlineTransducerModelConfig tr = OnlineTransducerModelConfig.builder()
             .setEncoder(new File(d, "asr-encoder.onnx").getPath()).setDecoder(new File(d, "asr-decoder.onnx").getPath())

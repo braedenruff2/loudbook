@@ -58,6 +58,10 @@ for p in parts:
         if prev is not None and a == prev + 1 and z - a <= 1 and not stopped:
             out.append(f"- PROBLEM: a request just for sentence(s) {a}-{z}, left over by the one before"); bad += 1
         prev, stopped = z, False
+    # (the first request waited for the recogniser to load: asked 7.6 s after play, gemini-test 2026-10-31.
+    # It loads while Google makes the start of the recording now)
+    asks = [int(m.group(1)) for l in L for m in [re.search(r"gemini: asking Google for sentences .*, (\d+) ms after play", l)] if m]
+    if asks and asks[0] > 4000: out.append(f"- PROBLEM: the first request went {asks[0] / 1000:.1f} s after play"); bad += 1
     # (a highlight put in after the voice had got to its sentence: the title stayed highlighted 5 s into the
     # first sentence, as a sentence was highlighted only once the one after it was heard, gemini-test 2026-10-31)
     late = [(float(m.group(1)), l) for l in L for m in [re.search(r"trail: hearing .*found ([\d.]+) s after the voice got there", l)] if m]

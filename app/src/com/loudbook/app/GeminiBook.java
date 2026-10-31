@@ -448,7 +448,7 @@ final class GeminiBook {
             f = new File(dir, "part" + partNo + "-" + System.currentTimeMillis() + ".pcm");
             parts.add(new CloudVoice.Pcm(f, 0, 0, 24000));             // (its place, while it arrives)
         }
-        Follow fo = asr != null && asr.loaded() ? new Follow(ch, from, texts, n0, partNo, f, asr) : null;
+        Follow fo = asr != null && (asr.loaded() || asr.loading) ? new Follow(ch, from, texts, n0, partNo, f, asr) : null;
         if (fo != null) fo.start();
         final Live lv = fo != null && stream ? new Live(from, from + n0, partNo, f) : null;
         if (lv != null) streaming = lv;
@@ -632,7 +632,8 @@ final class GeminiBook {
      */
     private final class Follow implements Runnable {
         final Chapter ch; final int from; final List<String> texts; final int limit, part; final File f;
-        final AsrAligner.Live live;
+        private final AsrAligner asr;
+        private AsrAligner.Live live;                      // (made once the recogniser is loaded: see run)
         final int rate = 24000, frame = rate * Align.FRAME_MS / 1000;
         volatile long bytes;
         volatile boolean ended;
@@ -649,7 +650,7 @@ final class GeminiBook {
 
         Follow(Chapter ch, int from, List<String> texts, int limit, int part, File f, AsrAligner asr) {
             this.ch = ch; this.from = from; this.texts = texts; this.limit = limit; this.part = part; this.f = f;
-            live = asr.new Live(rate);
+            this.asr = asr;
         }
         void start() { thread = new Thread(this, "lb-gemini-follow"); thread.start(); }
         void arrived(long b) { bytes = b; synchronized (lock) { lock.notifyAll(); } }
@@ -675,6 +676,12 @@ final class GeminiBook {
         @Override public void run() {
             long lastLook = 0;
             try {
+                // (the recogniser may still be loading (7 s on the test's phone): the request went
+                // without waiting for it, and what has arrived meanwhile is listened to from the file
+                // once it's ready. Waiting first put 7 s before every first request, gemini-test 2026-10-31)
+                for (long t0 = System.currentTimeMillis(); !asr.loaded() && System.currentTimeMillis() - t0 < 60_000; ) Thread.sleep(50);
+                if (!asr.loaded()) { System.err.println("Loudbook: gemini follow: the recogniser didn't load"); return; }
+                live = asr.new Live(rate);
                 while (true) {
                     long have = bytes / 2;
                     if (have > fed) {
@@ -700,7 +707,7 @@ final class GeminiBook {
                 words = live.words();
             } catch (Throwable t) {
                 System.err.println("Loudbook: gemini follow: " + t);
-            } finally { live.release(); }
+            } finally { if (live != null) live.release(); }
         }
 
         /** Files every sentence whose end is known now (the next one's first words were heard). */

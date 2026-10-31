@@ -1016,7 +1016,7 @@ public class ReaderService extends Service {
             // recogniser is ready; otherwise the whole recording first, timed afterwards
             String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date());
             boolean stream = streamToday();
-            AsrAligner live = asrNow();
+            AsrAligner live = asrSoon();
             trail("asked Google for sentences " + from + "-" + (to - 1) + (plan.size() > 1 ? " and the next chapter's start" : "")
                 + (stream ? ", streamed" : ", all at once") + (live == null ? " (no recogniser)" : ""));
             Log.i("LoudbookTest", "gemini: asking Google for sentences " + from + "-" + (to - 1) + (plan.size() > 1 ? " and the next chapter's start" : "")
@@ -1262,6 +1262,19 @@ public class ReaderService extends Service {
             asr.load(d);
             return asr;
         } catch (Throwable t) { Log.w(TAG, "recogniser", t); return null; }
+    }
+
+    /**
+     * The recogniser for a request about to go, without waiting for it to load if it's on the phone
+     * already: it loads (on its own thread) while Google makes the start of the recording, and
+     * listens from the start once it's ready. (asrNow waited first: 7 s before the first request.)
+     */
+    private AsrAligner asrSoon() {
+        if (asr.loaded() || !prefs.getBoolean("gemExact", true)) return asrNow();
+        if (!AsrAligner.downloaded(new File(getFilesDir(), "asr"))) return asrNow();
+        if (!asr.loading) asrThread.submit(() -> { asrReady(); return null; });
+        for (int k = 0; k < 40 && !asr.loading && !asr.loaded(); k++) sleep(5);       // (so the request sees it loading)
+        return asr.loading || asr.loaded() ? asr : asrNow();
     }
 
     private void refineLater(Chapter ch, GeminiBook b, GeminiBook.Made m) {

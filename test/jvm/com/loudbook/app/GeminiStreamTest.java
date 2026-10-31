@@ -91,7 +91,7 @@ public class GeminiStreamTest {
         check("the stand-in Google is used", CloudVoice.HOST.equals(host));
 
         String style = CloudVoice.DEFAULT_STYLE;
-        String[][] runs = {{"streamed", "0"}, {"streamed, started mid-chapter", "7"}, {"old api", "0"}, {"all at once", "0"}, {"streamed, Google stops early", "0"}};
+        String[][] runs = {{"streamed", "0"}, {"streamed, started mid-chapter", "7"}, {"old api", "0"}, {"all at once", "0"}, {"streamed, Google stops early", "0"}, {"streamed, the recogniser still loading", "0"}};
         for (String[] run : runs) {
             mode = run[0];
             int from = Integer.parseInt(run[1]);
@@ -130,7 +130,15 @@ public class GeminiStreamTest {
             watch.start();
             boolean live = !run[0].equals("all at once");
             // (all at once: not streamed, but still listened to, as fast as it can be, before it's played)
-            GeminiBook.Made m = b.fetch(ch, from, text.length, "test-key", "gemini-3.8-flash-tts", "Sulafat", style, 0, new double[1], asr, new ArrayList<>(), live);
+            // (the recogniser still loading as the request goes: it's loaded 4 s later, and listens from the start then)
+            AsrAligner use = asr;
+            if (run[0].contains("still loading")) {
+                AsrAligner late = new AsrAligner(); AsrTest.warm(late);
+                late.loading = true;
+                new Thread(() -> { try { Thread.sleep(4000); late.load(new java.io.File(files, "asr")); } catch (Exception e) { e.printStackTrace(); } }).start();
+                use = late;
+            }
+            GeminiBook.Made m = b.fetch(ch, from, text.length, "test-key", "gemini-3.8-flash-tts", "Sulafat", style, 0, new double[1], use, new ArrayList<>(), live);
             long took = System.currentTimeMillis() - t0;
             watch.join();
             System.out.printf("== %s: %.0f s of speech; first sentence ready after %.1f s, all after %.1f s; %s%n",
