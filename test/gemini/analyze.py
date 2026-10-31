@@ -65,7 +65,10 @@ for p in parts:
     # (a highlight put in after the voice had got to its sentence: the title stayed highlighted 5 s into the
     # first sentence, as a sentence was highlighted only once the one after it was heard, gemini-test 2026-10-31)
     late = [(float(m.group(1)), l) for l in L for m in [re.search(r"trail: hearing .*found ([\d.]+) s after the voice got there", l)] if m]
-    big = [x for x in late if x[0] > 3]
+    # (the first time on a phone the listener is fetched while Google makes the recording, so the first
+    # highlights can come late by up to that wait: a note then)
+    waits = [float(m.group(1)) for l in L for m in [re.search(r"the listener ready after ([\d.]+) s", l)] if m]
+    big = [x for x in late if x[0] > 3 + (max(waits) if waits else 0)]
     if big: out.append(f"- PROBLEM: {len(big)} highlight(s) more than 3 s late, the worst {max(x[0] for x in big):.1f} s: " + big[0][1].split("trail: ")[1][:90]); bad += 1
     elif late: out.append(f"- note: {len(late)} highlight(s) a little late, the worst {max(x[0] for x in late):.1f} s")
     # (the recogniser should hear the start of each recording, so its first sentence is timed by its

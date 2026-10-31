@@ -1116,6 +1116,7 @@ public class ReaderService extends Service {
         String line = when + "  " + m.chars + " letters, " + mmss(m.seconds) + " of audio (" + (m.count + m.extra) + " of " + m.asked + " sentences), "
             + (m.streamed ? "streamed" : "all at once") + ": first audio after " + (m.firstAudioMs < 0 ? "-" : secs(m.firstAudioMs))
             + ", first sentence ready " + secs(m.firstReadyMs) + ", all in after " + mmss(m.totalMs / 1000.0)
+            + (m.asrWaitMs > 500 ? ", the listener ready after " + secs(m.asrWaitMs) + " (fetched or loaded meanwhile)" : "")
             + (short_ ? "; Google stopped early" : m.count + m.extra < m.asked ? "; the last sentence was left out (the next request starts with it)" : "")
             + (noStream ? " (so whole recordings for the rest of today)" : "") + (m.note.isEmpty() ? "" : "\n      (" + m.note + ")");
         Log.i("LoudbookTest", "gemini timing: " + line);

@@ -352,6 +352,7 @@ final class GeminiBook {
         double seconds;       // how long the recording is
         long firstAudioMs = -1, totalMs;   // when its first audio arrived, and when it was all in (from asking)
         long firstReadyMs = -1;            // when its first sentence was ready to play
+        long asrWaitMs;                    // how long the recogniser took to be ready (fetched or loaded meanwhile)
         boolean broke;                     // the connection broke part way (not Google stopping early)
         String note = "";                  // for the timing report: how the end of the recording was told
     }
@@ -590,6 +591,7 @@ final class GeminiBook {
         m.totalMs = System.currentTimeMillis() - t0;
         m.firstReadyMs = fo != null && fo.firstFiledAt > 0 ? fo.firstFiledAt - t0 : m.totalMs;
         m.note = note;
+        m.asrWaitMs = fo != null ? fo.asrWaitMs : 0;
         int count0 = Math.min(count, n0);
         m.asked = texts.size(); m.seconds = total / (double) pcm.rate;
         for (int k = 0; k < count; k++) m.chars += chars[k];
@@ -646,6 +648,7 @@ final class GeminiBook {
         final List<Long> starts = new ArrayList<>();
         long lastEnd;
         volatile long firstFiledAt;
+        volatile long asrWaitMs;                           // waited for the recogniser to be ready
         List<AsrAligner.Word> words = new ArrayList<>();
 
         Follow(Chapter ch, int from, List<String> texts, int limit, int part, File f, AsrAligner asr) {
@@ -679,7 +682,9 @@ final class GeminiBook {
                 // (the recogniser may still be loading (7 s on the test's phone): the request went
                 // without waiting for it, and what has arrived meanwhile is listened to from the file
                 // once it's ready. Waiting first put 7 s before every first request, gemini-test 2026-10-31)
-                for (long t0 = System.currentTimeMillis(); !asr.loaded() && asr.loading && System.currentTimeMillis() - t0 < 120_000; ) Thread.sleep(50);
+                long w0 = System.currentTimeMillis();
+                while (!asr.loaded() && asr.loading && System.currentTimeMillis() - w0 < 120_000) Thread.sleep(50);
+                asrWaitMs = System.currentTimeMillis() - w0;
                 if (!asr.loaded()) { System.err.println("Loudbook: gemini follow: the recogniser didn't load"); return; }
                 live = asr.new Live(rate);
                 while (true) {
