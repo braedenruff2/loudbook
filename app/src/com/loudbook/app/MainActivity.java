@@ -71,6 +71,9 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     private TextView storyText, chapterText, nowText, statusText, speedBtn;
     private android.widget.ImageView playBtn;
     private Button readThisBtn, updateBtn;
+    /** "Highlight out of step?": move it on or back a sentence while Gemini reads (the recording is re-cut to match). */
+    private LinearLayout nudgeRow;
+    private String pageWarned = "";
     private ReaderService svc;
     private String pageJs;
     private Chapter pageChapter;           // the chapter on screen (may differ from the one playing)
@@ -482,6 +485,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     @Override public void onState(boolean playing, boolean busy) {
         playBtn.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
         playBtn.setAlpha(busy ? 0.6f : 1f);
+        showNudge();
     }
 
     @Override public void onSpeaking(Chapter ch, int pos) {
@@ -489,13 +493,40 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         chapterText.setText(ch.title);
         if (pos >= 0 && pos < ch.size()) nowText.setText(ch.chunks.get(pos).text);
         String cur = web.getUrl();
+        if (cur != null && !ch.url.equals(cur) && svc != null && svc.isPlaying() && !"kindle".equals(ch.site) && !(cur + "|" + ch.url).equals(pageWarned)) {
+            pageWarned = cur + "|" + ch.url;
+            svc.trail("page: the page shown (" + cur + ") isn't the chapter being read (" + ch.url + "): no highlight on it");
+        }
         if (cur != null && ch.url.equals(cur) && pos < ch.size()) {
             Chapter.Chunk c = ch.chunks.get(pos);
-            if (c.block >= 0) web.evaluateJavascript("window.LB && LB.highlight(" + c.block + "," + JSONObject.quote(c.text) + "," + ch.offsetInBlock(pos) + "," + pos + ")", null);
+            final int fpos = pos, fblock = c.block;
+            // (the page says which paragraph it marked, and whether it found the sentence's words there, for the trail)
+            if (c.block >= 0) web.evaluateJavascript("(function(){if(!window.LB)return '';var m=LB.highlight(" + c.block + "," + JSONObject.quote(c.text) + "," + ch.offsetInBlock(pos) + "," + pos
+                + ");return (m?1:0)+','+(LB.at?LB.at():-2);})()", r -> pageCheck(fpos, fblock, r));
             else web.evaluateJavascript("window.LB && LB.clear()", null);
         }
         if (svc != null) statusText.setTag(ch.minutesLeft(pos, svc.speed()) + " min left");
+        showNudge();
         renderNow();
+    }
+
+    /** The page's answer to a highlight: anything unusual goes in the trail (Settings > Gemini timing). */
+    private void pageCheck(int pos, int block, String r) {
+        if (svc == null || r == null) return;
+        String v = r.replace("\"", "");
+        String[] a = v.split(",");
+        if (a.length < 2) { if (svc.isPlaying()) svc.trail("page: sentence " + pos + ": the page's reader script isn't there (no highlight)"); return; }
+        boolean marked = a[0].equals("1");
+        int at; try { at = Integer.parseInt(a[1].trim()); } catch (NumberFormatException e) { at = -2; }
+        if (marked && (at == block || at == -2)) return;
+        svc.trail("page: sentence " + pos + (at != block && at != -2 ? " found in paragraph " + at + " (its own number is " + block + ")" : "")
+            + (marked ? "" : "; its words weren't found on the page, so only a paragraph is tinted"));
+    }
+
+    private void showNudge() {
+        if (nudgeRow == null) return;
+        boolean on = svc != null && svc.geminiNow();
+        nudgeRow.setVisibility(on ? View.VISIBLE : View.GONE);
     }
 
     @Override public void onStatus(String text, boolean error) {
@@ -1120,7 +1151,10 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         box.addView(gTimes);
         gTimes.setOnClickListener(v -> {
             String start = prefs.getString("gemStart", ""), times = prefs.getString("gemTimes", "");
+            String steps = svc != null ? svc.trailText() : "";
+            if (steps.isEmpty()) steps = prefs.getString("gemTrail", "");
             String d = (start.isEmpty() ? "" : "Last start: " + start + "\n\n")
+                + (steps.isEmpty() ? "" : "Since play was pressed, step by step (minutes:seconds):\n" + steps + "\n\n")
                 + (times.isEmpty() ? "No Gemini requests yet." : "Requests, newest first:\n" + times)
                 + "\n\nGoogle's wait before audio: about " + Math.round(prefs.getFloat("gemLat", 6f)) + " s; whole recordings made at about "
                 + Math.round(prefs.getFloat("gemRate", 1.5f) * 10) / 10.0 + "x listening speed; up to " + prefs.getInt("gemCapChars", 24000) + " letters a request"
@@ -1399,6 +1433,23 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         readThisBtn.setVisibility(View.GONE);
         readThisBtn.setOnClickListener(v -> { if (svc != null && pageChapter != null) svc.setChapter(pageChapter, 0, true); v.setVisibility(View.GONE); });
         player.addView(readThisBtn);
+
+        // while Gemini reads: the highlight can be moved on or back to where the voice really is
+        // (the recording is re-cut there, and reading carries on from the same word)
+        nudgeRow = hbox(0, 0);
+        nudgeRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView nl = text(12, C_DIM, false);
+        nl.setText("Highlight out of step with the voice?");
+        nudgeRow.addView(nl, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        Button nBack = smallButton("\u25C0 Back"), nOn = smallButton("On \u25B6");
+        nBack.setContentDescription("The voice is a sentence behind the highlight: move the highlight back");
+        nOn.setContentDescription("The voice is a sentence ahead of the highlight: move the highlight on");
+        for (Button nb : new Button[]{nBack, nOn}) { nb.setTextSize(12); nb.setMinHeight(0); nb.setMinimumHeight(0); nb.setPadding(dp(10), dp(2), dp(10), dp(2)); }
+        nBack.setOnClickListener(v -> { if (svc != null) svc.nudge(-1); });
+        nOn.setOnClickListener(v -> { if (svc != null) svc.nudge(1); });
+        nudgeRow.addView(nBack); nudgeRow.addView(nOn);
+        nudgeRow.setVisibility(View.GONE);
+        player.addView(nudgeRow);
 
         LinearLayout ctl = hbox(0, dp(4));
         ctl.setGravity(Gravity.CENTER);

@@ -115,6 +115,11 @@ public class ReaderService extends Service {
             // each request a little smaller and could turn streaming off for the day: start afresh)
             prefs.edit().remove("gemCapChars").remove("gemNoStream").putBoolean("gemFix1", true).apply();
         }
+        if (!prefs.getBoolean("gemFix2", false)) {
+            // (and still, until 0.2.15x, a recording with its last sentence left out or not made out:
+            // the requests had shrunk to the smallest size and weren't streamed. Start afresh again)
+            prefs.edit().remove("gemCapChars").remove("gemNoStream").putBoolean("gemFix2", true).apply();
+        }
         if (KindleService.testBuild() && !prefs.getString("gemHost", "").isEmpty()) CloudVoice.HOST = prefs.getString("gemHost", "");   // (the emulator test's stand-in Google)
         if (prefs.getBoolean("cloudOn", false)) main.postDelayed(this::asrReady, 3000);   // (so Gemini can stream from the first chapter)
         sid = prefs.getInt("voice", 3);
@@ -404,6 +409,10 @@ public class ReaderService extends Service {
         if (!wake.isHeld()) wake.acquire(6 * 60 * 60 * 1000L);
         final int myGen = ++gen;
         playAt = System.currentTimeMillis();
+        if (offsetIdx != pos) offsetIdx = -1;
+        { Chapter ch0 = chapter; int p0 = Math.max(0, Math.min(pos, ch0.size() - 1));
+          String line = "play: sentence " + pos + " \"" + (ch0.size() > 0 ? clip40(ch0.chunks.get(p0).text) : "") + "\" of " + ch0.title + (geminiReads(ch0) ? " (Gemini)" : "");
+          if (offsetIdx == pos) trail(line); else trailStart(line); }
         // (Gemini: the recogniser that finds the sentences, loaded now rather than when the request goes)
         if (cloudOn() && !asr.loaded()) asrThread.submit(() -> { asrReady(); return null; });
         player = new Thread(() -> loop(myGen), "loudbook-player");
@@ -439,6 +448,7 @@ public class ReaderService extends Service {
             for (Future<Voice.Clip> f : clips.values()) f.cancel(false);
             for (Future<Voice.Clip> f : fills.values()) f.cancel(false);
             clips.clear(); fills.clear(); phoneRead.clear(); clipsGen++; filling = false;
+            srcOf.clear(); clipOffset.clear();
             book = null;
         }
     }
@@ -967,6 +977,8 @@ public class ReaderService extends Service {
             String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date());
             boolean stream = streamToday();
             AsrAligner live = asrNow();
+            trail("asked Google for sentences " + from + "-" + (to - 1) + (plan.size() > 1 ? " and the next chapter's start" : "")
+                + (stream ? ", streamed" : ", all at once") + (live == null ? " (no recogniser)" : ""));
             Log.i("LoudbookTest", "gemini: asking Google for sentences " + from + "-" + (to - 1) + (plan.size() > 1 ? " and the next chapter's start" : "")
                 + (ch == chapter && playAt > 0 ? ", " + (System.currentTimeMillis() - playAt) + " ms after play" : "") + (live == null ? " (no recogniser: not streamed)" : ""));
             made = b.fetch(ch, from, to, prefs.getString("cloudKey", ""), cModel(), cVoice(), cStyle(),
@@ -979,7 +991,11 @@ public class ReaderService extends Service {
                 + ", ready after " + (System.currentTimeMillis() - t0) / 1000 + " s");
             // a stream that stops early (Google sometimes cuts streamed speech off after a minute)
             // would cost a request per minute: ask for whole recordings for the rest of the day
-            boolean short_ = made.count + made.extra < made.asked;
+            // (one sentence left out at the very end isn't Google stopping early: the next request
+            // starts with it. Counting it as stopping early shrank every request to the smallest
+            // size, stopped streaming for the day, and asked again for that one sentence)
+            int missing = made.asked - made.count - made.extra;
+            boolean short_ = missing >= 2;
             boolean cutOff = made.streamed && short_ && !made.broke && made.seconds < 150;
             if (cutOff) prefs.edit().putString("gemNoStream", today).apply();
             // how much a request can hold: when Google stops one early, that's the most (a little
@@ -989,6 +1005,8 @@ public class ReaderService extends Service {
             if (pace[0] > 0) prefs.edit().putFloat("gemPace:" + cVoice(), (float) pace[0]).apply();
             learnSpeed(made, short_);
             noteTiming(made, short_, cutOff);
+            trail("Google's recording: sentences " + from + "-" + (from + made.count - 1) + (made.extra > 0 ? " + " + made.extra + " of the next chapter" : "")
+                + (missing > 0 ? ", " + missing + " left out" : "") + (made.note.isEmpty() ? "" : " (" + made.note + ")"));
             cloudError = "";
         } catch (CloudVoice.Limited ex) {
             // Google says when requests are available again: wait exactly that long
@@ -1011,8 +1029,9 @@ public class ReaderService extends Service {
         workSecs += (System.currentTimeMillis() - t0) / 1000.0;
         GeminiBook.trim(cloudRoot(), 800L << 20);
         if (ch == chapter) main.post(() -> status("", false));
-        // Google stopped early: ask for the rest now, so it's ready when it's needed
-        if (follow && from + got < to && chapter == ch) {
+        // Google stopped early: ask for the rest now, so it's ready when it's needed (one sentence
+        // left out at the end isn't worth a request of its own: reading ahead packs it into the next)
+        if (follow && from + got < to - 1 && chapter == ch) {
             final int next = from + got;
             waiters.submit(() -> { request(ch, b, next, true); return null; });
         }
@@ -1054,7 +1073,8 @@ public class ReaderService extends Service {
         String line = when + "  " + m.chars + " letters, " + mmss(m.seconds) + " of audio (" + (m.count + m.extra) + " of " + m.asked + " sentences), "
             + (m.streamed ? "streamed" : "all at once") + ": first audio after " + (m.firstAudioMs < 0 ? "-" : secs(m.firstAudioMs))
             + ", first sentence ready " + secs(m.firstReadyMs) + ", all in after " + mmss(m.totalMs / 1000.0)
-            + (short_ ? "; Google stopped early" : "") + (noStream ? " (so whole recordings for the rest of today)" : "");
+            + (short_ ? "; Google stopped early" : m.count + m.extra < m.asked ? "; the last sentence was left out (the next request starts with it)" : "")
+            + (noStream ? " (so whole recordings for the rest of today)" : "") + (m.note.isEmpty() ? "" : "\n      (" + m.note + ")");
         Log.i("LoudbookTest", "gemini timing: " + line);
         String old = prefs.getString("gemTimes", "");
         String[] ls = old.isEmpty() ? new String[0] : old.split("\n");
@@ -1264,6 +1284,11 @@ public class ReaderService extends Service {
         AudioTrack t = ensureTrack(rate);
         applyRate(t, new Voice.Clip(new float[0], rate, 1f, 0));
         long at = b.partOf(start) == lv.part ? Math.max(0, b.startOf(start)) : 0;
+        if (offsetIdx == start && b.partOf(start) == lv.part) { at += Math.max(0, offsetSamples); }
+        offsetIdx = -1;
+        clipOffset.put(start, b.partOf(start) == lv.part ? at - Math.max(0, b.startOf(start)) : 0L);
+        srcOf.put(start, "Gemini as it arrives, " + (b.has(start) ? b.describe(start) : "from the start of its recording (not told apart yet)"));
+        trail("Gemini plays as it arrives, from sentence " + start + String.format(java.util.Locale.US, " (%.1f s into its recording; %.1f s in so far)", at / 24000.0, lv.bytes / 2 / 24000.0));
         final long base = framesWritten - at;                    // (track frame of the recording's sample 0)
         marks.add(new long[]{framesWritten, start, 0});
         int nextMark = start + 1;
@@ -1277,6 +1302,7 @@ public class ReaderService extends Service {
                 long s = b.startOf(nextMark);
                 long len = Math.max(0, b.endOf(nextMark) - s);
                 marks.add(new long[]{base + s, nextMark, len});
+                srcOf.put(nextMark, "Gemini as it arrives, " + b.describe(nextMark) + (base + s < framesWritten ? String.format(java.util.Locale.US, " (found %.1f s after the voice got there)", (framesWritten - base - s) / (double) rate) : ""));
                 Log.i("LoudbookTest", "clip " + nextMark + ": " + Math.round(len * 100.0 / rate) / 100.0 + " s, gemini (as it arrives)");
                 nextMark++;
             }
@@ -1401,6 +1427,7 @@ public class ReaderService extends Service {
                         for (int k = 1; k <= 2; k++) fillFor(ch, next + k);
                         if (!filling) {
                             Log.i("LoudbookTest", "gemini: not ready at sentence " + next + "; the phone's voice reads meanwhile");
+                            trail("Gemini not ready at sentence " + next + ": the phone's voice reads meanwhile");
                             main.post(() -> status("Gemini is getting ready; the phone's voice reads until it is\u2026", false));
                         }
                     }
@@ -1418,11 +1445,21 @@ public class ReaderService extends Service {
                 }
                 if (gem && c != null && !byPhone && phoneRead.contains(next)) byPhone = true;
                 if (gem && c != null) {
-                    if (filling && !byPhone) { Log.i("LoudbookTest", "gemini: ready again from sentence " + next); main.post(() -> status("", false)); }
+                    if (filling && !byPhone) { Log.i("LoudbookTest", "gemini: ready again from sentence " + next); trail("Gemini takes over at sentence " + next); main.post(() -> status("", false)); }
                     filling = byPhone;
                 }
                 if (c != null && firstSoundFor != myGen) logFirstSound(myGen, gem, byPhone);
+                if (c != null && offsetIdx >= 0) {
+                    // (the highlight was moved by hand: on from where the voice was, not the sentence's start)
+                    if (offsetIdx == next && gem && !byPhone && offsetSamples > 0 && offsetSamples < c.samples.length - c.rate / 10) {
+                        c = new Voice.Clip(java.util.Arrays.copyOfRange(c.samples, (int) offsetSamples, c.samples.length), c.rate, c.madeAt, c.ms);
+                        clipOffset.put(next, offsetSamples);
+                    } else clipOffset.remove(next);
+                    offsetIdx = -1;
+                } else clipOffset.remove(next);
                 if (c != null) {
+                    GeminiBook bk = book;
+                    srcOf.put(next, gem && !byPhone ? "Gemini, " + (bk != null ? bk.describe(next) : "") : gem ? "the phone's voice (Gemini not ready)" : "the phone's voice");
                     Log.i("LoudbookTest", "clip " + next + ": " + Math.round(c.seconds() * 100) / 100.0 + " s" + (!gem ? "" : byPhone ? ", phone's voice" : ", gemini"));
                     if (next == pos) main.post(() -> status("", false));
                     AudioTrack t = ensureTrack(c.rate);
@@ -1536,6 +1573,12 @@ public class ReaderService extends Service {
         if (reached < 0 || gen != myGen) return;
         final int here = reached;
         pos = here;
+        if (here != trailHeard) {
+            trailHeard = here;
+            Chapter.Chunk tc = ch.chunks.get(here);
+            String src = srcOf.get(here);
+            trail("hearing " + here + " \"" + clip40(tc.text) + "\"" + (src != null ? ": " + src : ""));
+        }
         { Chapter.Chunk cc = ch.chunks.get(here); String said = cc.text;
           Log.i("LoudbookTest", ("kindle".equals(ch.site) ? "kindle " : "") + "speaking " + here + ": " + (said.length() > 60 ? said.substring(0, 60) : said)
               + (cc.say.equals(cc.text) ? "" : "  [said: " + (cc.say.length() > 70 ? cc.say.substring(0, 70) : cc.say) + "]")); }
@@ -1987,10 +2030,109 @@ public class ReaderService extends Service {
     }
 
     // ---------------------------------------------------------------- progress
+    // ---------------------------------------------------------------- what happened, step by step
+    /**
+     * Since play was last pressed: which sentence was heard when, in which voice, and from where
+     * in Gemini's recording (with the words the recogniser heard there), the requests, and any
+     * highlight moved by hand. Settings > Gemini timing shows it, so a highlight that went out of
+     * step can be traced. The first lines after play are kept, then the latest.
+     */
+    private final java.util.List<String> trailHead = new java.util.ArrayList<>();
+    private final java.util.ArrayDeque<String> trailTail = new java.util.ArrayDeque<>();
+    private volatile long trailFrom;
+    private volatile int trailHeard = -1;
+    /** Where each queued sentence's sound comes from, for the trail. */
+    private final java.util.Map<Integer, String> srcOf = new java.util.concurrent.ConcurrentHashMap<>();
+    /** How far into its recording each queued Gemini sentence's sound starts after its own start (samples; after a move by hand). */
+    private final java.util.Map<Integer, Long> clipOffset = new java.util.concurrent.ConcurrentHashMap<>();
+
+    void trail(String what) {
+        long t = trailFrom == 0 ? 0 : System.currentTimeMillis() - trailFrom;
+        String line = String.format(java.util.Locale.US, "%d:%04.1f  %s", t / 60000, (t % 60000) / 1000.0, what);
+        synchronized (trailHead) {
+            if (trailHead.size() < 45) trailHead.add(line);
+            else { trailTail.add(line); while (trailTail.size() > 60) trailTail.poll(); }
+        }
+        Log.i("LoudbookTest", "trail: " + what);
+    }
+
+    private void trailStart(String what) {
+        synchronized (trailHead) { trailHead.clear(); trailTail.clear(); }
+        trailFrom = System.currentTimeMillis();
+        trailHeard = -1;
+        trail(what);
+    }
+
+    String trailText() {
+        synchronized (trailHead) {
+            StringBuilder sb = new StringBuilder(String.join("\n", trailHead));
+            if (!trailTail.isEmpty()) sb.append("\n  ...\n").append(String.join("\n", trailTail));
+            return sb.toString();
+        }
+    }
+
+    private static String clip40(String t) { t = t.trim(); return t.length() > 40 ? t.substring(0, 40) + "..." : t; }
+
+    /** Whether the voice now is Gemini's, on a web chapter (the highlight can be moved by hand). */
+    boolean geminiNow() {
+        Chapter ch = chapter;
+        int i = heardIdx;
+        String src = i < 0 ? null : srcOf.get(i);
+        return playing && ch != null && geminiReads(ch) && src != null && src.startsWith("Gemini");
+    }
+
+    /** A sentence to start at, part way in (samples), after the highlight was moved by hand. */
+    private volatile int offsetIdx = -1;
+    private volatile long offsetSamples;
+
+    /**
+     * The highlight is out of step with Gemini's voice: by = +1, the voice is really a sentence
+     * further on than the highlight; -1, a sentence back. The recording is re-cut there to match
+     * (and kept so), and reading carries on from the same place in the audio with the highlight
+     * on the right sentence. With any other voice it's just a sentence on or back.
+     */
+    void nudge(int by) {
+        Chapter ch = chapter;
+        GeminiBook b = book;
+        AudioTrack t = track;
+        int i = heardIdx;
+        if (ch == null) return;
+        if (i < 0) i = pos;
+        int j = Math.max(0, Math.min(ch.size() - 1, i + by));
+        if (j == i) return;
+        if (b == null || t == null || !geminiNow() || !b.has(i) || !b.has(j)) {
+            trail("you moved the highlight " + (by > 0 ? "on" : "back") + " from sentence " + i + " (not Gemini's recording: just a sentence " + (by > 0 ? "on" : "back") + ")");
+            seek(j);
+            return;
+        }
+        long head = t.getPlaybackHeadPosition() & 0xffffffffL;
+        long into = Math.max(0, head - heardStart);
+        long x = b.startOf(i) + into + clipOffset.getOrDefault(i, 0L);
+        final int fi = i, fj = j;
+        trail(String.format(java.util.Locale.US, "you moved the highlight %s: from sentence %d, %.1f s into it (%.1f s into Gemini's recording; was: %s)",
+            by > 0 ? "on" : "back", i, into / 24000.0, x / 24000.0, b.describe(i)));
+        waiters.submit(() -> {
+            long ns;
+            try { ns = b.resync(fi, fj, x); } catch (Throwable e) { Log.w(TAG, "resync", e); ns = -1; }
+            final long start = ns;
+            main.post(() -> {
+                if (chapter != ch) return;
+                synchronized (clips) {
+                    int from = Math.min(fi, fj);
+                    clips.entrySet().removeIf(e -> { if (e.getKey() >= from) { e.getValue().cancel(false); return true; } return false; });
+                }
+                if (start >= 0 && x > start) { offsetIdx = fj; offsetSamples = x - start; }
+                trail("  now: sentence " + fj + " " + b.describe(fj) + (start >= 0 ? String.format(java.util.Locale.US, "; reading on from %.1f s into it", Math.max(0, x - start) / 24000.0) : " (couldn't re-cut: reading from its start)"));
+                seek(fj);
+            });
+            return null;
+        });
+    }
+
     void saveProgress() {
         Chapter ch = chapter;
         if (ch == null || "kindle".equals(ch.site) || "text".equals(ch.site)) return;   // Kindle keeps its own place; shared text has none
-        prefs.edit().putInt("pos:" + ch.url, pos)
+        prefs.edit().putInt("pos:" + ch.url, pos).putString("gemTrail", trailText())
             .putString("lastUrl", ch.url).putString("lastTitle", ch.title).putString("lastFiction", ch.fiction)
             .putInt("lastPct", ch.size() > 0 ? Math.round(100f * pos / ch.size()) : 0).apply();
         shelve(ch, pos);

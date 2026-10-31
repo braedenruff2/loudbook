@@ -21,7 +21,12 @@ import java.util.Map;
 final class GeminiBook {
     static final class Seg {
         final int idx; final int hash; final int part; volatile long start, end; boolean joined;
+        // how its start was found (for the timing report): w = its first words, heard as the audio
+        // came in; W = its first words, heard once all of it was in; l = not heard, shared out by
+        // length between ones that were; a = by the pauses alone; m = moved by hand; ? = from before
+        char how = '?';
         Seg(int idx, int hash, int part, long s, long e, boolean j) { this.idx = idx; this.hash = hash; this.part = part; start = s; end = e; joined = j; }
+        Seg how(char c) { how = c; return this; }
     }
 
     final File dir;
@@ -30,6 +35,8 @@ final class GeminiBook {
     private final Map<Integer, Seg> bound = new HashMap<>();           // chapter sentence -> recording
     private final java.util.Set<Integer> issued = new java.util.HashSet<>();   // handed out to play (timing frozen)
     private Chapter boundTo;
+    /** What the recogniser heard in each recording (this session only), for the timing report. */
+    private final Map<Integer, List<AsrAligner.Word>> heardIn = new HashMap<>();
     private int version;                                                // 2: timed with the passed-over instructions in mind
     static final int VERSION = 2;
 
@@ -81,7 +88,10 @@ final class GeminiBook {
      * Files sentences recorded in another chapter's request (packed in at its end): samples
      * [a, b) of that recording are copied here; local[k] is where sentence from+k starts in them.
      */
-    void addFrom(CloudVoice.Pcm src, long a, long b, Chapter ch, int from, long[] local) throws IOException {
+    void addFrom(CloudVoice.Pcm src, long a, long b, Chapter ch, int from, long[] local) throws IOException { addFrom(src, a, b, ch, from, local, null, null); }
+
+    /** words: what was heard in the source recording (seconds from its start); how: each sentence's timing (see Seg.how). */
+    void addFrom(CloudVoice.Pcm src, long a, long b, Chapter ch, int from, long[] local, List<AsrAligner.Word> words, char[] how) throws IOException {
         dir.mkdirs();
         File f;
         synchronized (this) { f = new File(dir, "part" + parts.size() + "-" + System.currentTimeMillis() + ".pcm"); }
@@ -104,7 +114,14 @@ final class GeminiBook {
             int part = parts.size();
             parts.add(p);
             for (int k = 0; k < n; k++)
-                all.add(new Seg(from + k, hash(ch.chunks.get(from + k)), part, local[k], Math.min(local[k + 1], p.samples()), k < n - 1));
+                all.add(new Seg(from + k, hash(ch.chunks.get(from + k)), part, local[k], Math.min(local[k + 1], p.samples()), k < n - 1)
+                    .how(how != null && k < how.length ? how[k] : 'p'));
+            if (words != null) {
+                List<AsrAligner.Word> mine = new ArrayList<>();
+                double t0 = a / (double) src.rate, t1 = b / (double) src.rate;
+                for (AsrAligner.Word w : words) if (w.t >= t0 && w.t < t1) mine.add(new AsrAligner.Word(w.w, w.t - t0));
+                heardIn.put(part, mine);
+            }
             all.sort((x, y) -> Integer.compare(x.idx, y.idx));
             boundTo = null; bind(ch);
             save();
@@ -121,6 +138,179 @@ final class GeminiBook {
     synchronized long startOf(int i) { Seg s = bound.get(i); return s == null ? -1 : s.start; }
 
     synchronized boolean has(int i) { return bound.containsKey(i); }
+
+    /**
+     * For the timing report: where sentence i is in its recording, how that was found, and the
+     * words the recogniser heard there (what Gemini really said at that place), e.g.
+     * "part 0, 12.3-15.8 s, by its words; heard: they all studied this place".
+     */
+    synchronized String describe(int i) {
+        Seg s = bound.get(i);
+        if (s == null) return "not recorded";
+        int rate = parts.get(s.part).rate;
+        double a = s.start / (double) rate, b = s.end / (double) rate;
+        String how = s.how == 'w' ? "by its words as it arrived" : s.how == 'W' ? "by its words" : s.how == 'l' ? "by length (its start wasn't heard)"
+            : s.how == 'a' ? "by the pauses" : s.how == 'm' ? "moved by hand" : s.how == 'p' ? "packed in another chapter's request" : "from an earlier session";
+        StringBuilder sb = new StringBuilder(String.format(java.util.Locale.US, "part %d, %.1f-%.1f s, %s", s.part, a, b, how));
+        List<AsrAligner.Word> ws = heardIn.get(s.part);
+        if (ws != null) {
+            StringBuilder h = new StringBuilder();
+            int n = 0;
+            for (AsrAligner.Word w : ws) if (w.t >= a - 0.1 && w.t < b - 0.1 && n++ < 7) h.append(n > 1 ? " " : "").append(w.w.toLowerCase(java.util.Locale.US));
+            sb.append("; heard: ").append(n == 0 ? "(nothing)" : h + (n > 7 ? " ..." : ""));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * You moved the highlight: at sample x of sentence i's recording, the voice is really saying
+     * sentence j. Re-cuts the recording around there to match: j starts at the pause just before
+     * x (the tap comes a moment after the voice got there) when moving on, or just after x when
+     * moving back, and the sentences squeezed or pushed by that are shared out by their lengths
+     * up to the next one that still fits. Returns where j starts now (samples), or -1 if the
+     * recording can't be moved there (another recording, or not recorded).
+     */
+    long resync(int i, int j, long x) throws IOException {
+        Seg si, sj;
+        CloudVoice.Pcm pcm;
+        synchronized (this) {
+            si = bound.get(i); sj = bound.get(j);
+            if (si == null || sj == null || si.part != sj.part || i == j) return -1;
+            for (int q = Math.min(i, j); q <= Math.max(i, j); q++) { Seg sq = bound.get(q); if (sq == null || sq.part != si.part) return -1; }
+            pcm = parts.get(si.part);
+        }
+        final int target = j;
+        double[][] ps = Align.pauses(pcm);              // (outside the lock: it reads the whole recording)
+        int rate = pcm.rate;
+        long gap = rate / 5;
+        synchronized (this) {
+            int lo = Math.min(i, j), hi = Math.max(i, j);
+            long b;
+            if (j > i) {
+                // on: j started at the last pause before x (up to 4 s back), not before i's own start
+                long min = si.start + gap;
+                double xs = x / (double) rate;
+                double w = heardAt(j, si.part, Math.max(si.start / (double) rate + 0.2, xs - 8), xs + 0.6, true);
+                if (!Double.isNaN(w)) b = Math.max(min, Math.round(cutAt(w, ps) * rate));
+                else {
+                    // no words to go by: the clearest pause in the last 4 s (a long one, between
+                    // sentences, rather than the comma just before the tap)
+                    b = Math.max(min, x - rate / 2);
+                    double best = -1;
+                    for (double[] p : ps) {
+                        double end = p[0] + p[1] / 2, d = xs - end;
+                        if (d < -0.1 || d > 4 || Math.round((end - 0.1) * rate) <= min) continue;
+                        double score = Math.min(p[1], 1.0) - 0.08 * Math.max(0, d);
+                        if (score > best) { best = score; b = Math.round((end - 0.1) * rate); }
+                    }
+                }
+                // i .. j-1 share what's before b (they were said under the wrong highlight)
+                spread(lo, j, si.start, b);
+            } else {
+                // back: j goes on to the first pause after x (up to 4 s on), then i starts
+                double xs = x / (double) rate;
+                double w = heardAt(i, si.part, xs - 0.3, xs + 10, false);
+                if (!Double.isNaN(w)) b = Math.round(cutAt(w, ps) * rate);
+                else {
+                    b = x + rate / 2;
+                    double best = -1;
+                    for (double[] p : ps) {
+                        double st = p[0] - p[1] / 2, d = st - xs;
+                        if (d < -0.1 || d > 4) continue;
+                        double score = Math.min(p[1], 1.0) - 0.08 * Math.max(0, d);
+                        if (score > best) { best = score; b = Math.round(Math.max(p[0], p[0] + p[1] / 2 - 0.15) * rate); }
+                    }
+                }
+                b = Math.max(b, sj.start + gap);
+                // the ones between j and i keep their own order inside j's new end
+                if (hi - lo > 1) spread(lo, hi, sj.start, b);
+                else { sj.end = b; sj.how = 'm'; }
+                j = i;                                     // (from here on: i starts at b)
+            }
+            Seg first = bound.get(j);
+            first.start = b; first.how = 'm';
+            Seg prev = bound.get(j - 1);
+            if (prev != null && prev.part == first.part) prev.end = b;
+            // the ones after: any that now start too soon are shared out up to the next that fits
+            double spc = paceOf(first.part);
+            long need = b;
+            int q = j + 1, stop = -1;
+            for (; bound.containsKey(q) && bound.get(q).part == first.part; q++) {
+                need += Math.round(0.6 * Math.max(1, textLen(q - 1)) * spc * rate);
+                if (bound.get(q).start >= need) { stop = q; break; }
+            }
+            long endAll = stop >= 0 ? bound.get(stop).start : bound.get(q - 1).end;
+            if (q - 1 > j || stop >= 0) spread(j, stop >= 0 ? stop : q, b, endAll);
+            else first.end = Math.max(first.end, b + gap);
+            for (int k = Math.min(lo, j); k < (stop >= 0 ? stop : q); k++) issued.remove(k);
+            save();
+            return bound.get(target).start;
+        }
+    }
+
+    /**
+     * When the recogniser heard sentence k's first words in that recording between lo and hi
+     * seconds (its first two words in a row, or its first word if that's a long one): the time
+     * of the match nearest the end (latest) when moving on, the earliest when moving back. NaN if
+     * it wasn't heard there.
+     */
+    private double heardAt(int k, int part, double lo, double hi, boolean latest) {
+        List<AsrAligner.Word> ws = heardIn.get(part);
+        Chapter c = boundTo;
+        if (ws == null || c == null || k < 0 || k >= c.size()) return Double.NaN;
+        List<String> tw = new ArrayList<>();
+        for (String t : c.chunks.get(k).say.split("\\s+")) { String nt = AsrAligner.norm(t); if (!nt.isEmpty()) tw.add(nt); if (tw.size() == 2) break; }
+        if (tw.isEmpty()) return Double.NaN;
+        double found = Double.NaN;
+        for (int q = 0; q < ws.size(); q++) {
+            AsrAligner.Word a = ws.get(q);
+            if (a.t < lo || a.t > hi || !AsrAligner.norm(a.w).equals(tw.get(0))) continue;
+            boolean ok = tw.size() < 2 ? tw.get(0).length() >= 3
+                : q + 1 < ws.size() && AsrAligner.norm(ws.get(q + 1).w).equals(tw.get(1)) || tw.get(0).length() >= 5;
+            if (!ok) continue;
+            found = a.t;
+            if (!latest) break;
+        }
+        return found;
+    }
+
+    /** Where to cut for a sentence whose first word was heard at t (as cuts() does): seconds. */
+    private static double cutAt(double t, double[][] ps) {
+        double word = t - 0.22, c = word - 0.05, best = Double.MAX_VALUE;
+        for (double[] p : ps) {
+            double end = p[0] + p[1] / 2;
+            if (end > word + 0.25 || end < word - 0.6) continue;
+            double d = Math.abs(end - word);
+            if (d < best) { best = d; c = Math.max(p[0], end - 0.15); }
+        }
+        return Math.max(0, c);
+    }
+
+    /** Sentences [a, b) share samples [from, to) by their lengths (all in one recording). */
+    private void spread(int a, int b, long from, long to) {
+        double tot = 0;
+        for (int k = a; k < b; k++) tot += Math.max(1, textLen(k));
+        long at = from;
+        double upto = 0;
+        for (int k = a; k < b; k++) {
+            Seg s = bound.get(k);
+            upto += Math.max(1, textLen(k));
+            long end = k == b - 1 ? to : from + Math.round((to - from) * upto / tot);
+            s.start = at; s.end = Math.max(at + 1, end); s.how = 'm';
+            at = s.end;
+        }
+    }
+
+    /** A sentence's length in letters (its text as recorded). */
+    private int textLen(int i) { Chapter c = boundTo; return c == null || i < 0 || i >= c.size() ? 40 : c.chunks.get(i).say.length(); }
+
+    /** This recording's pace, seconds a letter (0.065 if it can't be told). */
+    private double paceOf(int part) {
+        long samples = 0; double chars = 0;
+        for (Seg s : all) if (s.part == part) { samples += s.end - s.start; chars += Math.max(1, textLen(s.idx)); }
+        double spc = chars > 0 ? samples / (double) parts.get(part).rate / chars : 0;
+        return spc > 0.02 && spc < 0.2 ? spc : 0.065;
+    }
     synchronized boolean joined(int i) { Seg s = bound.get(i); return s != null && s.joined && bound.containsKey(i + 1); }
     synchronized int recorded() { return all.size(); }
 
@@ -163,6 +353,7 @@ final class GeminiBook {
         long firstAudioMs = -1, totalMs;   // when its first audio arrived, and when it was all in (from asking)
         long firstReadyMs = -1;            // when its first sentence was ready to play
         boolean broke;                     // the connection broke part way (not Google stopping early)
+        String note = "";                  // for the timing report: how the end of the recording was told
     }
 
     /** Part of a request: sentences [from, to) of a chapter, filed in that chapter's book. */
@@ -289,6 +480,9 @@ final class GeminiBook {
         int filed = fo == null ? 0 : fo.filed;
         int count;
         long[] starts;
+        String note = "";
+        char[] how = new char[texts.size()];
+        java.util.Arrays.fill(how, fo == null ? 'a' : 'l');
         if (fo == null) {
             // no recogniser: the cuts go at the pauses that fit the sentence lengths best
             Align.Result r = Align.align(pcm, chars, pace, CloudVoice.preambleChars(style));
@@ -306,8 +500,35 @@ final class GeminiBook {
             double[] st = AsrAligner.sentenceStarts(fo.words, texts);
             int lastHeard = -1;
             for (int k = 0; k < n; k++) if (!Double.isNaN(st[k])) lastHeard = k;
-            boolean ended = lastHeard >= 0 && !broke && AsrAligner.endHeard(fo.words, texts.get(lastHeard), st[lastHeard], total / (double) pcm.rate);
+            double secs = total / (double) pcm.rate;
+            boolean ended = lastHeard >= 0 && !broke && AsrAligner.endHeard(fo.words, texts.get(lastHeard), st[lastHeard], secs);
             count = Math.max(filed, lastHeard < 0 ? 0 : lastHeard + (ended ? 1 : 0));
+            for (int k = 0; k < n; k++) if (!Double.isNaN(st[k])) how[k] = 'W';
+            // the last sentence or two may be said but not made out (the recogniser trails off at
+            // the very end): if the recording goes on long enough after the last one heard for
+            // them at this reader's pace, they're there. (Each recording used to come out one
+            // sentence short this way, "Google stopped early", which cost a request for that one
+            // sentence, shrank the requests and stopped streaming for the day.)
+            if (ended && count < n && !broke) {
+                double spc0 = AsrAligner.pace(st, texts);
+                double need = 0.85 * Math.max(1, texts.get(lastHeard).length()) * spc0 + 0.3;
+                int c2 = count;
+                for (int k = lastHeard + 1; k < n && k < lastHeard + 3; k++) {
+                    need += 0.75 * Math.max(1, texts.get(k).length()) * spc0;
+                    if (secs - st[lastHeard] >= need) c2 = k + 1; else break;
+                }
+                if (c2 > count) note = "the last " + (c2 - count) + " not made out by the recogniser, but the recording is long enough for " + (c2 - count == 1 ? "it" : "them");
+                count = c2;
+            }
+            if (count < n) {
+                // what the report says about where it ended (to tell Google stopping from not hearing)
+                List<AsrAligner.Word> ws = fo.words;
+                StringBuilder tail = new StringBuilder();
+                for (int k = Math.max(0, ws.size() - 6); k < ws.size(); k++) tail.append(tail.length() > 0 ? " " : "").append(ws.get(k).w.toLowerCase(java.util.Locale.US));
+                String nx = texts.get(Math.min(n - 1, Math.max(0, count)));
+                note = String.format(java.util.Locale.US, "last sentence heard: %d of %d, at %.1f s of %.1f s; the recogniser's last words: \"%s\"; not in it: \"%s\"",
+                    lastHeard + 1, n, lastHeard >= 0 ? st[lastHeard] : 0, secs, tail, nx.length() > 50 ? nx.substring(0, 50) + "..." : nx);
+            }
             if (count > 0) {
                 int m1 = Math.min(n, count + 1);
                 double[] st1 = java.util.Arrays.copyOf(st, m1);
@@ -348,6 +569,7 @@ final class GeminiBook {
         m.broke = broke;
         m.totalMs = System.currentTimeMillis() - t0;
         m.firstReadyMs = fo != null && fo.firstFiledAt > 0 ? fo.firstFiledAt - t0 : m.totalMs;
+        m.note = note;
         int count0 = Math.min(count, n0);
         m.asked = texts.size(); m.seconds = total / (double) pcm.rate;
         for (int k = 0; k < count; k++) m.chars += chars[k];
@@ -359,7 +581,8 @@ final class GeminiBook {
             if (onlyThis) version = VERSION;                                   // (a new recording is timed the new way)
             parts.set(partNo, pcm);
             for (int k = filed; k < count0; k++)
-                all.add(new Seg(from + k, hash(ch.chunks.get(from + k)), partNo, starts[k], starts[k + 1], k < count0 - 1));
+                all.add(new Seg(from + k, hash(ch.chunks.get(from + k)), partNo, starts[k], starts[k + 1], k < count0 - 1).how(how[k]));
+            if (fo != null) heardIn.put(partNo, fo.words);
             // (the ones filed while it arrived: all but the last are followed by the next in the same recording)
             for (Seg sg : all) if (sg.part == partNo) sg.joined = sg.idx < from + count0 - 1;
             all.sort((a, b) -> Integer.compare(a.idx, b.idx));
@@ -376,7 +599,8 @@ final class GeminiBook {
             int c1 = Math.min(count, g1);
             long[] local = new long[c1 - g0 + 1];
             for (int k = g0; k <= c1; k++) local[k - g0] = starts[k] - starts[g0];
-            try { sp.book.addFrom(pcm, starts[g0], starts[c1], sp.ch, sp.from, local); }
+            char[] h2 = java.util.Arrays.copyOfRange(how, g0, c1);
+            try { sp.book.addFrom(pcm, starts[g0], starts[c1], sp.ch, sp.from, local, fo != null ? fo.words : null, h2); }
             catch (IOException e) { System.err.println("Loudbook: next chapter's recording: " + e); }
         }
         return m;
@@ -394,7 +618,7 @@ final class GeminiBook {
         volatile boolean ended;
         private final Object lock = new Object();
         private Thread thread;
-        long fed;                                          // samples listened to
+        volatile long fed;                                 // samples listened to
         float[] rms = new float[4096]; int nf;             // loudness every 20 ms
         private double acc; private int accN;
         int filed;                                         // sentences filed so far
@@ -413,7 +637,16 @@ final class GeminiBook {
         void finish() {
             ended = true;
             synchronized (lock) { lock.notifyAll(); }
-            try { thread.join(180_000); } catch (InterruptedException ignored) { }
+            // (as long as it keeps getting on: a long recording that came all at once takes the
+            // recogniser a while; giving up after three minutes dropped the rest of a long chapter)
+            try {
+                long seen = -1, since = System.currentTimeMillis();
+                while (thread.isAlive()) {
+                    thread.join(2000);
+                    if (fed != seen) { seen = fed; since = System.currentTimeMillis(); }
+                    else if (System.currentTimeMillis() - since > 60_000) break;
+                }
+            } catch (InterruptedException ignored) { }
             synchronized (GeminiBook.this) { closed = true; }   // (from here on the rest is filed by fetch, not here)
         }
         volatile boolean closed;
@@ -465,7 +698,7 @@ final class GeminiBook {
             long end = lastEnd;
             int k = filed;
             while (k < last && k < limit && cut[k] >= 0 && cut[k + 1] > cut[k] + rate / 5) {
-                add.add(new Seg(from + k, hash(ch.chunks.get(from + k)), part, cut[k], cut[k + 1], true));
+                add.add(new Seg(from + k, hash(ch.chunks.get(from + k)), part, cut[k], cut[k + 1], true).how(Double.isNaN(st[k]) ? 'l' : 'w'));
                 st2.add(cut[k]);
                 end = cut[k + 1];
                 k++;

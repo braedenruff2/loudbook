@@ -167,6 +167,23 @@ public class GeminiStreamTest {
             check(run[0] + ": no sentence is off (every start within half a second)", worst < 0.5);
             Voice.Clip c = b.clip(text.length - 1);
             check(run[0] + ": the last clip has the end of the recording", c.samples.length > rate / 2);
+            if (run[0].equals("streamed")) {
+                // moving the highlight by hand: a second into sentence 6, "On" from 5 keeps 6 where it is
+                long x = Math.round((truth[6] + 1.0) * rate);
+                double s5 = b.startOf(5) / (double) rate;
+                long got = b.resync(5, 6, x);
+                System.out.printf("   on: sentence 6 at %.2f s (truly %.2f)%n", got / (double) rate, truth[6]);
+                check("moved on by hand: the sentence starts where it really does", Math.abs(got / (double) rate - truth[6]) < 0.35);
+                // a wrong "Back" (6 pushed late), then "On" again puts it right
+                b.resync(6, 5, x);
+                double late = b.startOf(6) / (double) rate;
+                got = b.resync(5, 6, Math.round((truth[6] + 1.2) * rate));
+                System.out.printf("   back pushed 6 to %.2f s; on again: %.2f s (truly %.2f)%n", late, got / (double) rate, truth[6]);
+                check("back then on: the sentence is found again by its words", Math.abs(got / (double) rate - truth[6]) < 0.35);
+                check("moving by hand leaves the sentence before it starting where it did", Math.abs(b.startOf(5) / (double) rate - s5) < 0.01);
+                check("moving by hand: the sentences after it still in order", b.startOf(7) > b.startOf(6) && b.startOf(8) > b.startOf(7));
+                check("moving by hand: it's said how it was cut", b.describe(6).contains("moved by hand"));
+            }
         }
         // packed: the end of one chapter and the start of the next in one request
         {
