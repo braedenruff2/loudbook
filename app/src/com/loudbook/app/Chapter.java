@@ -21,7 +21,7 @@ final class Chapter {
     private static final java.util.regex.Pattern CLOSE = java.util.regex.Pattern.compile(
         "(?<!\\b(?:[Aa]|[Tt]he|[Mm]ore|[Mm]ost|[Ss]uch|[Ss]o|[Tt]oo|[Aa]s|[Hh]ow|[Vv]ery|[Qq]uite|[Pp]retty|[Rr]eally|[Tt]his|[Tt]hat|[Gg]ot|[Cc]ame|[Cc]ome|[Gg]et|[Ss]tood|[Ww]as|[Ww]ere|[Ii]s|[Aa]re|[Bb]e|[Bb]een|[Ff]elt|[Ss]eemed|[Dd]rew|[Ll]eaned|[Ss]tayed|[Ss]tay|[Kk]ept|[Hh]eld|[Ss]at|[Ll]ay|[Mm]oved|[Pp]ulled|[Uu]p|[Dd]rawing|[Gg]etting|[Cc]oming|[Ss]tanding|[Ss]itting|[Ss]taying|[Ff]ollowed|[Ss]wam|[Ff]lew|[Cc]reeping|[Cc]rept)[ \\t])\\b([Cc])lose" + OBJ.replace("|a|an|", "|"));
     private static final java.util.regex.Pattern EXCUSE = java.util.regex.Pattern.compile(
-        "(?<!\\b(?:[Aa]n|[Tt]he|[Nn]o|[Aa]ny|[Pp]oor|[Gg]ood|[Bb]ad|[Ll]ame|[Pp]erfect|[Ee]very|[Ss]ome|[Aa]nother|[Bb]est|[Oo]nly|[Ff]eeble|[Ff]limsy|[Cc]onvenient|[Mm]y|[Hh]is|[Hh]er|[Yy]our|[Tt]heir|[Oo]ur|[Ii]ts)[ \\t])\\b([Ee])xcuse(?=[ \\t]+(?:me|us|him|her|them|my|our|your|his|their|myself|yourself|yourselves|ourselves|this|that|the)\\b)");
+        "(?<!\\b(?:[Aa]n|[Tt]he|[Nn]o|[Aa]ny|[Pp]oor|[Gg]ood|[Bb]ad|[Ll]ame|[Pp]erfect|[Ee]very|[Ss]ome|[Aa]nother|[Bb]est|[Oo]nly|[Ff]eeble|[Ff]limsy|[Cc]onvenient|[Mm]y|[Hh]is|[Hh]er|[Yy]our|[Tt]heir|[Oo]ur|[Ii]ts)[ \\t])\\b([Ee])xcuse(?=[ \\t]+(?:me|us|him|her|them|my|our|your|his|their|myself|himself|herself|themselves|yourself|yourselves|ourselves|this|that|the)\\b)");
     // (at a sentence start only: mid-sentence it says these right)
     private static final java.util.regex.Pattern START_VERB = java.util.regex.Pattern.compile(
         "(?:^|(?<=[.!?]|[.!?][\"\u201d\u2019')]|[\"\u201c\u2018(]))([ \\t]*)(Use|Abuse|Separate|Record|Present|Polish|Tear|Permit|Insult|Increase|Decrease|Estimate|Moderate|Conduct|Project|Object|Protest|Suspect|Convict|Console|Contract|Torment|Escort|Transport|Export)" + OBJ);
@@ -70,7 +70,14 @@ final class Chapter {
         "(?<!\\b(?i:last|eleventh|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty|thirty|forty|fifty|sixty|few|several|ninety)[ \\t-])(?<![\\d-][ \\t]?)\\b([Mm])inute(?=[ \\t]+(?:amounts?|details?|fraction|quantity|quantities|traces?|particles?|cracks?|adjustments?|differences?|variations?|specks?|droplets?|fragments?|grains?|examination|inspection|description|observations?|investigation|particulars|scrutiny|accuracy|precision)\\b)");
     private static final java.util.regex.Pattern DOES = java.util.regex.Pattern.compile(
         "(?<=\\b(?:[Tt]he|(?i:two|three|four|five|six|seven|eight|nine|ten|several|pregnant)|bucks and|stags and)[ \\t])does\\b(?![-'\u2019]|[ \\t]+(?:and[ \\t]+don|not|so|it|that|this)\\b)");
+    // "had to" the voice runs together ("hadtuh"), and then takes the verb after it for the noun: "had to record it" ("RECK-ord"),
+    // "had to use it" ("yooss"), "had to live with it" ("lyve"), "had to present"... "hadd to" it says apart, and the verb right
+    // (lab 2026-11-01: 30 verbs; "have to", "has to", "used to" are fine). "has to read" it says "red" -> reed.
+    private static final java.util.regex.Pattern HAD_TO = java.util.regex.Pattern.compile("\\b([Hh])ad([ \\t]+)to(?=[ \\t]+\\p{Ll})");
+    private static final java.util.regex.Pattern HAS_TO_READ = java.util.regex.Pattern.compile("\\b([Hh]as[ \\t]+to[ \\t]+)read\\b(?![-'\u2019])");
     private static String heteronyms(String t) {
+        if (t.contains("ad to")) t = HAD_TO.matcher(t).replaceAll("$1add$2to");
+        if (t.contains("as to read")) t = HAS_TO_READ.matcher(t).replaceAll("$1reed");
         if (t.contains("lose")) t = CLOSE.matcher(t).replaceAll("$1loze");
         if (t.contains("xcuse")) t = EXCUSE.matcher(t).replaceAll("$1xcuze");
         {
