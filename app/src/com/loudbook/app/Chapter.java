@@ -113,6 +113,13 @@ final class Chapter {
     private static final java.util.regex.Pattern INSULT = java.util.regex.Pattern.compile(
         "(?<!\\b(?:[Tt]he|[Aa]n?|[Hh]is|[Hh]er|[Ii]ts|[Tt]heir|[Mm]y|[Yy]our|[Oo]ur|[Tt]his|[Tt]hat|[Nn]o|[Aa]ny|[Ee]very|[Ss]uch|[Ff]inal|[Gg]reat|[Gg]rave|[Dd]eadly|[Pp]ersonal|[Oo]ne|[Ww]orst|[Ll]ast)[ \\t])"
         + "\\b([Ii])nsult(s?)(?=[ \\t]+(?:the|a|an|your|my|his|her|their|our|its|it|them|him|me|us|you|this|that|these|those|every|everyone|anyone|people|yourself|myself|himself|herself|themselves|ourselves)\\b)");
+    // "subject" the verb it always says as the noun ("SUB-ject"), even after "will"/"to"/"don't" ("they will subject him to tests",
+    // "he subjects them to it"), and "subjected"/"subjecting" too: -> sub-ject (lab 2026-11-01). Before an object only, not after a
+    // determiner ("the subject the class chose"); "subject to the law" (the adjective) stays.
+    private static final java.util.regex.Pattern SUBJECT = java.util.regex.Pattern.compile(
+        "(?<!\\b(?:[Tt]he|[Aa]|[Hh]is|[Hh]er|[Ii]ts|[Tt]heir|[Mm]y|[Yy]our|[Oo]ur|[Tt]his|[Tt]hat|[Nn]o|[Aa]ny|[Ee]very|[Ee]ach|[Ss]uch|[Ll]oyal|[Ff]avou?rite|[Nn]ew|[Ss]ame|[Oo]ne|[Tt]est|[Ff]irst|[Ll]ast)[ \\t])"
+        + "\\b([Ss])ubject(s?)(?=[ \\t]+(?:it|them|him|me|us|you|yourself|myself|himself|herself|themselves|ourselves|itself|everyone|anyone|(?:the|his|her|their|its|our|your|my|these|those|all|every)[ \\t]+\\p{L}+(?:[ \\t]+\\p{L}+)?)[ \\t]+to\\b)"
+        + "|\\b([Ss])ubject(ed|ing)\\b");
     // "had to" the voice runs together ("hadtuh"), and then takes the verb after it for the noun: "had to record it" ("RECK-ord"),
     // "had to use it" ("yooss"), "had to live with it" ("lyve"), "had to present"... "hadd to" it says apart, and the verb right
     // (lab 2026-11-01: 30 verbs; "have to", "has to", "used to" are fine). "has to read" it says "red" -> reed.
@@ -175,6 +182,13 @@ final class Chapter {
         if (t.contains("inute")) t = MINUTE.matcher(t).replaceAll("$1y-nute");
         if (t.contains("does")) t = DOES.matcher(t).replaceAll("doze");
         if (t.contains("nsult")) t = INSULT.matcher(t).replaceAll("$1n-sult$2");
+        if (t.contains("ubject")) {
+            java.util.regex.Matcher m = SUBJECT.matcher(t);
+            StringBuffer b = new StringBuffer();
+            while (m.find()) m.appendReplacement(b, m.group(1) != null ? m.group(1) + "ub-ject" + m.group(2) : m.group(3) + "ub-ject" + m.group(4));
+            m.appendTail(b);
+            t = b.toString();
+        }
         if (t.contains("row")) t = ROW.matcher(t).replaceAll("rau");
         if (t.contains("ass")) {
             java.util.regex.Matcher m = BASS.matcher(t);
