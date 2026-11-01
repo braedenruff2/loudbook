@@ -14,17 +14,26 @@ final class Chapter {
         "(?<=\\b(?:(?i:Plan|Type|Grade|Rank|Tier|Class|Option|Section|Vitamin|Group|Team|Block|Wing|Floor|Exhibit|Appendix|Part|Side|Building|Gate|Platform|Row|Seat|Zone|Sector|Squad|Unit|Category|Size|Batch|Phase|Model|Cell|Hall|Ward|Lot|Route|Track|Pod|Bay|Deck|Hangar|Terminal|Dorm|Lab|Tower)|[Aa]n) )A(?![\\p{L}\\d'\u2019+-]|\\.\\p{L})");
     // Verbs the phone voice says as the noun (its guess at a sentence start, or always): "Close the door" /
     // "and close your eyes" ("cloce"), "Excuse me" ("excuce"), "Use your head", "Abuse the system", "Separate them" ("sep-rit"),
-    // "Record the meeting", "Present the gift", "wind the clock" ("wind" as the weather), "he wound the rope" ("woond"),
+    // "Record the meeting", "Present the gift", "Escort the prisoner", "Tear it down" (and more at a sentence start), "wind the clock" ("wind" as the weather), "he wound the rope" ("woond"),
     // "took a bow" / "bow your head" ("boh", as the weapon), "Polish the silver" ("pole-ish"). Respelled the way it says them right
     // (checked in the Kokoro lab, 2026-11-01). Only for the phone voice: Gemini reads these fine.
-    private static final String OBJ = "(?=[ \\t]+(?:the|a|an|your|my|his|her|their|our|its|it|them|him|me|us|this|that|these|those|every|each|all|both|everything|yourself|myself|himself|herself|themselves|ourselves)\\b)";
+    private static final String OBJ = "(?=[ \\t]+(?:the|a|an|your|my|his|her|their|our|its|it|them|him|me|us|this|that|these|those|every|each|all|both|everything|everyone|everybody|someone|somebody|anyone|anybody|yourself|myself|himself|herself|themselves|ourselves)\\b)";
     private static final java.util.regex.Pattern CLOSE = java.util.regex.Pattern.compile(
         "(?<!\\b(?:[Aa]|[Tt]he|[Mm]ore|[Mm]ost|[Ss]uch|[Ss]o|[Tt]oo|[Aa]s|[Hh]ow|[Vv]ery|[Qq]uite|[Pp]retty|[Rr]eally|[Tt]his|[Tt]hat|[Gg]ot|[Cc]ame|[Cc]ome|[Gg]et|[Ss]tood|[Ww]as|[Ww]ere|[Ii]s|[Aa]re|[Bb]e|[Bb]een|[Ff]elt|[Ss]eemed|[Dd]rew|[Ll]eaned|[Ss]tayed|[Ss]tay|[Kk]ept|[Hh]eld|[Ss]at|[Ll]ay|[Mm]oved|[Pp]ulled|[Uu]p|[Dd]rawing|[Gg]etting|[Cc]oming|[Ss]tanding|[Ss]itting|[Ss]taying|[Ff]ollowed|[Ss]wam|[Ff]lew|[Cc]reeping|[Cc]rept)[ \\t])\\b([Cc])lose" + OBJ.replace("|a|an|", "|"));
     private static final java.util.regex.Pattern EXCUSE = java.util.regex.Pattern.compile(
         "(?<!\\b(?:[Aa]n|[Tt]he|[Nn]o|[Aa]ny|[Pp]oor|[Gg]ood|[Bb]ad|[Ll]ame|[Pp]erfect|[Ee]very|[Ss]ome|[Aa]nother|[Bb]est|[Oo]nly|[Ff]eeble|[Ff]limsy|[Cc]onvenient|[Mm]y|[Hh]is|[Hh]er|[Yy]our|[Tt]heir|[Oo]ur|[Ii]ts)[ \\t])\\b([Ee])xcuse(?=[ \\t]+(?:me|us|him|her|them|my|our|your|his|their|myself|yourself|yourselves|ourselves|this|that|the)\\b)");
     // (at a sentence start only: mid-sentence it says these right)
     private static final java.util.regex.Pattern START_VERB = java.util.regex.Pattern.compile(
-        "(?:^|(?<=[.!?]|[.!?][\"\u201d\u2019')]|[\"\u201c\u2018(]))([ \\t]*)(Use|Abuse|Separate|Record|Present|Polish)" + OBJ);
+        "(?:^|(?<=[.!?]|[.!?][\"\u201d\u2019')]|[\"\u201c\u2018(]))([ \\t]*)(Use|Abuse|Separate|Record|Present|Polish|Tear|Permit|Insult|Increase|Decrease|Estimate|Moderate|Conduct|Project|Object|Protest|Suspect|Convict|Console|Contract|Torment|Escort|Transport|Export)" + OBJ);
+    private static final java.util.Map<String, String> START_SAID = new java.util.HashMap<>();
+    static {
+        String[] w = {"Use", "Uze", "Abuse", "Abuze", "Separate", "Sepper-ate", "Record", "Re-cord", "Present", "Pree-zent", "Polish", "Pollish",
+            "Tear", "Tare", "Permit", "Per-mit", "Insult", "In-sult", "Increase", "In-crease", "Decrease", "Dee-crease",
+            "Estimate", "Esti-mate", "Moderate", "Moder-ate", "Conduct", "Kun-duct", "Project", "Pruh-ject", "Object", "Ub-ject",
+            "Protest", "Pruh-test", "Suspect", "Suh-spect", "Convict", "Kun-vict", "Console", "Kun-sole", "Contract", "Kun-tract",
+            "Torment", "Tor-ment", "Escort", "Ess-cort", "Transport", "Trans-port", "Export", "Ex-port"};
+        for (int i = 0; i < w.length; i += 2) START_SAID.put(w[i], w[i + 1]);
+    }
     private static final java.util.regex.Pattern AND_USE = java.util.regex.Pattern.compile(
         "(?<=\\b(?:and|then|[Pp]lease|[Jj]ust|[Nn]ow|[Ss]o|[Oo]r)[ \\t])use" + OBJ);
     private static final java.util.regex.Pattern WIND = java.util.regex.Pattern.compile(
@@ -38,13 +47,12 @@ final class Chapter {
     private static String heteronyms(String t) {
         if (t.contains("lose")) t = CLOSE.matcher(t).replaceAll("$1loze");
         if (t.contains("xcuse")) t = EXCUSE.matcher(t).replaceAll("$1xcuze");
-        if (t.contains("se") || t.contains("ate") || t.contains("ord") || t.contains("ent") || t.contains("ish")) {
+        {
             java.util.regex.Matcher m = START_VERB.matcher(t);
             StringBuffer b = new StringBuffer();
             while (m.find()) {
                 String w = m.group(2);
-                String r = w.equals("Use") ? "Uze" : w.equals("Abuse") ? "Abuze" : w.equals("Separate") ? "Sepper-ate" : w.equals("Record") ? "Re-cord"
-                    : w.equals("Present") ? "Pree-zent" : "Pollish";
+                String r = START_SAID.get(w);
                 m.appendReplacement(b, java.util.regex.Matcher.quoteReplacement(m.group(1) + r));
             }
             m.appendTail(b);
