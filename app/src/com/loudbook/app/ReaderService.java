@@ -2107,6 +2107,12 @@ public class ReaderService extends Service {
     private void state() {
         boolean on = playing && !paused;
         commands.readerPlaying = on;
+        // paused: the phone may sleep (the player thread only waits then); held again on play. Otherwise a pause
+        // (headphones out, the sleep timer, a call) kept the processor awake for up to 6 hours
+        try {
+            if (on) { if (!wake.isHeld()) wake.acquire(6 * 60 * 60 * 1000L); }
+            else if (wake.isHeld()) wake.release();
+        } catch (RuntimeException e) { Log.w(TAG, "wake lock", e); }
         session.setPlaybackState(new PlaybackState.Builder()
             .setActions(PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE
                 | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS | PlaybackState.ACTION_STOP
