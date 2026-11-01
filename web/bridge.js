@@ -43,11 +43,23 @@
     if (!Number.isFinite(n)) return String(n);
     if (n === 0) return 'zero';
     if (n < 0) return 'minus ' + words(-n);
-    const scales = [[1e12, 'trillion'], [1e9, 'billion'], [1e6, 'million'], [1e3, 'thousand']];
+    if (n > Number.MAX_SAFE_INTEGER) return digitWords(String(Math.round(n)));
+    const scales = [[1e15, 'quadrillion'], [1e12, 'trillion'], [1e9, 'billion'], [1e6, 'million'], [1e3, 'thousand']];
     const out = [];
     for (const [v, name] of scales) if (n >= v) { out.push(under1000(Math.floor(n / v)) + ' ' + name); n %= v; }
     if (n) out.push(under1000(n));
     return out.join(' ').replace(/ and (\w+)$/, ' and $1');
+  }
+  // A whole number given as its digits, any length (past 2^53 a Number loses its last digits: "2,345,678,901,234,567" was
+  // said "undefined hundred and forty-five trillion..."): in groups of three up to decillions, else digit by digit.
+  const BIG = ['', 'thousand', 'million', 'billion', 'trillion', 'quadrillion', 'quintillion', 'sextillion', 'septillion', 'octillion', 'nonillion', 'decillion'];
+  function digitWords(d) {
+    d = d.replace(/^0+(?=\d)/, '');
+    if (d.length <= 15) return words(+d);
+    if (d.length > 3 * BIG.length) return d.split('').map(x => ONES[+x]).join(' ');
+    const out = [];
+    for (let i = d.length, g = 0; i > 0; i -= 3, g++) { const v = +d.slice(Math.max(0, i - 3), i); if (v) out.unshift(under1000(v) + (BIG[g] ? ' ' + BIG[g] : '')); }
+    return out.join(' ');
   }
   function yearWords(y) {
     if (y % 1000 < 10 && y >= 2000) return words(y);              // 2005 -> two thousand five
@@ -69,7 +81,7 @@
     return t
       .replace(/(\d)\s?%/g, '$1 percent')                     // before the digits become words
       .replace(/\$(\d[\d,]*)(?:\.(\d{2}))?\b/g, (_, d, c) => { const n = +d.replace(/,/g, ''); if (n === 0 && c && +c) return words(+c) + (+c === 1 ? ' cent' : ' cents');   // $0.99 -> ninety-nine cents
-        return words(n) + (n === 1 ? ' dollar' : ' dollars') + (c && +c ? ' and ' + words(+c) + ' cents' : ''); })
+        return digitWords(d.replace(/,/g, '')) + (n === 1 ? ' dollar' : ' dollars') + (c && +c ? ' and ' + words(+c) + ' cents' : ''); })
       // 9:00 -> nine o'clock, 15:00 -> fifteen hundred, but "10:00 o'clock" and "3:00 AM" don't get a second o'clock
       .replace(/\b(\d{1,2}):(\d{2})\b/g, (_, h, m, at, all) => (+h === 0 && +m === 0 ? (/(?:\b(?:at|past|after|until|till|before|by|around|about|since)\s+)$/i.test(all.slice(Math.max(0, at - 9), at)) ? 'midnight' : 'zero zero') : words(+h) + (+m === 0 && +h >= 13 && +h <= 24 ? ' hundred' : +m === 0 ? (/^\s*(o'clock|o’clock|[ap]\.?m\b|[AP]M\b)/i.test(all.slice(at + 3 + h.length)) ? '' : " o'clock") : +m < 10 ? ' oh ' + words(+m) : ' ' + words(+m))))
       .replace(/\b(\d+)(st|nd|rd|th)\b/gi, (_, d) => ordinal(+d))
@@ -79,7 +91,7 @@
       .replace(/\b(1[1-9]\d\d|20\d\d)s?\b/g, (m, y) => { const w = yearWords(+y); return m.endsWith('s') ? (w.endsWith('y') ? w.slice(0, -1) + 'ies' : w + 's') : w; })
       .replace(/\b(\d)0['’]?s\b/g, (m, d) => (TENS[+d] || 'ten').replace(/y$/, 'ies') + (d === '1' ? 's' : ''))   // the 80s, the 70's
       .replace(/\b([1-9])s\b/g, (m, d) => ONES[+d] + (d === '6' ? 'es' : 's'))   // two 6s -> two sixes         // the 80s -> the eighties
-      .replace(/\b\d{1,3}(,\d{3})+\b/g, (m) => words(+m.replace(/,/g, '')))
+      .replace(/\b\d{1,3}(,\d{3})+\b/g, (m) => digitWords(m.replace(/,/g, '')))
       .replace(/\b(\d+)\.(\d+)\b/g, (_, a, b) => words(+a) + ' point ' + b.split('').map(x => ONES[+x]).join(' '))
       .replace(/(?<![\d.,:\/$#-])\b0([1-9])([0-5]\d)\b(?![\d.,:\/]\d)/g, (m, h, n) =>   // 0800 -> oh eight hundred (military time)
         'oh ' + ONES[+h] + (n === '00' ? ' hundred' : n[0] === '0' ? ' oh ' + ONES[+n[1]] : ' ' + words(+n)))
