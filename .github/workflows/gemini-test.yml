@@ -78,3 +78,11 @@ jobs:
           } > results.md
           gh release view gemini-test >/dev/null 2>&1 || gh release create gemini-test --latest=false --title "Gemini test" --notes "Output of .github/workflows/gemini-test.yml"
           gh release upload gemini-test results.md logcat.txt --clobber
+      - name: Loudbook didn't crash
+        if: always()
+        run: |
+          # (a crash used to pass unnoticed: the results were written and the job stayed green, 2026-11-01)
+          if grep -q "AndroidRuntime: Process: com.loudbook.app" logcat.txt 2>/dev/null; then
+            grep -A14 "AndroidRuntime: FATAL EXCEPTION" logcat.txt | head -60
+            echo "::error::Loudbook crashed during the test (FATAL EXCEPTION in logcat.txt)"; exit 1
+          fi

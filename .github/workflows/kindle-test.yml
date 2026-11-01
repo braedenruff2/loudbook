@@ -75,3 +75,11 @@ jobs:
           gh release upload kindle-test results.md --clobber
           [ -f logcat.txt ] && gzip -kf logcat.txt && gh release upload kindle-test logcat.txt.gz --clobber || true
           for f in before.png reading.png after.png explore.png explore-reading.png pick.png explore-pick.png closed.png left.png bridge.png away.png; do [ -f $f ] && gh release upload kindle-test $f --clobber; done; true
+      - name: Loudbook didn't crash
+        if: always()
+        run: |
+          # (a crash used to pass unnoticed: the results were written and the job stayed green, 2026-11-01)
+          if grep -q "AndroidRuntime: Process: com.loudbook.app" logcat.txt 2>/dev/null; then
+            grep -A14 "AndroidRuntime: FATAL EXCEPTION" logcat.txt | head -60
+            echo "::error::Loudbook crashed during the test (FATAL EXCEPTION in logcat.txt)"; exit 1
+          fi
