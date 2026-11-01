@@ -166,6 +166,14 @@ public class UnitTest {
             check("timing by the said text: the comma's pause matched", st.matched, 1);
             check("timing by the said text: at 'Smith', 2 of 26 written letters", Math.round(st.fracAt(ws[1] + 10) * 26), 2);
             check("timing by the said text: at 'apples', 12 of 26", Math.round(st.fracAt(ws[4] + 10) * 26), 12);
+            {   // a written word the voice leaves out: frameAt mustn't jump back across a pause (float rounding at the pause)
+                float[] ss = new float[89280];
+                for (int k = 0; k < ss.length; k++) ss[k] = (k / 3428) % 3 == 2 ? 0f : (float) Math.sin(k * 0.05) * 0.5f;
+                SpeechTiming sk = SpeechTiming.of("said, STR end. the it's ... 5 \u2014 STR 12 STR ...", "said, end. the it's ... 5 STR STR ...", ss, 24000);
+                boolean mono = true; long pf = -1;
+                for (int q = 0; q <= 100; q++) { long fr = sk.frameAt(q / 100f); if (fr < pf) mono = false; pf = fr; }
+                check("timing: frameAt never goes back (a written word not said)", mono, true);
+            }
             check("timing by the said text: no change when said as written", SpeechTiming.said2text("a b", "a b") == null, true);
             check("timing: \"Mr.\" isn't a place to pause", SpeechTiming.breaks("Mr. Collins then returned, slowly.").size(), 1);
             // a sentence that ends in "No." or "I." still ends there (the voice pauses): only "No. 5", "J. Smith" are short forms

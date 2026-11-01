@@ -68,10 +68,11 @@ final class SpeechTiming {
         float f = fromText(said2text, t);
         if (f <= frac[0]) return at[0];
         for (int i = 1; i < at.length; i++) {
-            if (f < frac[i]) {                                               // (at a pause: where it ends, when the words go on)
+            if (f < frac[i] - 1e-5f) {                                       // (at a pause: where it ends, when the words go on;
+                                                                             //  1e-5: the same place, rounded two ways, is the pause)
                 float span = frac[i] - frac[i - 1];
                 if (span <= 0) return at[i - 1];
-                return at[i - 1] + Math.round((at[i] - at[i - 1]) * (f - frac[i - 1]) / span);
+                return at[i - 1] + Math.max(0, Math.round((at[i] - at[i - 1]) * (f - frac[i - 1]) / span));
             }
         }
         return at[at.length - 1];
