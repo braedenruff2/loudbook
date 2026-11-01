@@ -863,6 +863,11 @@ function tidy(t) {
     .replace(/\b24\s?\/\s?7\b/g, '24 7')                                 // 24/7 (not "twenty-four of seven")
     .replace(/\b1\/2(?=\s+(?:done|full|empty|way|price|off|hour|mile|cup|dozen|inch|pound|gone|finished|asleep|dead|awake)\b)/g, 'half')   // 1/2 done
     .replace(/(\b(?:is|was|are|were|be|'s|’s|only|about|nearly|almost|half|over|under)\s)1\/2(?=\s+(?!of\b)\p{Ll})/gu, '$1half')   // he's 1/2 elf
+    // "3/4 full", "2/3 empty", "9/10 done", "she's 3/4 elf" -> three quarters (was "three of four full")
+    .replace(/(?<![\d.,\/:])\b([1-9])\/([2-9]|10)\b(?![\d\/])(?=\s+(?:full|empty|done|complete|completed|finished|gone|charged|drained|filled|healed|depleted|restored|recovered|eaten|built|submerged|buried|asleep|awake|dead|healed|transparent|translucent|invisible|melted|frozen|open|closed)\b)/g,
+      (m, a, b) => (+a >= +b ? m : FRAC[b] ? fracWords(+a, +b, false) : (a === '1' ? 'one ' : a + ' ') + { 9: 'ninth', 10: 'tenth' }[b] + (a === '1' ? '' : 's')))
+    .replace(/(\b(?:is|was|are|were|be|being|'s|’s)\s+)([1-7])\/([3-8])(?![\d\/])(?=\s+(?:elf|elven|human|demon|dwarf|orc|vampire|dragon|giant|fae|fairy|beast|angel|god|wolf|werewolf|[A-Z][a-z]+(?:ese|ish|ian|an|ic|i))\b)/g,
+      (m, pre, a, b) => (+a < +b ? pre + fracWords(+a, +b, false) : m))
     // ZIP codes digit by digit: "ZIP 90210" -> nine oh two one oh (was "ninety thousand two hundred and ten")
     .replace(/\b((?:ZIP|[Zz]ip)(?:\s+[Cc]ode)?:?\s+)(\d{5})(?:-(\d{4}))?\b(?!\d|[.,]\d)/g, (m, pre, a, b) => {
       const d = x => [...x].map(c => ['oh', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'][+c]).join(' ');
