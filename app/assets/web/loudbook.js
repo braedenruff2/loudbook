@@ -1282,7 +1282,7 @@ return { parseFixes, makeSayer, tidy };
     return r;
   }
   // [start, end) in letters of each sentence and each word of a piece of text
-  const ABBR = /(?:\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Mt|vs|etc|Vol|Ch|Lt|Col|Gen|Sgt|Capt|Rev|Hon|approx|lvl|Lv|Lvl)|(?:^|[\s"'“‘(])(?!I\.)\p{Lu})\.$/u;
+  const ABBR = /(?:\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Mt|vs|etc|Vol|Ch|Lt|Col|Gen|Sgt|Capt|Rev|Hon|approx|lvl|Lv|Lvl)|(?:^|[\s"'“‘(])(?!I\.)\p{Lu}|\.\p{Lu})\.$/u;
   function partsOf(text) {
     const sentences = [], wordsAt = [];
     let n = 0;

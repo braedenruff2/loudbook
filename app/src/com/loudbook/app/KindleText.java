@@ -24,8 +24,9 @@ final class KindleText {
     }
 
     private static final Pattern SENT = Pattern.compile("(?<=[.!?…][\"'”’)\\]]{0,2})\\s+(?=[\"'“‘(\\[]?[A-Z0-9])");
-    // ("I." is never an initial: "Neither did I. Then..." ends a sentence; "No.", "Vol.", "Ch.", "Lv." are short forms only before a number)
-    private static final Pattern ABBREV = Pattern.compile("(\\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Mt|vs|etc|Lt|Col|Gen|Sgt|Capt|Rev|Hon|approx)|(^|\\s)[A-HJ-Z])\\.$");
+    // ("U.S. Army", "A.I. Then": a dotted short form doesn't end one either.
+    //  "I." is never an initial: "Neither did I. Then..." ends a sentence; "No.", "Vol.", "Ch.", "Lv." are short forms only before a number)
+    private static final Pattern ABBREV = Pattern.compile("(\\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Mt|vs|etc|Lt|Col|Gen|Sgt|Capt|Rev|Hon|approx)|(^|[\\s\"'\u201c\u2018(])[A-HJ-Z]|\\.[A-Z])\\.$");
     private static final Pattern NUMBERED = Pattern.compile("\\b(No|Vol|Ch|lvl|Lv|Lvl)\\.$");
     /** Whether a piece split off at a full stop belongs with the next one ("Mr." | "Hale arrived", "No." | "5 was..."). */
     private static boolean joins(String prev, String next) {

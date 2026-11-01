@@ -73,6 +73,9 @@ public class UnitTest {
         check("Kindle: \"No.\" ends a sentence, \"No. 5\" doesn't", KindleText.sentences("She asked if he would stay and he said No. Then he walked out of the room. Room No. 5 was empty and dark."),
             "[She asked if he would stay and he said No., Then he walked out of the room., Room No. 5 was empty and dark.]");
         check("Kindle: the page's last sentence after \"I.\"", KindleText.lastSentence("Nobody had known. Neither did I. Then he"), "Then he");
+        check("Kindle: \"U.S.\" doesn't end a sentence", KindleText.sentences("They flew to the U.S. Army base at dawn. It was very cold there that morning."),
+            "[They flew to the U.S. Army base at dawn., It was very cold there that morning.]");
+        check("Kindle: an initial after a quote mark", KindleText.lastSentence("He spoke. \u201cJ. Smith sent me,\u201d she"), "\u201cJ. Smith sent me,\u201d she");
         check("Kindle: the next page's first sentence, \"Vol. 2\"", KindleText.firstSentence("Vol. 2 was missing from the shelf. The rest were there."), "Vol. 2 was missing from the shelf.");
         // a sentence cut by the page break is held back, then read whole
         KindleText kt = new KindleText("");
