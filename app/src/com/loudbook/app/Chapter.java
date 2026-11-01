@@ -57,6 +57,11 @@ final class Chapter {
         "\\b([Ll])ead(?=-(?:lined|grey|gray|coloured|colored|heavy|tipped|weighted|filled|sheathed)\\b|[ \\t]+(?:pipe|pipes|weight|weights|poisoning|bullet|bullets|shot|paint|ball|balls|sheet|sheets|pencil|pencils|crystal|mine|mines|ore|seal|seals|coffin|apron|plate|plates|slug|slugs|sinker|sinkers|lining|roof|roofs|pellet|pellets|ingot|ingots|casket|shielding|alloy|piping)\\b)"
         + "|(?<=\\b(?:[Mm]olten|[Ll]iquid|[Ss]olid|[Pp]ure|[Mm]elted|[Ss]heet|[Ww]hite|[Rr]ed)[ \\t])(l)ead\\b"
         + "|(?<=\\b(?:of|like|as)[ \\t])(l)ead(?=[ \\t]*(?:[.,;:!?\"\u201d)]|$)|[ \\t]+(?:and|or|that|which)\\b)");
+    // "he moped around" ("mope-ed", the scooter) -> mohpt; "the sow grunted" ("so", the verb) -> sau (lab 2026-11-01)
+    private static final java.util.regex.Pattern MOPED = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:I|[Hh]e|[Ss]he|[Ww]e|[Tt]hey|[Yy]ou|[Ii]t|and|had|has|have|been|just|then|still|only|(?!(?:The|This|That|A|An|His|Her|My|Your|Their|Our|Its|On|By)\\b)[A-Z][a-z]+)[ \\t])moped\\b(?![-'’])");
+    private static final java.util.regex.Pattern SOW = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:[Aa]|[Tt]he|[Oo]ld|[Ff]at|[Gg]reat|[Tt]hat|[Tt]his|[Hh]is|[Hh]er|[Tt]heir|[Mm]other|[Ww]ild|[Bb]reeding|[Pp]regnant|[Mm]uddy|[Bb]ig|[Hh]uge)[ \\t])sow(s?)\\b(?![-]|[ \\t]+(?:the|seeds?|them|it|a|an|discord|doubt|chaos|fear|dissent|confusion|terror|panic)\\b)");
     private static String heteronyms(String t) {
         if (t.contains("lose")) t = CLOSE.matcher(t).replaceAll("$1loze");
         if (t.contains("xcuse")) t = EXCUSE.matcher(t).replaceAll("$1xcuze");
@@ -77,6 +82,8 @@ final class Chapter {
             t = LEAD.matcher(t).replaceAll("$1$2$3ed");
         }
         if (t.contains("dove")) t = DOVE.matcher(t).replaceAll("dohv");
+        if (t.contains("moped")) t = MOPED.matcher(t).replaceAll("mohpt");
+        if (t.contains("sow")) t = SOW.matcher(t).replaceAll("sau$1").replaceAll("\\bsaus\\b", "sauz");
         if (t.contains("wind")) t = WIND.matcher(t).replaceAll("wined");
         if (t.contains("wound")) t = WOUND.matcher(t).replaceAll("wownd");
         if (t.contains("ow")) {
