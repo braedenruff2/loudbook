@@ -54,6 +54,12 @@ final class Chapter {
         "(?<=\\b(?:(?:[Yy]ou|[Tt]hey|I|[Hh]e|[Ss]he|[Ww]e)['\u2019]d|[Ll]et['\u2019]s|(?:[Ll]et|[Hh]elp|[Hh]elped|[Mm]ake|[Mm]ade|[Ww]atch|[Ss]ee)[ \\t](?:me|him|her|us|them|you)"
         + "|(?:[Dd]id|[Dd]oes|[Dd]o)[ \\t](?:he|she|they|you|I|we|it)|[Ww]hy[ \\t]not|(?:[Hh]ad|[Ww]ould|['\u2019]d)[ \\t](?:better|rather)|[Gg]o|[Cc]ome[ \\t]and|(?:[Nn]ow|[Pp]lease|[Qq]uick|[Hh]urry|[Oo]kay|OK|[Nn]ext|[Ff]irst|[Tt]hen),)[ \\t])"
         + "(use|abuse|separate|record|present|polish|tear|permit|insult|increase|decrease|estimate|moderate|conduct|project|object|protest|suspect|convict|console|contract|torment|escort|transport|export)" + OBJ);
+    // and after a plural subject ("the guards escort the prisoner", "mages use their mana", "many suspect him") or "and"
+    // ("stood up and record the scene"): present-tense web fiction (lab 2026-11-01)
+    private static final java.util.regex.Pattern PL_VERB = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:(?:[Tt]he|[Tt]hese|[Tt]hose|[Hh]is|[Hh]er|[Tt]heir|[Oo]ur|[Mm]y|[Yy]our|[Mm]any|[Ss]ome|[Aa]ll|[Bb]oth|[Mm]ost|[Ff]ew|[Tt]wo|[Tt]hree)[ \\t]\\p{Ll}{1,19}[a-rt-z]s"
+        + "|[A-Z]\\p{Ll}{1,19}[a-rt-z]s|[Mm]any|[Ff]ew|[Bb]oth|[Oo]thers|[Pp]eople|and)[ \\t])"
+        + "(use|abuse|separate|record|present|polish|tear|permit|insult|increase|decrease|estimate|moderate|conduct|project|object|protest|suspect|convict|console|contract|torment|escort|transport|export)" + OBJ);
     private static final java.util.regex.Pattern AND_USE = java.util.regex.Pattern.compile(
         "(?<=\\b(?:and|then|[Pp]lease|[Jj]ust|[Nn]ow|[Ss]o|[Oo]r)[ \\t])use" + OBJ);
     private static final java.util.regex.Pattern WIND = java.util.regex.Pattern.compile(
@@ -118,6 +124,14 @@ final class Chapter {
             m.appendTail(b);
             t = b.toString();
             t = AND_USE.matcher(t).replaceAll("uze");
+            m = PL_VERB.matcher(t);
+            b = new StringBuffer();
+            while (m.find()) {
+                String r = START_SAID.get(Character.toUpperCase(m.group(1).charAt(0)) + m.group(1).substring(1));
+                m.appendReplacement(b, java.util.regex.Matcher.quoteReplacement(Character.toLowerCase(r.charAt(0)) + r.substring(1)));
+            }
+            m.appendTail(b);
+            t = b.toString();
             m = PRE_VERB.matcher(t);
             b = new StringBuffer();
             while (m.find()) {
