@@ -108,6 +108,11 @@ final class Chapter {
     private static final java.util.regex.Pattern REFUSE = java.util.regex.Pattern.compile(
         "(?<=\\b(?:of|with|[Hh]ousehold|[Kk]itchen|[Gg]arden|[Ss]treet|[Hh]uman|rotting|stinking)[ \\t])refuse\\b(?![-'\u2019]|[ \\t]+(?:to|the|him|her|them|me|us|you|it|his|their|my|your|our|any|an?)\\b)"
         + "|\\b([Rr])efuse(?=[ \\t]+(?:heaps?|piles?|dumps?|collectors?|collection|bins?|tips?|pits?|sacks?|bags?|lorry|lorries|trucks?|carts?|cans?|disposal)\\b)");
+    // "insult(s)" the verb it always says as the noun ("IN-sult"), wherever it is ("Don't insult me", "she will insult him", "he
+    // insults us"): -> in-sult(s) before an object, not after a determiner ("the insult", "an insult to") (lab 2026-11-01)
+    private static final java.util.regex.Pattern INSULT = java.util.regex.Pattern.compile(
+        "(?<!\\b(?:[Tt]he|[Aa]n?|[Hh]is|[Hh]er|[Ii]ts|[Tt]heir|[Mm]y|[Yy]our|[Oo]ur|[Tt]his|[Tt]hat|[Nn]o|[Aa]ny|[Ee]very|[Ss]uch|[Ff]inal|[Gg]reat|[Gg]rave|[Dd]eadly|[Pp]ersonal|[Oo]ne|[Ww]orst|[Ll]ast)[ \\t])"
+        + "\\b([Ii])nsult(s?)(?=[ \\t]+(?:the|a|an|your|my|his|her|their|our|its|it|them|him|me|us|you|this|that|these|those|every|everyone|anyone|people|yourself|myself|himself|herself|themselves|ourselves)\\b)");
     // "had to" the voice runs together ("hadtuh"), and then takes the verb after it for the noun: "had to record it" ("RECK-ord"),
     // "had to use it" ("yooss"), "had to live with it" ("lyve"), "had to present"... "hadd to" it says apart, and the verb right
     // (lab 2026-11-01: 30 verbs; "have to", "has to", "used to" are fine). "has to read" it says "red" -> reed.
@@ -169,6 +174,7 @@ final class Chapter {
         if (t.contains("desert")) t = DESERT.matcher(t).replaceAll("dessert");
         if (t.contains("inute")) t = MINUTE.matcher(t).replaceAll("$1y-nute");
         if (t.contains("does")) t = DOES.matcher(t).replaceAll("doze");
+        if (t.contains("nsult")) t = INSULT.matcher(t).replaceAll("$1n-sult$2");
         if (t.contains("row")) t = ROW.matcher(t).replaceAll("rau");
         if (t.contains("ass")) {
             java.util.regex.Matcher m = BASS.matcher(t);
