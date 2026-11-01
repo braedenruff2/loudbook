@@ -120,6 +120,10 @@ final class Chapter {
         "(?<!\\b(?:[Tt]he|[Aa]|[Hh]is|[Hh]er|[Ii]ts|[Tt]heir|[Mm]y|[Yy]our|[Oo]ur|[Tt]his|[Tt]hat|[Nn]o|[Aa]ny|[Ee]very|[Ee]ach|[Ss]uch|[Ll]oyal|[Ff]avou?rite|[Nn]ew|[Ss]ame|[Oo]ne|[Tt]est|[Ff]irst|[Ll]ast)[ \\t])"
         + "\\b([Ss])ubject(s?)(?=[ \\t]+(?:it|them|him|me|us|you|yourself|myself|himself|herself|themselves|ourselves|itself|everyone|anyone|(?:the|his|her|their|its|our|your|my|these|those|all|every)[ \\t]+\\p{L}+(?:[ \\t]+\\p{L}+)?)[ \\t]+to\\b)"
         + "|\\b([Ss])ubject(ed|ing)\\b");
+    // "learned" the adjective it says as the verb ("lurnd"): "a learned man", "the most learned scholar", "very learned" -> lernid
+    // (lab 2026-11-01); not "a learned behaviour/skill/response" (said "lurnd").
+    private static final java.util.regex.Pattern LEARNED = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:[Aa]n?|[Tt]he|[Mm]ost|[Vv]ery|[Hh]ighly|[Tt]ruly|[Mm]ore|[Ll]ess)[ \\t])learned\\b(?![-'\u2019]|[ \\t]+(?:behaviou?rs?|responses?|skills?|helplessness|traits?|habits?|reflex(?:es)?|to|the|that|how)\\b)");
     // "had to" the voice runs together ("hadtuh"), and then takes the verb after it for the noun: "had to record it" ("RECK-ord"),
     // "had to use it" ("yooss"), "had to live with it" ("lyve"), "had to present"... "hadd to" it says apart, and the verb right
     // (lab 2026-11-01: 30 verbs; "have to", "has to", "used to" are fine). "has to read" it says "red" -> reed.
@@ -182,6 +186,7 @@ final class Chapter {
         if (t.contains("inute")) t = MINUTE.matcher(t).replaceAll("$1y-nute");
         if (t.contains("does")) t = DOES.matcher(t).replaceAll("doze");
         if (t.contains("nsult")) t = INSULT.matcher(t).replaceAll("$1n-sult$2");
+        if (t.contains("learned")) t = LEARNED.matcher(t).replaceAll("lernid");
         if (t.contains("ubject")) {
             java.util.regex.Matcher m = SUBJECT.matcher(t);
             StringBuffer b = new StringBuffer();
