@@ -62,6 +62,14 @@ final class Chapter {
         "(?<!\\b(?:The|This|That|A|An|His|Her|My|Your|Their|Our|Its|On|By)[ \\t])(?<=\\b(?:I|[Hh]e|[Ss]he|[Ww]e|[Tt]hey|[Yy]ou|[Ii]t|and|had|has|have|been|just|then|still|only|[A-Z][a-z]{1,20})[ \\t])moped\\b(?![-'’])");
     private static final java.util.regex.Pattern SOW = java.util.regex.Pattern.compile(
         "(?<=\\b(?:[Aa]|[Tt]he|[Oo]ld|[Ff]at|[Gg]reat|[Tt]hat|[Tt]his|[Hh]is|[Hh]er|[Tt]heir|[Mm]other|[Ww]ild|[Bb]reeding|[Pp]regnant|[Mm]uddy|[Bb]ig|[Hh]uge)[ \\t])sow(s?)\\b(?![-]|[ \\t]+(?:the|seeds?|them|it|a|an|discord|doubt|chaos|fear|dissent|confusion|terror|panic)\\b)");
+    // "Don't desert me" / "to desert the army" ("dez-ert", the sand) -> dessert; "the minute details" / "a minute amount" ("minnit",
+    // the time) -> my-nute; "the does ran" / "two does" ("duz") -> doze, the deer (lab 2026-11-01)
+    private static final java.util.regex.Pattern DESERT = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:to|not|never|again|will|would|could|can|must|might|should|shall|I|you|we|they|[Dd]on't|[Dd]idn't|[Ww]on't|[Ww]ouldn't|[Cc]ouldn't|[Pp]lease|[Nn]ever)[ \\t])desert(?=[ \\t]+(?:me|us|him|her|them|you|it|the|his|their|our|my|your|its)\\b)");
+    private static final java.util.regex.Pattern MINUTE = java.util.regex.Pattern.compile(
+        "(?<!\\b(?i:last|eleventh|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty|thirty|forty|fifty|sixty|few|several|ninety)[ \\t-])(?<![\\d-][ \\t]?)\\b([Mm])inute(?=[ \\t]+(?:amounts?|details?|fraction|quantity|quantities|traces?|particles?|cracks?|adjustments?|differences?|variations?|specks?|droplets?|fragments?|grains?|examination|inspection|description|observations?|investigation|particulars|scrutiny|accuracy|precision)\\b)");
+    private static final java.util.regex.Pattern DOES = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:[Tt]he|(?i:two|three|four|five|six|seven|eight|nine|ten|several|pregnant)|bucks and|stags and)[ \\t])does\\b(?![-'\u2019]|[ \\t]+(?:and[ \\t]+don|not|so|it|that|this)\\b)");
     private static String heteronyms(String t) {
         if (t.contains("lose")) t = CLOSE.matcher(t).replaceAll("$1loze");
         if (t.contains("xcuse")) t = EXCUSE.matcher(t).replaceAll("$1xcuze");
@@ -82,6 +90,9 @@ final class Chapter {
             t = LEAD.matcher(t).replaceAll("$1$2$3ed");
         }
         if (t.contains("dove")) t = DOVE.matcher(t).replaceAll("dohv");
+        if (t.contains("desert")) t = DESERT.matcher(t).replaceAll("dessert");
+        if (t.contains("inute")) t = MINUTE.matcher(t).replaceAll("$1y-nute");
+        if (t.contains("does")) t = DOES.matcher(t).replaceAll("doze");
         if (t.contains("moped")) t = MOPED.matcher(t).replaceAll("mohpt");
         if (t.contains("sow")) t = SOW.matcher(t).replaceAll("sau$1").replaceAll("\\bsaus\\b", "sauz");
         if (t.contains("wind")) t = WIND.matcher(t).replaceAll("wined");
