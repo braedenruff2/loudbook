@@ -20,6 +20,12 @@ final class Chapter {
     private static final String OBJ = "(?=[ \\t]+(?:the|a|an|your|my|his|her|their|our|its|it|them|him|me|us|this|that|these|those|every|each|all|both|everything|everyone|everybody|someone|somebody|anyone|anybody|yourself|myself|himself|herself|themselves|ourselves)\\b)";
     private static final java.util.regex.Pattern CLOSE = java.util.regex.Pattern.compile(
         "(?<!\\b(?:[Aa]|[Tt]he|[Mm]ore|[Mm]ost|[Ss]uch|[Ss]o|[Tt]oo|[Aa]s|[Hh]ow|[Vv]ery|[Qq]uite|[Pp]retty|[Rr]eally|[Tt]his|[Tt]hat|[Gg]ot|[Cc]ame|[Cc]ome|[Gg]et|[Ss]tood|[Ww]as|[Ww]ere|[Ii]s|[Aa]re|[Bb]e|[Bb]een|[Ff]elt|[Ss]eemed|[Dd]rew|[Ll]eaned|[Ss]tayed|[Ss]tay|[Kk]ept|[Hh]eld|[Ss]at|[Ll]ay|[Mm]oved|[Pp]ulled|[Uu]p|[Dd]rawing|[Gg]etting|[Cc]oming|[Ss]tanding|[Ss]itting|[Ss]taying|[Ff]ollowed|[Ss]wam|[Ff]lew|[Cc]reeping|[Cc]rept)[ \\t])\\b([Cc])lose" + OBJ.replace("|a|an|", "|"));
+    // close with no object it says "cloce" too: "the doors close behind him", "her eyes close slowly", "the walls close in on",
+    // "let them close." (only after "the/her... <plural>" and before a word that makes it the verb; lab 2026-11-01)
+    private static final java.util.regex.Pattern CLOSE_INTR = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:[Tt]he|[Hh]er|[Hh]is|[Tt]heir|[Ii]ts|[Mm]y|[Oo]ur|[Yy]our|[Tt]hese|[Tt]hose)[ \\t]\\p{Ll}{2,20}s[ \\t])close(?=[ \\t]+(?:slowly|softly|quietly|automatically|shut)\\b|[ \\t]+in(?:[ \\t]*[.!]|[ \\t]+on\\b))"
+        + "|(?<=\\b[Ll]et[ \\t](?:me|him|her|them|us|it)[ \\t])close(?=[ \\t]*[.!]|[ \\t]+(?:in|up)\\b)"
+        + "|\\b(?<![Aa][ \\t]|[Ss]o[ \\t]|[Vv]ery[ \\t]|[Ww]as[ \\t]|[Ii]s[ \\t])(?<!\\b(?:[Gg]ot|[Gg]et|[Cc]ame|[Ss]tood|[Ss]tay|[Ss]tayed|[Kk]ept|[Ff]ollowed|[Ww]ere|[Aa]re|[Hh]eld|[Ll]ay|[Ss]at|[Pp]ulled|[Mm]oved|[Dd]rew|[Ff]elt)[ \\t])([Cc])lose(?=[ \\t]+in[ \\t]+on\\b)");
     private static final java.util.regex.Pattern EXCUSE = java.util.regex.Pattern.compile(
         "(?<!\\b(?:[Aa]n|[Tt]he|[Nn]o|[Aa]ny|[Pp]oor|[Gg]ood|[Bb]ad|[Ll]ame|[Pp]erfect|[Ee]very|[Ss]ome|[Aa]nother|[Bb]est|[Oo]nly|[Ff]eeble|[Ff]limsy|[Cc]onvenient|[Mm]y|[Hh]is|[Hh]er|[Yy]our|[Tt]heir|[Oo]ur|[Ii]ts)[ \\t])\\b([Ee])xcuse(?=[ \\t]+(?:me|us|him|her|them|my|our|your|his|their|myself|himself|herself|themselves|yourself|yourselves|ourselves|this|that|the)\\b)");
     // (at a sentence start only: mid-sentence it says these right)
@@ -93,6 +99,13 @@ final class Chapter {
         if (t.contains("ad to")) t = HAD_TO.matcher(t).replaceAll("$1add$2to");
         if (t.contains("as to read")) t = HAS_TO_READ.matcher(t).replaceAll("$1reed");
         if (t.contains("lose")) t = CLOSE.matcher(t).replaceAll("$1loze");
+        if (t.contains("lose")) {
+            java.util.regex.Matcher m = CLOSE_INTR.matcher(t);
+            StringBuffer b = new StringBuffer();
+            while (m.find()) m.appendReplacement(b, m.group(1) != null ? m.group(1) + "loze" : "cloze");
+            m.appendTail(b);
+            t = b.toString();
+        }
         if (t.contains("xcuse")) t = EXCUSE.matcher(t).replaceAll("$1xcuze");
         {
             java.util.regex.Matcher m = START_VERB.matcher(t);
