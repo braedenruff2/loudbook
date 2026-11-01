@@ -42,11 +42,11 @@ final class Chapter {
         + "\\b((?!(?:early|only|family|ally|belly|bully|jelly|lily|rally|tally|fly|reply|supply|apply|rely|assembly|holy|ugly|lovely|lonely|friendly|elderly|silly|jolly|daily|weekly|monthly|yearly|hourly|nightly|likely|deadly|costly|bodily|orderly|lowly|kindly|curly|burly|surly|chilly|hilly|oily|wily|lively|comely|homely|manly|womanly|worldly|scholarly|cowardly|stately|ghastly|ghostly|beastly|sickly|smelly|bubbly|wobbly|prickly|melancholy|anomaly|monopoly|italy|july|sally|molly|holly|emily|lily|kelly|billy|willy|polly)\\b)"
         + "(?:[a-z]+ly|always|often|also|sometimes|usually|seldom|then|now|soon|just|still|even)[ \\t]+)"
         + "(use|abuse|separate|record|present|polish|tear|permit|insult|increase|decrease|estimate|moderate|conduct|project|object|protest|suspect|convict|console|contract|torment|escort|transport|export)" + OBJ);
-    // and after "you'd", "let's", "let me", "help him", "make them", "did he", "why not", "go", "come and", "Now," "Please,"
+    // and after "had better", "would rather", "you'd", "let's", "let me", "help him", "make them", "did he", "why not", "go", "come and", "Now," "Please,"
     // (lab 2026-11-01; "I'll", "don't", "to", "will", "then", "just" are fine)
     private static final java.util.regex.Pattern PRE_VERB = java.util.regex.Pattern.compile(
         "(?<=\\b(?:(?:[Yy]ou|[Tt]hey|I|[Hh]e|[Ss]he|[Ww]e)['\u2019]d|[Ll]et['\u2019]s|(?:[Ll]et|[Hh]elp|[Hh]elped|[Mm]ake|[Mm]ade|[Ww]atch|[Ss]ee)[ \\t](?:me|him|her|us|them|you)"
-        + "|(?:[Dd]id|[Dd]oes|[Dd]o)[ \\t](?:he|she|they|you|I|we|it)|[Ww]hy[ \\t]not|[Gg]o|[Cc]ome[ \\t]and|(?:[Nn]ow|[Pp]lease|[Qq]uick|[Hh]urry|[Oo]kay|OK|[Nn]ext|[Ff]irst|[Tt]hen),)[ \\t])"
+        + "|(?:[Dd]id|[Dd]oes|[Dd]o)[ \\t](?:he|she|they|you|I|we|it)|[Ww]hy[ \\t]not|(?:[Hh]ad|[Ww]ould|['\u2019]d)[ \\t](?:better|rather)|[Gg]o|[Cc]ome[ \\t]and|(?:[Nn]ow|[Pp]lease|[Qq]uick|[Hh]urry|[Oo]kay|OK|[Nn]ext|[Ff]irst|[Tt]hen),)[ \\t])"
         + "(use|abuse|separate|record|present|polish|tear|permit|insult|increase|decrease|estimate|moderate|conduct|project|object|protest|suspect|convict|console|contract|torment|escort|transport|export)" + OBJ);
     private static final java.util.regex.Pattern AND_USE = java.util.regex.Pattern.compile(
         "(?<=\\b(?:and|then|[Pp]lease|[Jj]ust|[Nn]ow|[Ss]o|[Oo]r)[ \\t])use" + OBJ);
