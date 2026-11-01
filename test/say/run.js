@@ -35,4 +35,26 @@ for (const line of fs.readFileSync(path.join(__dirname, 'antitheft.tsv'), 'utf8'
 }
 console.log(`${rrN - rrBad} of ${rrN} Royal Road anti-theft lines right`);
 bad += rrBad;
+// The word mark during the voice's pauses (LB.letterAt): at a comma or a full stop the fraction said sits exactly at a
+// word's end, and the mark stays on that word until the voice goes on (floor(f * n) jumped to the next word).
+{
+  const t = 'Well, then he went. After that, nothing.';
+  const p = window.LB.partsOf(t), n = p.total;
+  const wordOf = (f) => p.wordsAt.findIndex(([a, b]) => window.LB.letterAt(f, n) < b);
+  const sentOf = (f) => p.sentences.findIndex(([a, b]) => window.LB.letterAt(f, n) < b);
+  const checks = [
+    ['the start', wordOf(0), 0],
+    ['the comma pause after "Well"', wordOf(4 / n), 0],
+    ['the same, as Java\'s float prints it', wordOf(Math.fround(4 / n)), 0],
+    ['a bit past it: "then"', wordOf(4.3 / n), 1],
+    ['the full stop pause: still the first sentence', sentOf(14 / n), 0],
+    ['the second sentence once it starts', sentOf(14.4 / n), 1],
+    ['the end', wordOf(1), p.wordsAt.length - 1],
+    ['past the end', wordOf(1.2), p.wordsAt.length - 1],
+  ];
+  let wb = 0;
+  for (const [what, got, want] of checks) if (got !== want) { wb++; console.log(`FAIL word mark at ${what}: want ${want}, got ${got}`); }
+  console.log(`${checks.length - wb} of ${checks.length} word-mark checks right`);
+  bad += wb;
+}
 process.exit(bad ? 1 : 0);

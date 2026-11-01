@@ -89,6 +89,11 @@ final class KindleLayout {
         return Math.min(1f, at / (span[1] - span[0]));
     }
 
+    /** The letter (0..n-1) being said when a fraction of n letters is said (n/len at a word's end is still that word). */
+    static int saidLetter(float frac, int n) {
+        return Math.max(0, Math.min(n - 1, (int) Math.ceil(frac * n - 0.01f) - 1));
+    }
+
     /** The boxes covering letters [s, e) of the page, one per line. */
     List<float[]> boxesFor(int s, int e) {
         List<float[]> out = new ArrayList<>();
@@ -104,10 +109,13 @@ final class KindleLayout {
         return out;
     }
 
-    /** The word at a point through letters [s, e) (frac 0 = the first word, 1 = the last). */
+    /**
+     * The word at a point through letters [s, e) (frac 0 = the first word, 1 = the last): the one whose letter is being said
+     * when that fraction of them is said, so at a pause (frac right at a word's end) the word just said, not the next one.
+     */
     float[] wordAt(int s, int e, float frac) {
         if (s < 0 || e <= s || e > nLine.length) return null;
-        int i = Math.max(s, Math.min(e - 1, s + Math.round(frac * (e - s - 1))));
+        int i = s + saidLetter(frac, e - s);
         int l = nLine[i];
         String t = lines.get(l);
         int a = nPos[i], b = nPos[i] + 1;

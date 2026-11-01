@@ -268,11 +268,14 @@
       CSS.highlights.set('loudbook-word', new Highlight(rangeOf(p, a, b)));
     }
   }
+  // the letter being said when a fraction f of a piece's n letters is said: at a pause (f exactly at a word's end) it's the
+  // word just said, not the next one (floor(f * n) showed the next word, or sentence, all through a comma's or full stop's pause)
+  const letterAt = (f, n) => Math.max(0, Math.min(n - 1, Math.ceil(f * n - 0.01) - 1));
   // how far through the piece being read the voice is (0..1): moves the marks on, and keeps them on screen
   function progress(f, chunk) {
     const p = cur;
     if (!p || (chunk !== undefined && p.chunk !== undefined && chunk !== p.chunk)) return;   // (for a piece not marked yet)
-    const k = Math.max(0, Math.min(p.total - 1, Math.floor(f * p.total)));
+    const k = letterAt(f, p.total);
     const before = p.lit;
     showPart(k);
     if (p.lit !== before && markedRange) {
@@ -341,5 +344,5 @@
     const i = blockAt(x, y);
     return JSON.stringify({ i, text: i >= 0 && blocks[i] ? blocks[i].text : '' });
   }
-  window.LB = { run, highlight, progress, clear, blockAt, blockInfo, speakNumbers, words, sayText, at: () => activeIndex, count: () => blocks.length };
+  window.LB = { run, highlight, progress, letterAt, partsOf, clear, blockAt, blockInfo, speakNumbers, words, sayText, at: () => activeIndex, count: () => blocks.length };
 })();

@@ -222,6 +222,16 @@ public class UnitTest {
         check("second sentence covers two lines", kl.boxesFor(sp.get(1)[0], sp.get(1)[1]).size(), 2);
         check("its first word starts mid-line", Math.round(kl.wordAt(sp.get(1)[0], sp.get(1)[1], 0f)[0]), 263);
         check("a tap on 'Mara' starts that sentence", kl.letterAt(300, 160), 40);
+        {   // at the comma's pause (3 of the 17 letters said: "Yes") the word marked is "Yes", not "she" (it was the next
+            // word whenever the pause came in the first half of a sentence)
+            KindleLayout yl = new KindleLayout(Arrays.asList("Yes, she said it was so."), Arrays.asList(new float[]{0, 100, 240, 140}), null);
+            String yes = Arrays.toString(yl.wordAt(0, 17, 1.5f / 17));
+            check("Kindle word mark at a comma's pause stays on the word said", Arrays.toString(yl.wordAt(0, 17, 3f / 17)), yes);
+            check("... and moves on once the voice does", Arrays.toString(yl.wordAt(0, 17, 3.4f / 17)).equals(yes), false);
+            check("Kindle word mark at the end", Arrays.toString(yl.wordAt(0, 17, 1f)), Arrays.toString(yl.wordAt(0, 17, 16.5f / 17)));
+            check("saidLetter: the pause after 4 of 10 letters is letter 3", KindleLayout.saidLetter(0.4f, 10), 3);
+            check("saidLetter: the start", KindleLayout.saidLetter(0f, 10), 0);
+        }
         check("a sentence begun on the page before is found by its end",
             Arrays.toString(kl.spans(Arrays.asList("Far off, the road out of the valley was older than the town.")).get(0)), "[0, 40, 6, 46]");
         // a sentence that runs on to the next page: found by its start; the word is on this page only for its first part
