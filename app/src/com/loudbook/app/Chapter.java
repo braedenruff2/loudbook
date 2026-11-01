@@ -52,14 +52,14 @@ final class Chapter {
         + "\\b((?:[Hh]e|[Ss]he|[Ii]t|(?:[Tt]he|[Aa]|[Aa]n|[Ii]ts|[Hh]is|[Hh]er|[Tt]heir)[ \\t]+(?:sign|signs|note|letter|message|plaque|inscription|label|card|caption|headline|text|screen|banner|notice|display|words|writing|title|line|lines|placard|scroll|page|entry|telegram|email|e-mail|tag))"
         + "(?:[ \\t]+(?:also|then|just|never|only|quickly|slowly|silently|carefully|quietly|finally|again|once|first|already|eagerly|still|simply|merely|briefly|hastily|calmly))?[ \\t]+)([Rr])ead\\b(?![-'\u2019])");
     private static final java.util.regex.Pattern DOVE = java.util.regex.Pattern.compile(
-        "(?<=\\b(?:[Hh]e|[Ss]he|[Ii]t|I|[Ww]e|[Tt]hey|[Yy]ou|then|and|instantly|immediately|quickly|(?!(?:The|This|That|A|An|One|Each|Every|My|His|Her|Their|Our|Your|Its|White|Grey|Gray|Mourning|Turtle|Rock|Little)\\b)[A-Z][a-z]+)[ \\t])dove(?=[ \\t]+(?:into|in|under|for|off|through|after|at|behind|toward|towards|down|out|forward|headfirst|aside|over|across|between|beneath|below|onto|back|away|deep|deeper|straight|sideways|low)\\b)");
+        "(?<!\\b(?:The|This|That|A|An|One|Each|Every|My|His|Her|Their|Our|Your|Its|White|Grey|Gray|Mourning|Turtle|Rock|Little)[ \\t])(?<=\\b(?:[Hh]e|[Ss]he|[Ii]t|I|[Ww]e|[Tt]hey|[Yy]ou|then|and|instantly|immediately|quickly|[A-Z][a-z]{1,20})[ \\t])dove(?=[ \\t]+(?:into|in|under|for|off|through|after|at|behind|toward|towards|down|out|forward|headfirst|aside|over|across|between|beneath|below|onto|back|away|deep|deeper|straight|sideways|low)\\b)");
     private static final java.util.regex.Pattern LEAD = java.util.regex.Pattern.compile(
         "\\b([Ll])ead(?=-(?:lined|grey|gray|coloured|colored|heavy|tipped|weighted|filled|sheathed)\\b|[ \\t]+(?:pipe|pipes|weight|weights|poisoning|bullet|bullets|shot|paint|ball|balls|sheet|sheets|pencil|pencils|crystal|mine|mines|ore|seal|seals|coffin|apron|plate|plates|slug|slugs|sinker|sinkers|lining|roof|roofs|pellet|pellets|ingot|ingots|casket|shielding|alloy|piping)\\b)"
         + "|(?<=\\b(?:[Mm]olten|[Ll]iquid|[Ss]olid|[Pp]ure|[Mm]elted|[Ss]heet|[Ww]hite|[Rr]ed)[ \\t])(l)ead\\b"
         + "|(?<=\\b(?:of|like|as)[ \\t])(l)ead(?=[ \\t]*(?:[.,;:!?\"\u201d)]|$)|[ \\t]+(?:and|or|that|which)\\b)");
     // "he moped around" ("mope-ed", the scooter) -> mohpt; "the sow grunted" ("so", the verb) -> sau (lab 2026-11-01)
     private static final java.util.regex.Pattern MOPED = java.util.regex.Pattern.compile(
-        "(?<=\\b(?:I|[Hh]e|[Ss]he|[Ww]e|[Tt]hey|[Yy]ou|[Ii]t|and|had|has|have|been|just|then|still|only|(?!(?:The|This|That|A|An|His|Her|My|Your|Their|Our|Its|On|By)\\b)[A-Z][a-z]+)[ \\t])moped\\b(?![-'’])");
+        "(?<!\\b(?:The|This|That|A|An|His|Her|My|Your|Their|Our|Its|On|By)[ \\t])(?<=\\b(?:I|[Hh]e|[Ss]he|[Ww]e|[Tt]hey|[Yy]ou|[Ii]t|and|had|has|have|been|just|then|still|only|[A-Z][a-z]{1,20})[ \\t])moped\\b(?![-'’])");
     private static final java.util.regex.Pattern SOW = java.util.regex.Pattern.compile(
         "(?<=\\b(?:[Aa]|[Tt]he|[Oo]ld|[Ff]at|[Gg]reat|[Tt]hat|[Tt]his|[Hh]is|[Hh]er|[Tt]heir|[Mm]other|[Ww]ild|[Bb]reeding|[Pp]regnant|[Mm]uddy|[Bb]ig|[Hh]uge)[ \\t])sow(s?)\\b(?![-]|[ \\t]+(?:the|seeds?|them|it|a|an|discord|doubt|chaos|fear|dissent|confusion|terror|panic)\\b)");
     private static String heteronyms(String t) {
