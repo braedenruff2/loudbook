@@ -14,6 +14,33 @@ public class UnitTest {
 
     static String str(java.util.List<String[]> parts) { StringBuilder b = new StringBuilder(); for (String[] p : parts) b.append('[').append(p[1]).append(':').append(p[0]).append(']'); return b.toString(); }
 
+    /** Where a look-behind in a regex has an unlimited repeat (+, *, {n,}), which Android's regex refuses; null if none. */
+    static String unboundedLookBehind(String re) {
+        java.util.ArrayDeque<Boolean> groups = new java.util.ArrayDeque<>();     // per open group: is it (inside) a look-behind
+        boolean inClass = false;
+        for (int i = 0; i < re.length(); i++) {
+            char c = re.charAt(i);
+            if (c == '\\') { if (i + 1 < re.length() && re.charAt(i + 1) == 'Q') { int e = re.indexOf("\\E", i); i = e < 0 ? re.length() : e + 1; } else i++; continue; }
+            if (inClass) { if (c == ']') inClass = false; continue; }
+            if (c == '[') { inClass = true; if (i + 1 < re.length() && re.charAt(i + 1) == '^') i++; if (i + 1 < re.length() && re.charAt(i + 1) == ']') i++; continue; }
+            boolean inside = !groups.isEmpty() && groups.peek();
+            if (c == '(') {
+                boolean lb = re.startsWith("(?<=", i) || re.startsWith("(?<!", i);
+                groups.push(inside || lb);
+                continue;
+            }
+            if (c == ')') { if (!groups.isEmpty()) groups.pop(); continue; }
+            if (!inside) continue;
+            if (c == '+' || c == '*') {
+                char p = i > 0 ? re.charAt(i - 1) : ' ';
+                if (c == '+' && (p == '+' || p == '*' || p == '?' || p == '}')) continue;   // (a possessive mark after a repeat, judged there)
+                return c + " at " + i;
+            }
+            if (c == '{') { int e = re.indexOf('}', i); if (e > 0 && re.substring(i, e).endsWith(",")) return "{n,} at " + i; }
+        }
+        return null;
+    }
+
     public static void main(String[] a) {
         // a "next" link back to the same page isn't a next chapter
         check("the letter A for the phone voice", Chapter.forKokoro("Plan A failed. He got an A on the test, an A-plus, Grade A. A man came. Type A people. A. Smith, a plan A."),
@@ -268,6 +295,18 @@ public class UnitTest {
         for (int[] hb : hist) for (int c = 0; c < hb[1]; c++) gs.add(hb[0]);
         int cutG = InkLayout.wordGap(gs, 48);
         check("ink: tight spaces still count as spaces, letter gaps don't", cutG > 6 && cutG <= 9, true);
+        // Android's regex (ICU) refuses a look-behind that can match without a length limit ("[a-z]+" inside "(?<=...)"),
+        // which plain Java allows: Chapter's class then fails to load on the phone and the app closes (0.2.203, 2026-11-01)
+        for (Class<?> c : new Class<?>[]{Chapter.class, KindleText.class, SpeechTiming.class, Dialogue.class, KindleLayout.class, InkLayout.class, VoiceRecording.class})
+            for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                if (!java.lang.reflect.Modifier.isStatic(f.getModifiers()) || f.getType() != java.util.regex.Pattern.class) continue;
+                try { f.setAccessible(true); java.util.regex.Pattern pt = (java.util.regex.Pattern) f.get(null);
+                    String u = unboundedLookBehind(pt.pattern());
+                    if (u != null) check("Android regex: " + c.getSimpleName() + "." + f.getName() + " look-behind has a length limit", u, "none");
+                } catch (IllegalAccessException e) { check("read " + f.getName(), e, "ok"); }
+            }
+        check("Android regex check finds \"[a-z]+\" in a look-behind", unboundedLookBehind("(?<=\\b(?:he|[A-Z][a-z]+) )dove"), "+ at 22");
+        check("Android regex check: bounded ones pass", unboundedLookBehind("(?<!\\b(?:a|the)[ \\t])(?<=[a-z]{1,20} )x+[(?<=+]"), null);
         System.out.println(bad == 0 ? "ALL OK" : bad + " FAILED");
         System.exit(bad == 0 ? 0 : 1);
     }
