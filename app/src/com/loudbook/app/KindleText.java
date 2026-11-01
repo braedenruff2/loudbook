@@ -24,7 +24,16 @@ final class KindleText {
     }
 
     private static final Pattern SENT = Pattern.compile("(?<=[.!?…][\"'”’)\\]]{0,2})\\s+(?=[\"'“‘(\\[]?[A-Z0-9])");
-    private static final Pattern ABBREV = Pattern.compile("(\\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Mt|vs|etc|No|Vol|Ch|Lt|Col|Gen|Sgt|Capt|Rev|Hon|approx|lvl|Lv|Lvl)|(^|\\s)[A-Z])\\.$");
+    // ("I." is never an initial: "Neither did I. Then..." ends a sentence; "No.", "Vol.", "Ch.", "Lv." are short forms only before a number)
+    private static final Pattern ABBREV = Pattern.compile("(\\b(Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|Mt|vs|etc|Lt|Col|Gen|Sgt|Capt|Rev|Hon|approx)|(^|\\s)[A-HJ-Z])\\.$");
+    private static final Pattern NUMBERED = Pattern.compile("\\b(No|Vol|Ch|lvl|Lv|Lvl)\\.$");
+    /** Whether a piece split off at a full stop belongs with the next one ("Mr." | "Hale arrived", "No." | "5 was..."). */
+    private static boolean joins(String prev, String next) {
+        if (ABBREV.matcher(prev).find()) return true;
+        if (!NUMBERED.matcher(prev).find()) return false;
+        String n = next.trim();
+        return !n.isEmpty() && (Character.isDigit(n.charAt(0)) || n.charAt(0) == '#');
+    }
     private static final Pattern END = Pattern.compile("[.!?…][\"'”’)\\]]{0,2}\\s*$");
 
     /** Sentences from a page's paragraphs. last: no more pages, so nothing is held back. */
@@ -75,14 +84,14 @@ final class KindleText {
     static String lastSentence(String p) {
         String[] parts = SENT.split(p);
         String last = parts[parts.length - 1];
-        for (int i = parts.length - 2; i >= 0 && ABBREV.matcher(parts[i]).find(); i--) last = parts[i] + " " + last;
+        for (int i = parts.length - 2; i >= 0 && joins(parts[i], parts[i + 1]); i--) last = parts[i] + " " + last;
         return p.substring(Math.max(0, p.length() - last.length()));
     }
     /** The first sentence of a paragraph. */
     static String firstSentence(String p) {
         String[] parts = SENT.split(p);
         StringBuilder b = new StringBuilder(parts[0]);
-        for (int i = 1; i < parts.length && ABBREV.matcher(parts[i - 1]).find(); i++) b.append(' ').append(parts[i]);
+        for (int i = 1; i < parts.length && joins(parts[i - 1], parts[i]); i++) b.append(' ').append(parts[i]);
         int n = Math.min(p.length(), b.length());
         return p.substring(0, n);
     }
@@ -237,7 +246,7 @@ final class KindleText {
         for (String s : SENT.split(p)) {
             if (s.trim().isEmpty()) continue;
             // "Mr." or an initial ("J. Smith") isn't the end of a sentence: join it back on
-            if (!raw.isEmpty() && ABBREV.matcher(raw.get(raw.size() - 1)).find()) raw.set(raw.size() - 1, raw.get(raw.size() - 1) + " " + s.trim());
+            if (!raw.isEmpty() && joins(raw.get(raw.size() - 1), s)) raw.set(raw.size() - 1, raw.get(raw.size() - 1) + " " + s.trim());
             else raw.add(s.trim());
         }
         List<String> merged = new ArrayList<>();

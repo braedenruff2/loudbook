@@ -41,6 +41,12 @@ public class UnitTest {
             "[Then Mr. Hale arrived at the gate., It was very late by then, and cold.]");
         check("an initial stays too", KindleText.sentences("She met J. Smith at the old mill by the river. He waved at her from the bridge."),
             "[She met J. Smith at the old mill by the river., He waved at her from the bridge.]");
+        check("Kindle: \"I.\" ends a sentence", KindleText.sentences("Nobody in the whole village believed him, and neither did I. Then the ship came in sight."),
+            "[Nobody in the whole village believed him, and neither did I., Then the ship came in sight.]");
+        check("Kindle: \"No.\" ends a sentence, \"No. 5\" doesn't", KindleText.sentences("She asked if he would stay and he said No. Then he walked out of the room. Room No. 5 was empty and dark."),
+            "[She asked if he would stay and he said No., Then he walked out of the room., Room No. 5 was empty and dark.]");
+        check("Kindle: the page's last sentence after \"I.\"", KindleText.lastSentence("Nobody had known. Neither did I. Then he"), "Then he");
+        check("Kindle: the next page's first sentence, \"Vol. 2\"", KindleText.firstSentence("Vol. 2 was missing from the shelf. The rest were there."), "Vol. 2 was missing from the shelf.");
         // a sentence cut by the page break is held back, then read whole
         KindleText kt = new KindleText("");
         List<Chapter.Chunk> p1 = kt.chunks(Arrays.asList("The first page ends here. And this one runs over"), false);
