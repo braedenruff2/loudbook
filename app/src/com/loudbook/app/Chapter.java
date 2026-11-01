@@ -34,6 +34,14 @@ final class Chapter {
             "Torment", "Tor-ment", "Escort", "Ess-cort", "Transport", "Trans-port", "Export", "Ex-port"};
         for (int i = 0; i < w.length; i += 2) START_SAID.put(w[i], w[i + 1]);
     }
+    // after an adverb ("they always use it", "she carefully recorded"... "he quickly present(s)") it takes them for nouns too
+    // (lab 2026-11-01: always/often/usually/also/really and any -ly word; "never", "will", "to" are fine). Not after "the only",
+    // "a lovely": a determiner before the adverb makes the word a noun.
+    private static final java.util.regex.Pattern ADV_VERB = java.util.regex.Pattern.compile(
+        "(?<!\\b(?:[Tt]he|[Aa]|[Aa]n|[Hh]is|[Hh]er|[Ii]ts|[Tt]heir|[Mm]y|[Yy]our|[Oo]ur|[Tt]his|[Tt]hat|[Nn]o|[Aa]ny|[Ee]very|[Ss]ome|[Ee]ach|[Ww]as|[Ww]ere|[Ii]s|[Aa]re|[Bb]e|[Bb]een|[Bb]eing|[Aa]m)[ \\t])"
+        + "\\b((?!(?:early|only|family|ally|belly|bully|jelly|lily|rally|tally|fly|reply|supply|apply|rely|assembly|holy|ugly|lovely|lonely|friendly|elderly|silly|jolly|daily|weekly|monthly|yearly|hourly|nightly|likely|deadly|costly|bodily|orderly|lowly|kindly|curly|burly|surly|chilly|hilly|oily|wily|lively|comely|homely|manly|womanly|worldly|scholarly|cowardly|stately|ghastly|ghostly|beastly|sickly|smelly|bubbly|wobbly|prickly|melancholy|anomaly|monopoly|italy|july|sally|molly|holly|emily|lily|kelly|billy|willy|polly)\\b)"
+        + "(?:[a-z]+ly|always|often|also|sometimes|usually|seldom|then|now|soon|just|still|even)[ \\t]+)"
+        + "(use|abuse|separate|record|present|polish|tear|permit|insult|increase|decrease|estimate|moderate|conduct|project|object|protest|suspect|convict|console|contract|torment|escort|transport|export)" + OBJ);
     private static final java.util.regex.Pattern AND_USE = java.util.regex.Pattern.compile(
         "(?<=\\b(?:and|then|[Pp]lease|[Jj]ust|[Nn]ow|[Ss]o|[Oo]r)[ \\t])use" + OBJ);
     private static final java.util.regex.Pattern WIND = java.util.regex.Pattern.compile(
@@ -91,6 +99,14 @@ final class Chapter {
             m.appendTail(b);
             t = b.toString();
             t = AND_USE.matcher(t).replaceAll("uze");
+            m = ADV_VERB.matcher(t);
+            b = new StringBuffer();
+            while (m.find()) {
+                String r = START_SAID.get(Character.toUpperCase(m.group(2).charAt(0)) + m.group(2).substring(1));
+                m.appendReplacement(b, java.util.regex.Matcher.quoteReplacement(m.group(1) + Character.toLowerCase(r.charAt(0)) + r.substring(1)));
+            }
+            m.appendTail(b);
+            t = b.toString();
         }
         if (t.contains("ead")) {
             t = READ.matcher(t).replaceAll("$1$2ed");
