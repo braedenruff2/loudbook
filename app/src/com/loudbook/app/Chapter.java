@@ -96,6 +96,18 @@ final class Chapter {
         "(?<!\\b(?i:last|eleventh|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty|thirty|forty|fifty|sixty|few|several|ninety)[ \\t-])(?<![\\d-][ \\t]?)\\b([Mm])inute(?=[ \\t]+(?:amounts?|details?|fraction|quantity|quantities|traces?|particles?|cracks?|adjustments?|differences?|variations?|specks?|droplets?|fragments?|grains?|examination|inspection|description|observations?|investigation|particulars|scrutiny|accuracy|precision)\\b)");
     private static final java.util.regex.Pattern DOES = java.util.regex.Pattern.compile(
         "(?<=\\b(?:[Tt]he|(?i:two|three|four|five|six|seven|eight|nine|ten|several|pregnant)|bucks and|stags and)[ \\t])does\\b(?![-'\u2019]|[ \\t]+(?:and[ \\t]+don|not|so|it|that|this)\\b)");
+    // "a blazing row" / "had a row with him" (the quarrel; it says "roe") -> rau; "caught a bass", "sea bass", "bass fishing" (the
+    // fish; it says "base") -> bas; "a pile of refuse", "the refuse heap" (rubbish; it says the verb "ri-fyooz") -> reffuce (lab 2026-11-01)
+    private static final java.util.regex.Pattern ROW = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:blazing|furious|almighty|flaming|terrible|screaming|shouting|blistering|bitter|fierce|heated|dreadful|awful|stand-up|family)[ \\t])row\\b(?![-'\u2019]|[ \\t]+of\\b)"
+        + "|(?<=\\b(?:[Hh]ad|[Hh]ave|[Hh]as|[Hh]aving)[ \\t]{1,3}(?:a|another)[ \\t])row(?=[ \\t]+(?:with|about|over)\\b)");
+    private static final java.util.regex.Pattern BASS = java.util.regex.Pattern.compile(
+        "(?<=\\b(?i:sea|striped|largemouth|smallmouth|rock|stone|peacock|chilean)[ \\t])bass\\b(?![-'\u2019])"
+        + "|(?<=\\b(?:caught|catch|catches|catching|landed|hooked|grilled|fried|baked|roasted|smoked)[ \\t]{1,3}(?:(?:a|the|some|two|three|another|that|this)[ \\t]{1,3})?)bass\\b(?![-'\u2019]|[ \\t]+(?:guitar|player|line|drum|clef|voice|notes?)\\b)"
+        + "|\\b([Bb])ass(?=[ \\t]+(?:fishing|boat|lure)\\b)");
+    private static final java.util.regex.Pattern REFUSE = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:of|with|[Hh]ousehold|[Kk]itchen|[Gg]arden|[Ss]treet|[Hh]uman|rotting|stinking)[ \\t])refuse\\b(?![-'\u2019]|[ \\t]+(?:to|the|him|her|them|me|us|you|it|his|their|my|your|our|any|an?)\\b)"
+        + "|\\b([Rr])efuse(?=[ \\t]+(?:heaps?|piles?|dumps?|collectors?|collection|bins?|tips?|pits?|sacks?|bags?|lorry|lorries|trucks?|carts?|cans?|disposal)\\b)");
     // "had to" the voice runs together ("hadtuh"), and then takes the verb after it for the noun: "had to record it" ("RECK-ord"),
     // "had to use it" ("yooss"), "had to live with it" ("lyve"), "had to present"... "hadd to" it says apart, and the verb right
     // (lab 2026-11-01: 30 verbs; "have to", "has to", "used to" are fine). "has to read" it says "red" -> reed.
@@ -157,6 +169,21 @@ final class Chapter {
         if (t.contains("desert")) t = DESERT.matcher(t).replaceAll("dessert");
         if (t.contains("inute")) t = MINUTE.matcher(t).replaceAll("$1y-nute");
         if (t.contains("does")) t = DOES.matcher(t).replaceAll("doze");
+        if (t.contains("row")) t = ROW.matcher(t).replaceAll("rau");
+        if (t.contains("ass")) {
+            java.util.regex.Matcher m = BASS.matcher(t);
+            StringBuffer b = new StringBuffer();
+            while (m.find()) m.appendReplacement(b, (m.group(1) != null ? m.group(1) : "b") + "as");
+            m.appendTail(b);
+            t = b.toString();
+        }
+        if (t.contains("efuse")) {
+            java.util.regex.Matcher m = REFUSE.matcher(t);
+            StringBuffer b = new StringBuffer();
+            while (m.find()) m.appendReplacement(b, (m.group(1) != null ? m.group(1) : "r") + "effuce");
+            m.appendTail(b);
+            t = b.toString();
+        }
         if (t.contains("moped")) t = MOPED.matcher(t).replaceAll("mohpt");
         if (t.contains("sow")) t = SOW.matcher(t).replaceAll("sau$1").replaceAll("\\bsaus\\b", "sauz");
         if (t.contains("wind")) t = WIND.matcher(t).replaceAll("wined");

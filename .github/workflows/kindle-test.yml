@@ -5,7 +5,7 @@ name: Kindle test
 on:
   push:
     branches: [main]
-    paths: ['app/src/com/loudbook/app/Kindle*.java', 'app/src/com/loudbook/app/ReaderService.java', 'app/res/xml/kindle_service.xml', 'test/fakekindle/**', '.github/workflows/kindle-test.yml']
+    paths: ['app/src/com/loudbook/app/Kindle*.java', 'app/src/com/loudbook/app/ReaderService.java', 'app/src/com/loudbook/app/SpeechTiming.java', 'app/src/com/loudbook/app/Chapter.java', 'app/src/com/loudbook/app/Voice.java', 'app/src/com/loudbook/app/InkLayout.java', 'app/res/xml/kindle_service.xml', 'test/fakekindle/**', '.github/workflows/kindle-test.yml']
   workflow_dispatch:
 permissions:
   contents: write
