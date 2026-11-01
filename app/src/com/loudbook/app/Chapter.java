@@ -44,6 +44,19 @@ final class Chapter {
         "\\b(?:((?:[Tt]ook|[Tt]ake|[Tt]akes|[Tt]aking|[Gg]ave|[Gg]ive|[Gg]ives|[Gg]iving|[Ss]wept)[ \\t]+(?:a|an|another)[ \\t]+)|((?:deep|slight|low|polite|respectful|curt|quick|formal|shallow|courtly|mocking|theatrical|elaborate|sweeping|graceful|perfunctory|brief|final|exaggerated|stiff)[ \\t]+))bow(s?)\\b"
         + "|(?<=\\b(?:I|[Yy]ou|[Ww]e|[Tt]hey|to|will|would|must|should|shall|not|and|then|all|[Ee]veryone|[Pp]lease|[Hh]e|[Ss]he|[Ii]t)[ \\t])bow(s?)(?=[ \\t]+(?:to|before|down|low|deeply|slightly|respectfully|politely|(?:his|her|their|your|my|our|its)[ \\t]+heads?)\\b)"
         + "|(?:^|(?<=[.!?\"\u201c] ))Bow(?=[ \\t]+(?:to|before|down|low|deeply|(?:his|her|their|your|my|our|its)[ \\t]+heads?)\\b)");
+    // "She read the note" / "The sign read" is past ("red"; the voice said "reed": "he/she/it read" can't be the present, that's "reads").
+    // "did he read", "let her read" stay. "She dove into the lake" ("duv", the bird) -> dohv. Lead the metal ("a lead pipe",
+    // "made of lead", "heavy as lead"; the voice said "leed") -> led. Checked in the Kokoro lab, 2026-11-01.
+    private static final java.util.regex.Pattern READ = java.util.regex.Pattern.compile(
+        "(?<!\\b(?:[Dd]id|[Dd]oes|[Dd]o|[Cc]an|[Cc]ould|[Ww]ill|[Ww]ould|[Ss]hould|[Ss]hall|[Mm]ay|[Mm]ight|[Mm]ust|[Dd]idn't|[Dd]oesn't|[Ww]on't|[Cc]an't|[Cc]ouldn't|[Ww]ouldn't|[Ss]houldn't|[Ll]et|[Hh]elp|[Mm]ake|[Mm]ade|[Ww]atch|[Ww]atched|[Hh]ear|[Hh]eard|[Ss]ee|[Ss]aw)[ \\t])"
+        + "\\b((?:[Hh]e|[Ss]he|[Ii]t|(?:[Tt]he|[Aa]|[Aa]n|[Ii]ts|[Hh]is|[Hh]er|[Tt]heir)[ \\t]+(?:sign|signs|note|letter|message|plaque|inscription|label|card|caption|headline|text|screen|banner|notice|display|words|writing|title|line|lines|placard|scroll|page|entry|telegram|email|e-mail|tag))"
+        + "(?:[ \\t]+(?:also|then|just|never|only|quickly|slowly|silently|carefully|quietly|finally|again|once|first|already|eagerly|still|simply|merely|briefly|hastily|calmly))?[ \\t]+)([Rr])ead\\b(?![-'\u2019])");
+    private static final java.util.regex.Pattern DOVE = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:[Hh]e|[Ss]he|[Ii]t|I|[Ww]e|[Tt]hey|[Yy]ou|then|and|instantly|immediately|quickly|(?!(?:The|This|That|A|An|One|Each|Every|My|His|Her|Their|Our|Your|Its|White|Grey|Gray|Mourning|Turtle|Rock|Little)\\b)[A-Z][a-z]+)[ \\t])dove(?=[ \\t]+(?:into|in|under|for|off|through|after|at|behind|toward|towards|down|out|forward|headfirst|aside|over|across|between|beneath|below|onto|back|away|deep|deeper|straight|sideways|low)\\b)");
+    private static final java.util.regex.Pattern LEAD = java.util.regex.Pattern.compile(
+        "\\b([Ll])ead(?=-(?:lined|grey|gray|coloured|colored|heavy|tipped|weighted|filled|sheathed)\\b|[ \\t]+(?:pipe|pipes|weight|weights|poisoning|bullet|bullets|shot|paint|ball|balls|sheet|sheets|pencil|pencils|crystal|mine|mines|ore|seal|seals|coffin|apron|plate|plates|slug|slugs|sinker|sinkers|lining|roof|roofs|pellet|pellets|ingot|ingots|casket|shielding|alloy|piping)\\b)"
+        + "|(?<=\\b(?:[Mm]olten|[Ll]iquid|[Ss]olid|[Pp]ure|[Mm]elted|[Ss]heet|[Ww]hite|[Rr]ed)[ \\t])(l)ead\\b"
+        + "|(?<=\\b(?:of|like|as)[ \\t])(l)ead(?=[ \\t]*(?:[.,;:!?\"\u201d)]|$)|[ \\t]+(?:and|or|that|which)\\b)");
     private static String heteronyms(String t) {
         if (t.contains("lose")) t = CLOSE.matcher(t).replaceAll("$1loze");
         if (t.contains("xcuse")) t = EXCUSE.matcher(t).replaceAll("$1xcuze");
@@ -59,6 +72,11 @@ final class Chapter {
             t = b.toString();
             t = AND_USE.matcher(t).replaceAll("uze");
         }
+        if (t.contains("ead")) {
+            t = READ.matcher(t).replaceAll("$1$2ed");
+            t = LEAD.matcher(t).replaceAll("$1$2$3ed");
+        }
+        if (t.contains("dove")) t = DOVE.matcher(t).replaceAll("dohv");
         if (t.contains("wind")) t = WIND.matcher(t).replaceAll("wined");
         if (t.contains("wound")) t = WOUND.matcher(t).replaceAll("wownd");
         if (t.contains("ow")) {
