@@ -234,7 +234,8 @@ final class KindleText {
         String rest = next.get(last[0]).substring(last[1] + 1);
         // (the marks right after the last word read, a full stop or a closing quote, go with it)
         rest = rest.replaceFirst("^[.,;:!?\u2026\"'\u201d\u2019)\\]]*", "").trim();
-        if (!rest.isEmpty()) out.add(rest);
+        // (and marks with no word after them: "said\u2014\u201d", "England._", "--": nothing to say)
+        if (!rest.isEmpty() && rest.codePoints().anyMatch(Character::isLetterOrDigit)) out.add(rest);
         for (int i = last[0] + 1; i < next.size(); i++) out.add(next.get(i));
         return out;
     }
