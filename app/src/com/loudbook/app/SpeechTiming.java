@@ -223,29 +223,54 @@ final class SpeechTiming {
         speech = Math.max(1, speech);
         List<float[]> br = breaks(text);
         for (float[] b : br) b[0] = fromText(map, b[0]);                       // (where the voice says them)
-        // match pauses to the text's breaks in order: each pause to the nearest break not yet used,
-        // if it's near where the speech so far says it should be; longer pauses prefer sentence ends
+        // match pauses to the text's breaks: the best match of the two lists in order (a dynamic programme), each
+        // pause where the speech so far says it is (that's within a few % of the letters so far), each pause and
+        // each break may go unmatched (a breath or a "t" mid-phrase; a comma read straight through). Matching
+        // them one by one, each pause to the nearest break within 20%, took a breath before a comma as the comma
+        // (Kokoro, 100 Gutenberg sentences: 36 of 219 commas over 0.4 s out, now 6; mean 0.25 s -> 0.13 s)
+        int m = pauses.size(), n = br.size();
+        float[] pos = new float[m];
+        {
+            int said = 0, prevEnd = first;
+            for (int k = 0; k < m; k++) { said += pauses.get(k)[0] - prevEnd; prevEnd = pauses.get(k)[1]; pos[k] = said / (float) speech; }
+        }
+        final float SD = 0.04f, SKIP_BREAK = 2f, SKIP_PAUSE = 0.5f, INF = Float.MAX_VALUE / 4;
+        float[][] cost = new float[m + 1][n + 1];
+        byte[][] how = new byte[m + 1][n + 1];                                // 1 pause unmatched, 2 break unmatched, 3 matched
+        for (float[] row : cost) java.util.Arrays.fill(row, INF);
+        cost[0][0] = 0;
+        for (int i = 0; i <= m; i++) for (int j = 0; j <= n; j++) {
+            float v = cost[i][j];
+            if (v >= INF) continue;
+            if (i < m && v + SKIP_PAUSE < cost[i + 1][j]) { cost[i + 1][j] = v + SKIP_PAUSE; how[i + 1][j] = 1; }
+            if (j < n && v + SKIP_BREAK < cost[i][j + 1]) { cost[i][j + 1] = v + SKIP_BREAK; how[i][j + 1] = 2; }
+            if (i < m && j < n) {
+                float d = pos[i] - br.get(j)[0];
+                if (Math.abs(d) <= 0.25f) {
+                    float c = v + (d / SD) * (d / SD);
+                    if (c < cost[i + 1][j + 1]) { cost[i + 1][j + 1] = c; how[i + 1][j + 1] = 3; }
+                }
+            }
+        }
+        int[] pairOf = new int[m];                                           // pause -> break (-1: none)
+        java.util.Arrays.fill(pairOf, -1);
+        for (int i = m, j = n; i > 0 || j > 0; ) {
+            byte h = how[i][j];
+            if (h == 3) { pairOf[i - 1] = j - 1; i--; j--; }
+            else if (h == 1) i--;
+            else j--;
+        }
         List<long[]> anchors = new ArrayList<>();
         List<Float> fr = new ArrayList<>();
         anchors.add(new long[]{(long) first * win}); fr.add(0f);
-        int said = 0, prevEnd = first, nextBreak = 0, matched = 0;
-        for (int[] p : pauses) {
-            said += p[0] - prevEnd;
-            prevEnd = p[1];
-            float expect = said / (float) speech;
-            int best = -1; float bestCost = Float.MAX_VALUE;
-            for (int b = nextBreak; b < br.size(); b++) {
-                float d = Math.abs(br.get(b)[0] - expect);
-                if (br.get(b)[0] - expect > 0.25f) break;
-                float cost = d - (p[1] - p[0] >= 20 && br.get(b)[1] >= 2 ? 0.03f : 0f);
-                if (d <= 0.2f && cost < bestCost) { bestCost = cost; best = b; }
-            }
-            if (best < 0) continue;                                          // (a breath mid-phrase: the line just pauses there)
-            float f = br.get(best)[0];
-            if (f <= fr.get(fr.size() - 1)) continue;
+        int matched = 0;
+        for (int k = 0; k < m; k++) {
+            if (pairOf[k] < 0) continue;
+            float f = br.get(pairOf[k])[0];
+            if (f <= fr.get(fr.size() - 1) || f >= 1f) continue;
+            int[] p = pauses.get(k);
             anchors.add(new long[]{(long) p[0] * win}); fr.add(f);
             anchors.add(new long[]{(long) p[1] * win}); fr.add(f);
-            nextBreak = best + 1;
             matched++;
         }
         anchors.add(new long[]{(long) (last + 1) * win}); fr.add(1f);

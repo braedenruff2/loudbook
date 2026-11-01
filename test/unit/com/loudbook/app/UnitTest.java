@@ -174,6 +174,27 @@ public class UnitTest {
                 for (int q = 0; q <= 100; q++) { long fr = sk.frameAt(q / 100f); if (fr < pf) mono = false; pf = fr; }
                 check("timing: frameAt never goes back (a written word not said)", mono, true);
             }
+            {   // a breath (or a "t") just before the comma isn't the comma: the comma's own pause, where the letters say, is
+                int rt = 24000;
+                String[] w = {"One", "two", "three", "four", "five,", "six", "seven", "eight", "nine", "ten."};
+                int[] gap = {30, 30, 30, 90, 200, 30, 30, 30, 30, 0};          // (90 ms: a breath after "four")
+                java.util.List<Float> snd2 = new java.util.ArrayList<>();
+                for (int k = 0; k < 300 * rt / 1000; k++) snd2.add(0f);
+                long[] ws2 = new long[w.length];
+                for (int k = 0; k < w.length; k++) {
+                    ws2[k] = snd2.size();
+                    int letters = w[k].replaceAll("[^A-Za-z]", "").length();
+                    for (int q = 0; q < letters * 60 * rt / 1000; q++) snd2.add((float) (0.3 * Math.sin(q * 0.12)));
+                    for (int q = 0; q < gap[k] * rt / 1000; q++) snd2.add(0f);
+                }
+                for (int k = 0; k < 300 * rt / 1000; k++) snd2.add(0f);
+                float[] sm2 = new float[snd2.size()];
+                for (int k = 0; k < sm2.length; k++) sm2[k] = snd2.get(k);
+                SpeechTiming bt = SpeechTiming.of("One two three four five, six seven eight nine ten.", sm2, rt);
+                check("timing: the breath before the comma isn't matched to it", bt.matched, 1);
+                check("timing: at 'five' (after the breath), not yet at the comma (19 of 39 letters)", bt.fracAt(ws2[4] + 10) * 39 < 17, true);
+                check("timing: at 'six' (after the comma), 19 of 39", Math.round(bt.fracAt(ws2[5] + 10) * 39), 19);
+            }
             check("timing by the said text: no change when said as written", SpeechTiming.said2text("a b", "a b") == null, true);
             check("timing: \"Mr.\" isn't a place to pause", SpeechTiming.breaks("Mr. Collins then returned, slowly.").size(), 1);
             // a sentence that ends in "No." or "I." still ends there (the voice pauses): only "No. 5", "J. Smith" are short forms
