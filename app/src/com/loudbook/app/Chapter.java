@@ -124,6 +124,10 @@ final class Chapter {
     // (lab 2026-11-01); not "a learned behaviour/skill/response" (said "lurnd").
     private static final java.util.regex.Pattern LEARNED = java.util.regex.Pattern.compile(
         "(?<=\\b(?:[Aa]n?|[Tt]he|[Mm]ost|[Vv]ery|[Hh]ighly|[Tt]ruly|[Mm]ore|[Ll]ess)[ \\t])learned\\b(?![-'\u2019]|[ \\t]+(?:behaviou?rs?|responses?|skills?|helplessness|traits?|habits?|reflex(?:es)?|to|the|that|how)\\b)");
+    // "resume" the noun it says as the verb ("ri-ZOOM"): "his resume", "an updated resume", "the resumes piled up" -> résumé, which
+    // it says right (lab 2026-11-02: ɹˈɛzuːmˌeɪ); not "her resume" ("let her resume her work"), "to resume", "the talks resume".
+    private static final java.util.regex.Pattern RESUME = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:[Aa]|[Tt]he|[Hh]is|[Mm]y|[Yy]our|[Tt]heir|[Oo]ur|[Tt]his|[Tt]hat|[Nn]ew|[Uu]pdated|[Ii]mpressive|[Pp]erfect|[Ss]hort|[Pp]added|[Ff]ake|[Oo]ld|[Ff]irst)[ \\t])resume(s?)\\b(?![-'\u2019])");
     // "rebel against" the verb it says as the noun ("REB-el") after a plural noun or at a sentence start ("the peasants rebel against
     // the lord", "Rebel against them!"): -> rebell (lab 2026-11-01: ɹᵻbˈɛl); not after a determiner or an adjective ("a rebel against
     // society", "a lone rebel against the empire").
@@ -194,6 +198,7 @@ final class Chapter {
         if (t.contains("nsult")) t = INSULT.matcher(t).replaceAll("$1n-sult$2");
         if (t.contains("learned")) t = LEARNED.matcher(t).replaceAll("lernid");
         if (t.contains("ebel against")) t = REBEL.matcher(t).replaceAll("$1ebell");
+        if (t.contains("resume")) t = RESUME.matcher(t).replaceAll("r\u00e9sum\u00e9$1");
         if (t.contains("ubject")) {
             java.util.regex.Matcher m = SUBJECT.matcher(t);
             StringBuffer b = new StringBuffer();
