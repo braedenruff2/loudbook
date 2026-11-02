@@ -705,7 +705,10 @@ public class KindleService extends AccessibilityService {
         startedAt = System.currentTimeMillis();
         if (explored[1] && !Voice.prefs(this).getBoolean("exploreToldOnce", false)) {
             Voice.prefs(this).edit().putBoolean("exploreToldOnce", true).apply();
-            toast("Kindle shares this book's text only with screen readers, so while Loudbook reads Kindle the screen works like one: double-tap to press things, two fingers to turn pages. Leave Kindle (or stay paused for a minute) and the screen goes back to normal.");
+            // (Android 11+: touches pass through the screen reader (touchesPassThrough), so the screen works as usual)
+            toast(android.os.Build.VERSION.SDK_INT >= 30
+                ? "Kindle shares this book's text only with screen readers, so Loudbook turns a screen reader's mode on while it reads Kindle. The screen still works as usual."
+                : "Kindle shares this book's text only with screen readers, so while Loudbook reads Kindle the screen works like one: double-tap to press things, two fingers to turn pages. Leave Kindle (or stay paused for a minute) and the screen goes back to normal.");
         }
         accept(p);
         svc.startKindle(p, letter);
