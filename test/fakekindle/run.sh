@@ -95,7 +95,7 @@ adb shell settings get secure touch_exploration_enabled | sed 's/^/touch explora
 adb shell dumpsys window windows | grep -c "Window{.*com.loudbook.app" | sed 's/^/Loudbook windows on screen after leaving Kindle: /' >> leave.txt
 adb logcat -d | sed -n '/=== leave Kindle while reading/,$p' > leave-log.txt
 grep -c "kindle speaking" leave-log.txt | sed 's/^/sentences read before leaving: /' >> leave.txt
-grep -q "touches pass through the screen reader" leave-log.txt && echo "touches pass through the screen reader (normal taps and gestures in Kindle): yes" >> leave.txt || echo "touches pass through the screen reader: NO" >> leave.txt
+adb logcat -d | grep -q "touches pass through the screen reader" && echo "touches pass through the screen reader (normal taps and gestures in Kindle): yes" >> leave.txt || echo "touches pass through the screen reader: NO" >> leave.txt
 grep -q "left Kindle, reading paused" leave-log.txt && echo "reading after leaving Kindle: paused" >> leave.txt || echo "reading after leaving Kindle: NOT paused" >> leave.txt
 adb shell screencap -p /sdcard/left.png; adb pull /sdcard/left.png .
 adb shell am force-stop com.amazon.kindle
@@ -132,7 +132,6 @@ for i in $(seq 1 45); do sleep 2; adb logcat -d | sed -n '/=== away at the page 
 sleep 6
 adb shell am start -n com.amazon.kindle/.Reader --ez explore true      # (back to the book, on the same page)
 sleep 6
-adb shell dumpsys window windows | grep -c "Window{.*com.loudbook.app" | sed 's/^/Loudbook windows on coming back paused (want no highlight window: the button only, or none): /' > away-back.txt
 adb shell screencap -p /sdcard/away-back.png; adb pull /sdcard/away-back.png .
 adb shell input tap $X $Y                                               # carry on
 sleep 45
@@ -141,7 +140,6 @@ adb logcat -d | sed -n '/=== away at the page turn/,$p' > away-log.txt
 grep -q "not on screen at the page turn" away-log.txt && echo "Kindle away at the page turn, noticed: yes" > away.txt || echo "Kindle away at the page turn, noticed: NO" > away.txt
 grep -q "left Kindle, reading paused" away-log.txt && echo "reading paused while away: yes" >> away.txt || echo "reading paused while away: NO" >> away.txt
 grep -q "back in Kindle after leaving it paused: no highlight" away-log.txt && echo "highlight hidden on coming back paused: yes" >> away.txt || echo "highlight hidden on coming back paused: NO" >> away.txt
-cat away-back.txt >> away.txt 2>/dev/null
 grep -q "back in Kindle, turning the page now" away-log.txt && grep -q "kindle page turned" away-log.txt && echo "page turned once back: yes" >> away.txt || echo "page turned once back: NO" >> away.txt
 grep -c "kindle speaking [0-9]*: She liked the quiet" away-log.txt | sed 's/^/times the sentence over the break was started (want 1): /' >> away.txt
 grep -q "kindle speaking [0-9]*: and she liked that nobody else bothered" away-log.txt && echo "the rest of it read with the next page's words: yes" >> away.txt || echo "the rest of it read with the next page's words: NO" >> away.txt
