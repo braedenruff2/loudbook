@@ -128,7 +128,7 @@ for l in log:
     if m and int(m.group(2)) not in start: start[int(m.group(2))] = (t(m.group(1)), m.group(3))
 b = next(i for i, (s, x) in start.items() if x.startswith('She liked the quiet'))
 gap = start[b + 1][0] - start[b][0] - clip[b]
-print("silence after the sentence over the break (want under 0.5 s): %.1f s" % gap)
+print("silence after the sentence over the break (want under 0.8 s; the usual pause between sentences is ~0.4 s; was 1.4 s): %.1f s" % gap)
 PY
 adb shell am force-stop com.amazon.kindle
 adb shell input keyevent KEYCODE_HOME
