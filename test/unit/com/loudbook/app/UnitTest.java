@@ -118,6 +118,12 @@ public class UnitTest {
         check("Kindle: the page's last sentence after \"I.\"", KindleText.lastSentence("Nobody had known. Neither did I. Then he"), "Then he");
         check("Kindle: scrolled page, the overlap ends in a dash and quote", KindleText.afterOverlap(Arrays.asList("The first paragraph is long enough to match.", "Then he stopped and said\u2014\u201d"),
             Arrays.asList("Then he stopped and said\u2014\u201d", "A new paragraph.")).toString(), "[A new paragraph.]");
+        {   // a long run without spaces (emoji, fancy letters) is cut at 280 characters: never between a pair's two halves
+            StringBuilder b = new StringBuilder("a"); for (int i = 0; i < 200; i++) b.append("\uD83D\uDE00");
+            boolean split = false; int total = 0;
+            for (String piece : KindleText.sentences(b.toString())) { total += piece.length(); split |= Character.isHighSurrogate(piece.charAt(piece.length() - 1)) || Character.isLowSurrogate(piece.charAt(0)); }
+            check("Kindle: a long run of emoji isn't cut between an emoji's two halves", split + " " + total, "false " + b.length());
+        }
         check("Kindle: \"U.S.\" doesn't end a sentence", KindleText.sentences("They flew to the U.S. Army base at dawn. It was very cold there that morning."),
             "[They flew to the U.S. Army base at dawn., It was very cold there that morning.]");
         check("Kindle: an initial after a quote mark", KindleText.lastSentence("He spoke. \u201cJ. Smith sent me,\u201d she"), "\u201cJ. Smith sent me,\u201d she");

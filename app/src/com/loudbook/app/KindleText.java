@@ -268,6 +268,7 @@ final class KindleText {
                 Matcher m = Pattern.compile("[,;:—–]\\s").matcher(s);
                 while (m.find()) { if (m.end() > 300) break; if (m.end() > 80) cut = m.end(); }
                 if (cut < 0) { int sp = s.lastIndexOf(' ', 280); cut = sp > 80 ? sp + 1 : 280; }
+                if (Character.isLowSurrogate(s.charAt(cut))) cut--;          // (not between an emoji's / fancy letter's two halves)
                 out.add(s.substring(0, cut).trim());
                 s = s.substring(cut).trim();
             }
