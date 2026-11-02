@@ -503,6 +503,27 @@ const LBSay = (() => {
 //    "2x", "#1", "-5", "2-3", "*sigh*", stammers ("N-no"), arrows. Checked by listening to what the
 //    voice makes of it (tools: the pronunciation lab in Loudbook-android/test/say).
 
+// "Fancy text" letters (𝐁𝐨𝐥𝐝, 𝘪𝘵𝘢𝘭𝘪𝘤, 𝕱𝖗𝖆𝖐𝖙𝖚𝖗, ＦＵＬＬＷＩＤＴＨ, Ⓒⓘⓡⓒⓛⓔⓓ, 🄱🄾🅇, ꜱᴍᴀʟʟ ᴄᴀᴘꜱ, the ﬁ ligature) as the plain
+// letters they stand for: web fiction uses them for system messages and titles, and the voice skipped them or spelled out
+// their Unicode names. One character at a time, so the app can fold the page's letters the same way to find (and mark)
+// the sentence. Superscripts (x²) and fractions (½) are left to the number rules.
+const SMALL_CAPS = { 'ᴀ': 'a', 'ʙ': 'b', 'ᴄ': 'c', 'ᴅ': 'd', 'ᴇ': 'e', 'ꜰ': 'f', 'ɢ': 'g', 'ʜ': 'h', 'ɪ': 'i', 'ᴊ': 'j', 'ᴋ': 'k',
+  'ʟ': 'l', 'ᴍ': 'm', 'ɴ': 'n', 'ᴏ': 'o', 'ᴘ': 'p', 'ǫ': 'q', 'ʀ': 'r', 'ꜱ': 's', 'ᴛ': 't', 'ᴜ': 'u', 'ᴠ': 'v', 'ᴡ': 'w', 'ʏ': 'y', 'ᴢ': 'z' };
+const FANCY = /[\u3000\u{1D400}-\u{1D7FF}\uFF01-\uFF5E\u2460-\u2473\u24B6-\u24E9\u24EA\u2160-\u2188\uFB00-\uFB06\u2102\u210A-\u2113\u2115\u2119-\u211D\u2124\u2128\u212C\u212D\u212F-\u2131\u2133\u2134\u{1F130}-\u{1F149}\u{1F150}-\u{1F169}ᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘǫʀꜱᴛᴜᴠᴡʏᴢ]/gu;
+function plainLetters(text) {
+  return String(text || '').replace(FANCY, (c) => {
+    if (SMALL_CAPS[c]) return SMALL_CAPS[c];
+    if (c === '\u3000') return ' ';                                       // (the full-width space)
+    if (c === 'ℓ') return c;                                         // (ℓ: litres)
+    const cp = c.codePointAt(0);
+    if (cp >= 0x1F130 && cp <= 0x1F149) return String.fromCharCode(65 + cp - 0x1F130);   // 🄰 squared
+    if (cp >= 0x1F150 && cp <= 0x1F169) return String.fromCharCode(65 + cp - 0x1F150);   // 🅐 black circled
+    const n = c.normalize('NFKC');
+    if ((cp >= 0x2460 && cp <= 0x2473) || cp === 0x24EA) return n + ' ';    // ("①Strength": a list number, said apart)
+    return /^[\p{L}\p{N}\p{P}\p{S}]+$/u.test(n) ? n : c;
+  });
+}
+
 // Parse the settings box: one fix per line, "word = say it like this" (also accepts -> or →).
 function parseFixes(text) {
   const out = [];
@@ -531,7 +552,7 @@ function makeSayer(fixes = [], { tidy: doTidy = true } = {}) {
       return { re: new RegExp(pre + esc(f.from) + post, 'giu'), to: f.to };
     });
   return function say(text) {
-    let t = String(text || '');
+    let t = plainLetters(text);
     for (const r of rules) t = t.replace(r.re, r.to);
     return doTidy ? tidy(t) : t;
   };
@@ -1093,7 +1114,7 @@ function tidy(t) {
     });
 }
 
-return { parseFixes, makeSayer, tidy };
+return { parseFixes, makeSayer, tidy, plainLetters };
 })();
 
 // Loudbook for Android: the part that runs inside the chapter page (in the app's WebView).
@@ -1222,6 +1243,9 @@ return { parseFixes, makeSayer, tidy };
         }
       } catch { /* keep what's on the page */ }
     }
+    // ("fancy text" letters as plain ones, for the voice and to find the sentence again; the page keeps them as written)
+    for (const b of blocks) b.text = LBSay.plainLetters(b.text);
+    r.title = LBSay.plainLetters(r.title);
     return r;
   }
 
@@ -1269,17 +1293,18 @@ return { parseFixes, makeSayer, tidy };
   let cur = null;
   // two characters side by side on the page: next to each other in one text node, or the last of one node and the first of
   // the next ("<em>Longbourn</em>.": the full stop after an italic word is still the sentence's)
-  const touch = ([n1, o1], [n2, o2]) => (n1 === n2 ? o2 === o1 + 1 : o1 === n1.nodeValue.length - 1 && o2 === 0);
+  const touch = ([n1, o1, l1], [n2, o2]) => (n1 === n2 ? o2 === o1 + (l1 || 1) : o1 + (l1 || 1) === n1.nodeValue.length && o2 === 0);
+  const chOf = ([n, o, l]) => n.nodeValue.substr(o, l || 1);        // (the character at a place: two halves for 𝐁)
   function rangeOf(p, a, b) {                                     // letters a..b-1 of the piece -> a DOM range
     const [sn, so] = p.pos[p.map[p.at + a]];
     let ei = p.map[p.at + b - 1];
     // take in the closing marks right after the last letter (a full stop, a quote) if nothing separates them
-    while (ei + 1 < p.pos.length && !isL(p.pos[ei + 1][0].nodeValue[p.pos[ei + 1][1]]) && touch(p.pos[ei], p.pos[ei + 1])) ei++;
+    while (ei + 1 < p.pos.length && !isL(chOf(p.pos[ei + 1])) && touch(p.pos[ei], p.pos[ei + 1])) ei++;
     let si = p.map[p.at + a];
-    while (si > 0 && !isL(p.pos[si - 1][0].nodeValue[p.pos[si - 1][1]]) && touch(p.pos[si - 1], p.pos[si])) si--;
+    while (si > 0 && !isL(chOf(p.pos[si - 1])) && touch(p.pos[si - 1], p.pos[si])) si--;
     const [en, eo] = p.pos[ei];
     const r = document.createRange();
-    r.setStart(p.pos[si][0], p.pos[si][1]); r.setEnd(en, eo + 1);
+    r.setStart(p.pos[si][0], p.pos[si][1]); r.setEnd(en, eo + (p.pos[ei][2] || 1));
     return r;
   }
   // [start, end) in letters of each sentence and each word of a piece of text
@@ -1302,10 +1327,11 @@ return { parseFixes, makeSayer, tidy };
     if (!canMark) return false;
     CSS.highlights.delete('loudbook-sentence'); CSS.highlights.delete('loudbook-word');
     if (!text) return false;
+    text = LBSay.plainLetters(text);
     const pos = [];
     const walk = (node) => {
       for (const n of node.childNodes) {
-        if (n.nodeType === 3) { const v = n.nodeValue; for (let k = 0; k < v.length; k++) if (!/[\s​-‍﻿]/.test(v[k])) pos.push([n, k]); continue; }
+        if (n.nodeType === 3) { const v = n.nodeValue; for (let k = 0; k < v.length; k++) { const l = v.codePointAt(k) > 0xffff ? 2 : 1; if (!/[\s​-‍﻿]/.test(v[k])) pos.push([n, k, l]); k += l - 1; } continue; }
         if (n.nodeType !== 1) continue;
         if (/^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|BUTTON)$/.test(n.tagName) || hiddenEl(n)) continue;
         walk(n);
@@ -1315,7 +1341,10 @@ return { parseFixes, makeSayer, tidy };
     const map = [];                                               // letter k of the paragraph -> its place in pos
     let flat = '';
     let from = 0;
-    for (let i = 0; i < pos.length; i++) { const c = pos[i][0].nodeValue[pos[i][1]]; if (isL(c)) { if (i < (offset || 0)) from = map.length + 1; map.push(i); flat += c; } }
+    for (let i = 0; i < pos.length; i++) {
+      // (letters as the reader's copy has them: "fancy" ones plain, one 𝐁 is one B, the ﬁ ligature two letters)
+      for (const c of LBSay.plainLetters(chOf(pos[i]))) if (isL(c)) { if (i < (offset || 0)) from = map.length + 1; for (let u = 0; u < c.length; u++) map.push(i); flat += c; }
+    }
     const key = lettersOf(text);
     if (!key) return false;
     let at = flat.indexOf(key, Math.max(0, from - 8));

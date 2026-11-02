@@ -124,6 +124,9 @@
         }
       } catch { /* keep what's on the page */ }
     }
+    // ("fancy text" letters as plain ones, for the voice and to find the sentence again; the page keeps them as written)
+    for (const b of blocks) b.text = LBSay.plainLetters(b.text);
+    r.title = LBSay.plainLetters(r.title);
     return r;
   }
 
@@ -171,17 +174,18 @@
   let cur = null;
   // two characters side by side on the page: next to each other in one text node, or the last of one node and the first of
   // the next ("<em>Longbourn</em>.": the full stop after an italic word is still the sentence's)
-  const touch = ([n1, o1], [n2, o2]) => (n1 === n2 ? o2 === o1 + 1 : o1 === n1.nodeValue.length - 1 && o2 === 0);
+  const touch = ([n1, o1, l1], [n2, o2]) => (n1 === n2 ? o2 === o1 + (l1 || 1) : o1 + (l1 || 1) === n1.nodeValue.length && o2 === 0);
+  const chOf = ([n, o, l]) => n.nodeValue.substr(o, l || 1);        // (the character at a place: two halves for 𝐁)
   function rangeOf(p, a, b) {                                     // letters a..b-1 of the piece -> a DOM range
     const [sn, so] = p.pos[p.map[p.at + a]];
     let ei = p.map[p.at + b - 1];
     // take in the closing marks right after the last letter (a full stop, a quote) if nothing separates them
-    while (ei + 1 < p.pos.length && !isL(p.pos[ei + 1][0].nodeValue[p.pos[ei + 1][1]]) && touch(p.pos[ei], p.pos[ei + 1])) ei++;
+    while (ei + 1 < p.pos.length && !isL(chOf(p.pos[ei + 1])) && touch(p.pos[ei], p.pos[ei + 1])) ei++;
     let si = p.map[p.at + a];
-    while (si > 0 && !isL(p.pos[si - 1][0].nodeValue[p.pos[si - 1][1]]) && touch(p.pos[si - 1], p.pos[si])) si--;
+    while (si > 0 && !isL(chOf(p.pos[si - 1])) && touch(p.pos[si - 1], p.pos[si])) si--;
     const [en, eo] = p.pos[ei];
     const r = document.createRange();
-    r.setStart(p.pos[si][0], p.pos[si][1]); r.setEnd(en, eo + 1);
+    r.setStart(p.pos[si][0], p.pos[si][1]); r.setEnd(en, eo + (p.pos[ei][2] || 1));
     return r;
   }
   // [start, end) in letters of each sentence and each word of a piece of text
@@ -204,10 +208,11 @@
     if (!canMark) return false;
     CSS.highlights.delete('loudbook-sentence'); CSS.highlights.delete('loudbook-word');
     if (!text) return false;
+    text = LBSay.plainLetters(text);
     const pos = [];
     const walk = (node) => {
       for (const n of node.childNodes) {
-        if (n.nodeType === 3) { const v = n.nodeValue; for (let k = 0; k < v.length; k++) if (!/[\s​-‍﻿]/.test(v[k])) pos.push([n, k]); continue; }
+        if (n.nodeType === 3) { const v = n.nodeValue; for (let k = 0; k < v.length; k++) { const l = v.codePointAt(k) > 0xffff ? 2 : 1; if (!/[\s​-‍﻿]/.test(v[k])) pos.push([n, k, l]); k += l - 1; } continue; }
         if (n.nodeType !== 1) continue;
         if (/^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|BUTTON)$/.test(n.tagName) || hiddenEl(n)) continue;
         walk(n);
@@ -217,7 +222,10 @@
     const map = [];                                               // letter k of the paragraph -> its place in pos
     let flat = '';
     let from = 0;
-    for (let i = 0; i < pos.length; i++) { const c = pos[i][0].nodeValue[pos[i][1]]; if (isL(c)) { if (i < (offset || 0)) from = map.length + 1; map.push(i); flat += c; } }
+    for (let i = 0; i < pos.length; i++) {
+      // (letters as the reader's copy has them: "fancy" ones plain, one 𝐁 is one B, the ﬁ ligature two letters)
+      for (const c of LBSay.plainLetters(chOf(pos[i]))) if (isL(c)) { if (i < (offset || 0)) from = map.length + 1; for (let u = 0; u < c.length; u++) map.push(i); flat += c; }
+    }
     const key = lettersOf(text);
     if (!key) return false;
     let at = flat.indexOf(key, Math.max(0, from - 8));

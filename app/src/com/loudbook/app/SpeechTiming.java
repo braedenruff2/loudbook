@@ -78,7 +78,20 @@ final class SpeechTiming {
         return at[at.length - 1];
     }
 
-    private static boolean letter(char c) { return Character.isLetterOrDigit(c); }
+    /**
+     * Whether the character at i counts as a letter, the way the page script counts them (JavaScript [\p{L}\p{N}]): numbers
+     * like "²", "½" and "Ⅳ" count too, and both halves of a letter outside the basic plane (JavaScript's length is 2 for
+     * it), so a fraction of the letters said lands on the same letter on the page.
+     */
+    static boolean letter(CharSequence s, int i) {
+        char c = s.charAt(i);
+        int cp = c;
+        if (Character.isHighSurrogate(c) && i + 1 < s.length() && Character.isLowSurrogate(s.charAt(i + 1))) cp = Character.toCodePoint(c, s.charAt(i + 1));
+        else if (Character.isLowSurrogate(c) && i > 0 && Character.isHighSurrogate(s.charAt(i - 1))) cp = Character.toCodePoint(s.charAt(i - 1), c);
+        if (Character.isLetterOrDigit(cp)) return true;
+        int t = Character.getType(cp);
+        return t == Character.OTHER_NUMBER || t == Character.LETTER_NUMBER;
+    }
 
     /**
      * The places in the text where a voice may pause: after a comma, colon, full stop and so on
@@ -87,13 +100,13 @@ final class SpeechTiming {
      */
     static List<float[]> breaks(String text) {
         int total = 0;
-        for (int i = 0; i < text.length(); i++) if (letter(text.charAt(i))) total++;
+        for (int i = 0; i < text.length(); i++) if (letter(text, i)) total++;
         List<float[]> out = new ArrayList<>();
         if (total == 0) return out;
         int n = 0;
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
-            if (letter(c)) { n++; continue; }
+            if (letter(text, i)) { n++; continue; }
             if (n == 0 || n >= total) continue;
             boolean spaceAfter = i + 1 >= text.length() || Character.isWhitespace(text.charAt(i + 1))
                 || "\"'”’)]".indexOf(text.charAt(i + 1)) >= 0;
@@ -133,8 +146,8 @@ final class SpeechTiming {
     /** Works out the timing of a clip of speech (mono samples) of the text. */
     static SpeechTiming of(String text, float[] s, int rate) { return of(text, null, s, rate); }
 
-    private static int lettersIn(String w) { int n = 0; for (int i = 0; i < w.length(); i++) if (letter(w.charAt(i))) n++; return n; }
-    private static String key(String w) { StringBuilder b = new StringBuilder(); for (int i = 0; i < w.length(); i++) if (letter(w.charAt(i))) b.append(Character.toLowerCase(w.charAt(i))); return b.toString(); }
+    private static int lettersIn(String w) { int n = 0; for (int i = 0; i < w.length(); i++) if (letter(w, i)) n++; return n; }
+    private static String key(String w) { StringBuilder b = new StringBuilder(); for (int i = 0; i < w.length(); i++) if (letter(w, i)) b.append(Character.toLowerCase(w.charAt(i))); return b.toString(); }
 
     /**
      * The voice says some words longer or shorter than they're written ("Mr." is "Mister", "12" is
