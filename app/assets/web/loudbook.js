@@ -454,7 +454,8 @@ function splitLong(s) {
     const window = rest.slice(0, MAX);
     let cut = Math.max(window.lastIndexOf('; '), window.lastIndexOf(', '), window.lastIndexOf(' — '), window.lastIndexOf(': '));
     if (cut < MAX * 0.4) cut = window.lastIndexOf(' ');
-    if (cut < MAX * 0.3) cut = MAX;
+    // no space to cut at (a long run without spaces): cut at MAX letters, never inside an emoji / fancy letter's two halves
+    if (cut < MAX * 0.3) { cut = MAX - 1; if (/[\uD800-\uDBFF]/.test(window[cut])) cut--; }
     parts.push(rest.slice(0, cut + 1).trim());
     rest = rest.slice(cut + 1).trim();
   }
@@ -1074,6 +1075,7 @@ function tidy(t) {
     .replace(/\b([Oo]n|[Bb]y|[Uu]ntil|[Tt]ill|[Nn]ext|[Ll]ast|[Tt]his|[Ee]very)\s+(Mon|Tues?|Wed|Thu|Thurs?|Fri|Sat|Sun)(\.|(?!\s+\p{Lu}))(?![\w'’])(?=(\s*[,;:)]|\s+\p{Ll})?)/gu,
       (m, p, d, dot, mid) => p + ' ' + DAYS[d] + (dot && mid === undefined ? '.' : ''))   // on Mon. -> on Monday
     .replace(/\bMk\.?\s*(?=\d)/g, 'Mark ')                          // Mk. II (already "Mk. 2")
+    .replace(/\b([Vv]ersion)\s+v(?=\d)/g, '$1 ')                      // "Version v1.2" (was "version version")
     .replace(/\bv(\d+)\.(\d+)\b/g, 'version $1 point $2')            // v2.0
     .replace(/\bv(\d+)\b(?![.,]\d)/g, 'version $1')                   // v3
     .replace(/(?<![\d.])\b(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\b(?![.\d])/g, (m) => m.split('.').map((x) => x.split('').join(' ')).join(' dot '))   // 192.168.1.1
@@ -1095,7 +1097,8 @@ function tidy(t) {
     .replace(/(\b\p{L}+\s)['’](\d\d)(s?)\b(?![\d'’%])(?![^'’\n]*['’](?:[\s,.!?;:]|$))/gu, (m, w, d, s) => w + (d === '00' ? '2000' : d) + s)   // class of '00 -> two thousand
     .replace(/\bMt\.?(?=\s+[A-Z][a-z])/g, 'Mount').replace(/\bFt\.(?=\s+[A-Z])/g, 'Fort').replace(/(\d)\s?pct\b/g, '$1 percent')                     // the voice says "M T." and stops
     .replace(/\b([Tt]he|[Hh]is|[Hh]er|[Tt]heir|[Oo]ur|[Mm]y|[Yy]our|[Tt]hose|[Tt]hese)\s~\s?(?=\d)/g, '$1 roughly ')   // the ~200 goblins (was "the about")
-    .replace(/(^|\s)~\s?(?=\d)/g, '$1about ')                     // ~5 minutes (the voice says "tilde")
+    .replace(/\b((?:[Aa]bout|[Aa]round|[Rr]oughly|[Nn]early|[Aa]pproximately|[Ss]ome)\s+)~\s?(?=\$?\d)/g, '$1')   // "about ~20" (was "about about")
+    .replace(/(^|\s)~\s?(?=\$?\d)/g, '$1about ')                     // ~5 minutes, ~$300 (the voice says "tilde")
     .replace(/\b(\d+(?:st|nd|rd|th))\s+St\.(?!\w)/g, '$1 Street')                          // 42nd St.
     .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/(?<!\b(?:\d+\w*|[A-Z][a-z]+)\s)\bSt\s+(?=[A-Z][a-z])/g, 'Saint ').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, w, mid) => w + ' Street' + (mid !== undefined ? '' : '.'))   // "on Patrick St." keeps its full stop
     .replace(/\b(\p{Lu}\p{Ll}+\s+)(Rd|Ln)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, w, a, mid) => w + (a === 'Rd' ? 'Road' : 'Lane') + (mid !== undefined ? '' : '.'))   // Elm Rd., Oak Ln.
@@ -1103,6 +1106,7 @@ function tidy(t) {
     .replace(/\bHwy\.?\s*(?=\d)/g, 'Highway ').replace(/\bGr\.\s*(?=\d)/g, 'Grade ')
     .replace(/\b(Ave|Blvd)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, a, mid) => (a === 'Ave' ? 'Avenue' : 'Boulevard') + (mid !== undefined ? '' : '.'))          // 5th Ave.
     .replace(/\b(Mr|Mrs|Ms|Dr)\.(?=\s*(?:&|and)\s)/g, (m, t) => TITLES[t])                 // Mr. & Mrs. Smith
+    .replace(/\b(Lt\.|Lieutenant)(\s+)(Col|Gen|Cmdr)\.(?=\s+\p{Ll}|\s*$)/gu, (m, l, sp, t, at, all) => l + sp + TITLES[t] + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))   // "promoted to Lt. Col. in 1944"
     .replace(/\b(Lt|Sgt|Capt|Cpl|Pvt|Cmdr|Jr|Sr)\.(?=\s+\p{Ll}|\s*$)/gu, (m, t, at, all) => TITLES[t] + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))   // "the Lt. arrived"
     .replace(/\ba\.k\.a\.?(?=\s)/gi, 'also known as').replace(/\bCh\s+(?=\d)/g, 'Chapter ')
     .replace(/\b([4-7])'(\d|1[01])(?![\d'"”])/g, '$1 foot $2')         // a 5'2 girl

@@ -57,4 +57,21 @@ bad += rrBad;
   console.log(`${checks.length - wb} of ${checks.length} word-mark checks right`);
   bad += wb;
 }
+// Long text with no spaces (emoji, 𝐟𝐚𝐧𝐜𝐲 letters, URLs) is cut into pieces of at most 320 characters, never between the
+// two halves of an emoji or fancy letter (a lone half reached the voice as garbage) and with nothing lost.
+{
+  const src = fs.readFileSync(path.join(__dirname, '../../app/assets/web/loudbook.js'), 'utf8');
+  const a = src.indexOf('const LBChunk = (() => {'), e = src.indexOf('})();', a) + 5;
+  const LBChunk = new Function(src.slice(a, e) + '\nreturn LBChunk;')();
+  let cb = 0, cn = 0;
+  for (const t of ['a' + '😀'.repeat(400), '𝐛'.repeat(400), 'x'.repeat(700), 'Then: ' + 'ab😀'.repeat(150) + ' end.']) {
+    cn++;
+    const parts = LBChunk.chunkBlocks([{ i: 0, text: t }]).map(c => c.text);
+    const why = parts.some(p => p.length > 320) ? 'a piece over 320' : parts.some(p => /[\uD800-\uDBFF]$|^[\uDC00-\uDFFF]/.test(p)) ? 'an emoji cut in half'
+      : parts.join('').replace(/\s/g, '') !== t.replace(/\s/g, '') ? 'text lost' : '';
+    if (why) { cb++; console.log(`FAIL long text without spaces: ${why} (${parts.map(p => p.length).join(', ')})`); }
+  }
+  console.log(`${cn - cb} of ${cn} long-text cuts right`);
+  bad += cb;
+}
 process.exit(bad ? 1 : 0);
