@@ -115,6 +115,21 @@ grep -q "sentence over the page break" bridge-log.txt && echo "next page shared,
 grep -q "the voice is at the next page's words" bridge-log.txt && echo "page turned at the next page's words: yes" >> bridge.txt || echo "page turned at the next page's words: NO" >> bridge.txt
 grep -c "kindle speaking [0-9]*: She liked the quiet" bridge-log.txt | sed 's/^/times the sentence over the break was read (want 1): /' >> bridge.txt
 grep -c "kindle speaking [0-9]*: bothered" bridge-log.txt | sed 's/^/times the next page start was read again (want 0): /' >> bridge.txt
+# silence between the sentence over the break and the next one: when it started + its length, to when the next started
+python3 - >> bridge.txt <<'PY' || echo "silence after the sentence over the break: not measured" >> bridge.txt
+import re
+t = lambda s: (lambda h, m, x: int(h) * 3600 + int(m) * 60 + float(x))(*s.split(':'))
+log = open('bridge-log.txt', errors='replace').read().splitlines()
+clip, start = {}, {}
+for l in log:
+    m = re.search(r'(\d\d:\d\d:\d\d\.\d+).*LoudbookTest: clip (\d+): ([\d.]+) s', l)
+    if m: clip[int(m.group(2))] = float(m.group(3))
+    m = re.search(r'(\d\d:\d\d:\d\d\.\d+).*LoudbookTest: kindle speaking (\d+): (.*)', l)
+    if m and int(m.group(2)) not in start: start[int(m.group(2))] = (t(m.group(1)), m.group(3))
+b = next(i for i, (s, x) in start.items() if x.startswith('She liked the quiet'))
+gap = start[b + 1][0] - start[b][0] - clip[b]
+print("silence after the sentence over the break (want under 0.5 s): %.1f s" % gap)
+PY
 adb shell am force-stop com.amazon.kindle
 adb shell input keyevent KEYCODE_HOME
 # leaving Kindle just as a page ends (the stand-in Kindle goes to the background instead of turning, once):

@@ -812,6 +812,14 @@ public class ReaderService extends Service {
                     // the sentence that ran over the page break (being heard now) is partly on this page too
                     int pageFrom = splitIdx >= 0 && splitTurned && splitIdx == from - 1 ? splitIdx : from;
                     ch.chunks.addAll(more);
+                    // the page turned in the middle of a sentence: the player is still putting that sentence into the speaker
+                    // (it gets to the next one only as it ends), so the new page's first sentences are made now, while it's
+                    // heard. They used to be started only once it ended: the voice's whole time to make one, in silence
+                    // (about 5 s with the PC's voice)
+                    if (chapter == ch && !more.isEmpty()) {
+                        Log.i("LoudbookTest", "kindle: making the new page's first sentences now (from " + from + ")");
+                        for (int q = from; q < Math.min(ch.size(), from + 3); q++) clipFor(q);
+                    }
                     kindleFrom = pageFrom; kindleTo = ch.size();
                     splitTurned = false; splitIdx = frac >= 0 ? ch.size() - 1 : -1; splitFrac = frac;
                     Log.i("LoudbookTest", "kindle page turned: +" + more.size() + " sentences");
