@@ -94,6 +94,18 @@ final class KindleLayout {
         return Math.max(0, Math.min(n - 1, (int) Math.ceil(frac * n - 0.01f) - 1));
     }
 
+    /**
+     * Whether two sets of marks (the sentence's boxes, the word's box or null) are the same, so the highlight isn't redrawn: it was
+     * drawn again every 80 ms whatever changed (the whole screen, on a dimmed phone; and while paused, nothing changes at all).
+     */
+    static boolean sameMarks(List<float[]> a, float[] aw, List<float[]> b, float[] bw) {
+        if (!java.util.Arrays.equals(aw, bw)) return false;
+        if (a == null || b == null) return a == b;
+        if (a.size() != b.size()) return false;
+        for (int i = 0; i < a.size(); i++) if (!java.util.Arrays.equals(a.get(i), b.get(i))) return false;
+        return true;
+    }
+
     /** The boxes covering letters [s, e) of the page, one per line. */
     List<float[]> boxesFor(int s, int e) {
         List<float[]> out = new ArrayList<>();

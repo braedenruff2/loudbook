@@ -1,3 +1,4 @@
+Kindle: the reading highlight uses less battery. It was drawn again over the whole screen about 12 times a second, even while paused; now only when the word or sentence moves.
 "Fancy text" (𝐛𝐨𝐥𝐝 or 𝘪𝘵𝘢𝘭𝘪𝘤 letters, ＦＵＬＬＷＩＤＴＨ, ꜱᴍᴀʟʟ ᴄᴀᴘꜱ, Ⓒⓘⓡⓒⓛⓔⓓ, used for system messages and titles) is read as the words it spells; before, those words were skipped. The highlight finds and marks those sentences too.
 Phone voice: "his resume" / "an updated resume" is said like the CV (REZ-oo-may); it said the verb ("ri-ZOOM").
 Highlight: during the little pause at a comma or full stop, the word (and sentence) highlight now stays on the word just said, on web chapters and on Kindle; before, it often jumped to the next word before the voice got there.

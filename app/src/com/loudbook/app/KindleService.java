@@ -394,7 +394,8 @@ public class KindleService extends AccessibilityService {
                 + (sentence.isEmpty() ? "" : " from y=" + Math.round(sentence.get(0)[1])) + (lay.exactLines > 0 ? " (exact)" : " (estimated)"));
         }
         showHighlight(sentence, word);
-        main.postDelayed(paint, 80);
+        // (paused: nothing moves, and watch() puts the marks right every 500 ms and on going on; 80 ms while the voice reads)
+        if (!svc.isPaused()) main.postDelayed(paint, 80);
     }
 
     private void showHighlight(List<float[]> sentence, float[] word) {
@@ -429,6 +430,7 @@ public class KindleService extends AccessibilityService {
             radius = 4 * c.getResources().getDisplayMetrics().density;
         }
         void set(List<float[]> s, float[] w) {
+            if (KindleLayout.sameMarks(sentence, word, s, w)) return;      // (nothing moved: not drawn again)
             sentence = s; word = w;
             invalidate();
         }

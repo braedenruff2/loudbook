@@ -244,6 +244,13 @@ public class UnitTest {
             check("Kindle word mark at the end", Arrays.toString(yl.wordAt(0, 17, 1f)), Arrays.toString(yl.wordAt(0, 17, 16.5f / 17)));
             check("saidLetter: the pause after 4 of 10 letters is letter 3", KindleLayout.saidLetter(0.4f, 10), 3);
             check("saidLetter: the start", KindleLayout.saidLetter(0f, 10), 0);
+            // (the Kindle highlight is only redrawn when its marks move: the same boxes built again are the same)
+            List<float[]> m1 = yl.boxesFor(0, 17), m2 = yl.boxesFor(0, 17);
+            check("same marks built twice are the same", KindleLayout.sameMarks(m1, yl.wordAt(0, 17, 0.1f), m2, yl.wordAt(0, 17, 0.1f)), true);
+            check("... not once the word moves", KindleLayout.sameMarks(m1, yl.wordAt(0, 17, 0.1f), m2, yl.wordAt(0, 17, 0.9f)), false);
+            check("... nor the word gone (paused)", KindleLayout.sameMarks(m1, yl.wordAt(0, 17, 0.1f), m2, null), false);
+            check("... nor another sentence", KindleLayout.sameMarks(m1, null, yl.boxesFor(0, 5), null), false);
+            check("... and nothing is nothing", KindleLayout.sameMarks(new java.util.ArrayList<>(), null, new java.util.ArrayList<>(), null), true);
         }
         check("a sentence begun on the page before is found by its end",
             Arrays.toString(kl.spans(Arrays.asList("Far off, the road out of the valley was older than the town.")).get(0)), "[0, 40, 6, 46]");

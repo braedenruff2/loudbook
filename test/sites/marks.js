@@ -15,10 +15,17 @@ const cases = [
   ['<p>The ﬁnal ﬂight left.</p>', 0, 'The ﬁnal ﬂight left.', [[0.3, 'ﬁnal'], [0.6, 'ﬂight']]],
   ['<p>She wrote 𠀀 and went on.</p>', 0, 'She wrote 𠀀 and went on.', [[0.5, '𠀀']]],
   ['<p>Plain text, <b>with</b> a tag.</p>', 0, 'Plain text, with a tag.', [[0.7, 'with']]],
+  // (chapter-test ch1.html: an emoji and fancy letters earlier in the paragraph. The app reads it sentence by sentence (the
+  //  pieces listed last, as Chapter.java has them) and hints where each starts, Chapter.offsetInBlock; the repeated sentence
+  //  must be marked where the third piece is, not at the first)
+  ['<p>Tom tried it anyway 🙄, because he always did. “It never opens,” his sister said. “Never.”</p>', 1, '“It never opens,” his sister said.', [[0.4, 'opens']],
+    ['Tom tried it anyway 🙄, because he always did.', '“It never opens,” his sister said.', '“Never.”']],
+  ['<p>The 𝐠𝐚𝐭𝐞 was ʟᴏᴄᴋᴇᴅ. It was ﬁne. The 𝐠𝐚𝐭𝐞 was ʟᴏᴄᴋᴇᴅ. Then the ﬁnal one.</p>', 2, 'The 𝐠𝐚𝐭𝐞 was ʟᴏᴄᴋᴇᴅ.', [[0.4, '𝐠𝐚𝐭𝐞']],
+    ['The gate was locked.', 'It was fine.', 'The gate was locked.', 'Then the final one.'], 'third'],
 ];
 (async () => {
   let bad = 0;
-  for (const [html, si, want, words] of cases) {
+  for (const [html, si, want, words, pieces, which] of cases) {
     const dom = new JSDOM(`<!doctype html><html><head><meta charset="utf-8"><title>T</title></head><body><article>${html}</article></body></html>`,
       { url: 'https://example.com/story/chapter-1', runScripts: 'outside-only', pretendToBeVisual: true });
     const w = dom.window;
@@ -35,18 +42,24 @@ const cases = [
     await w.eval("LB.run('', true)");
     const fails = [];
     const chunks = ch ? ch.chunks.filter(c => c.block >= 0) : [];
-    const c = chunks[si];
+    let c = chunks[si], off = 0;
+    if (pieces && chunks[0]) {
+      // (the hint as the app gives it, Chapter.offsetInBlock: the non-space characters of the paragraph's pieces before this one)
+      c = { block: chunks[0].block, text: pieces[si] };
+      off = pieces.slice(0, si).reduce((n, t) => n + Array.from(t.replace(/\s+/g, '')).length, 0);
+    }
     if (!c) fails.push('no sentence ' + si + ': ' + JSON.stringify(ch && ch.chunks));
     else {
-      if (/[\u{1D400}-\u{1D7FF}！-～ᴀ-ᴢﬁﬂ]/u.test(c.text)) fails.push('the reader\'s copy kept fancy letters: ' + c.text);
-      const ok = w.LB.highlight(c.block, c.text, 0, 0);
+      if (!pieces && /[\u{1D400}-\u{1D7FF}！-～ᴀ-ᴢﬁﬂ]/u.test(c.text)) fails.push('the reader\'s copy kept fancy letters: ' + c.text);
+      const ok = w.LB.highlight(c.block, c.text, off, 0);
       const s = marks.get('loudbook-sentence');
       if (!ok || !s) fails.push('sentence not marked: ' + c.text);
       else if (s.r.toString() !== want) fails.push(`sentence mark "${s.r.toString()}", want "${want}"`);
+      else if (which === 'third' && s.r.startContainer.nodeValue.slice(0, s.r.startOffset).indexOf('ﬁne') < 0) fails.push('the repeated sentence was marked at its first place');
       for (const [f, wantWord, wantSent] of words) {
         w.LB.progress(f, 0);
         const m = marks.get('loudbook-word');
-        const got = m ? m.r.toString().replace(/[.,!?\]\[+0-9 ]+$/u, '').replace(/^\[/, '') : '(none)';
+        const got = m ? m.r.toString().replace(/[.,!?\]\[+0-9 ”’"]+$/u, '').replace(/^\[/, '') : '(none)';
         if (got !== wantWord) fails.push(`word mark at ${f}: "${got}", want "${wantWord}"`);
         const sm = marks.get('loudbook-sentence');
         if (wantSent && (!sm || sm.r.toString() !== wantSent)) fails.push(`sentence mark at ${f}: "${sm && sm.r.toString()}", want "${wantSent}"`);
