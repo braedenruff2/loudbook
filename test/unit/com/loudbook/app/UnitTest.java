@@ -207,6 +207,11 @@ public class UnitTest {
             // (JavaScript's length); before, Java skipped both and the web word mark drifted a letter or two after them
             check("timing: the comma after \"x²\" is at 13 of 21 letters", Math.round(SpeechTiming.breaks("He had x\u00b2 apples, then left.").get(0)[0] * 21 * 100), 1300L);
             check("timing: the comma after \"\ud840\udc00\" is at 10 of 17 letters", Math.round(SpeechTiming.breaks("She wrote \ud840\udc00, and left.").get(0)[0] * 17 * 100), 1000L);
+            {   // where a sentence starts in its paragraph, as the page script counts places (one per character, an emoji one)
+                java.util.List<Chapter.Chunk> cs = new java.util.ArrayList<>();
+                cs.add(new Chapter.Chunk(0, "He smiled \ud83d\ude00 at her.", "")); cs.add(new Chapter.Chunk(0, "She left.", ""));
+                check("chapter: offset in the paragraph counts an emoji once", new Chapter("u", "", "t", "", cs).offsetInBlock(1), 15);
+            }
             check("timing: \"Mr.\" isn't a place to pause", SpeechTiming.breaks("Mr. Collins then returned, slowly.").size(), 1);
             // a sentence that ends in "No." or "I." still ends there (the voice pauses): only "No. 5", "J. Smith" are short forms
             check("timing: \"No.\" ending a sentence is a pause", SpeechTiming.breaks("He said no. Then he left.").size(), 1);

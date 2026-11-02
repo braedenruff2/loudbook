@@ -326,7 +326,10 @@ final class Chapter {
     int offsetInBlock(int i) {
         int n = 0;
         Chunk c = chunks.get(i);
-        for (int k = i - 1; k >= 0 && chunks.get(k).block == c.block; k--) n += chunks.get(k).text.replaceAll("\\s+", "").length();
+        for (int k = i - 1; k >= 0 && chunks.get(k).block == c.block; k--) {
+            String t = chunks.get(k).text.replaceAll("\\s+", "");
+            n += t.codePointCount(0, t.length());                              // (the page script counts an emoji as one place)
+        }
         return n;
     }
 
