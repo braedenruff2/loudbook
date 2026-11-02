@@ -150,6 +150,11 @@ final class Chapter {
     private static final java.util.regex.Pattern TEAR_RIP = java.util.regex.Pattern.compile(
         "(?<=\\b(?:[Aa]|[Tt]he|[Ll]ong|[Ss]mall|[Tt]iny|[Ll]arge|[Hh]uge|[Jj]agged|[Rr]agged|[Ss]light|[Nn]asty|[Bb]ig|[Ww]ide)[ \\t])tear(s?)"
         + "(?=[ \\t]+in[ \\t]+(?:the|his|her|their|my|your|its|our|a|an)[ \\t]+\\p{L})(?![^.!?\\n]{0,60}\\b(?:eyes?|cheeks?|voice|lashes)\\b)");
+    // "object to" after a plural subject ("the villagers object to the plan", "Many object to it") it says as the noun ("OB-ject"):
+    // -> objekt (lab 2026-11-02: ɑːbdʒˈɛkt, as it says "will object to")
+    private static final java.util.regex.Pattern OBJECT_TO = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:(?:[Tt]he|[Tt]hese|[Tt]hose|[Hh]is|[Hh]er|[Tt]heir|[Oo]ur|[Mm]y|[Yy]our|[Mm]any|[Ss]ome|[Aa]ll|[Bb]oth|[Mm]ost|[Ff]ew|[Tt]wo|[Tt]hree)[ \\t]\\p{Ll}{1,19}[a-rt-z]s"
+        + "|[A-Z]\\p{Ll}{1,19}[a-rt-z]s|[Mm]any|[Ff]ew|[Bb]oth|[Oo]thers|[Pp]eople)[ \\t])object(?=[ \\t]+to\\b)");
     // "had to" the voice runs together ("hadtuh"), and then takes the verb after it for the noun: "had to record it" ("RECK-ord"),
     // "had to use it" ("yooss"), "had to live with it" ("lyve"), "had to present"... "hadd to" it says apart, and the verb right
     // (lab 2026-11-01: 30 verbs; "have to", "has to", "used to" are fine). "has to read" it says "red" -> reed.
@@ -214,6 +219,7 @@ final class Chapter {
         if (t.contains("nsult")) t = INSULT.matcher(t).replaceAll("$1n-sult$2");
         if (t.contains("learned")) t = LEARNED.matcher(t).replaceAll("lernid");
         if (t.contains("ebel against")) t = REBEL.matcher(t).replaceAll("$1ebell");
+        if (t.contains("object to")) t = OBJECT_TO.matcher(t).replaceAll("objekt");
         if (t.contains("tear")) t = TEAR_RIP.matcher(t).replaceAll("tare$1");
         if (t.contains("s rebel")) t = REBEL_PL.matcher(t).replaceAll("rebell");
         if (t.contains("roduce")) {
