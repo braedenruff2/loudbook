@@ -159,6 +159,19 @@ public class UnitTest {
         check("straight quotes", str(Dialogue.split("He said \"stop it\" and left.", false)), "[n:He said][q:stop it][n:and left.]");
         check("inside a quote from before", str(Dialogue.split("And then we ran.\u201d She laughed.", true)), "[q:And then we ran.][n:She laughed.]");
         check("no quotes", str(Dialogue.split("The road was long.", false)), "[n:The road was long.]");
+        // British-style single quotes (only in a paragraph with no double quotes; apostrophes are not quotes)
+        check("single quotes: a paragraph that uses them", Dialogue.singles("\u2018It\u2019s the boys\u2019 dog,\u2019 she said."), true);
+        check("single quotes: apostrophes alone aren't", Dialogue.singles("It\u2019s the boys\u2019 dog, and \u2019em too in the \u201890s."), false);
+        check("single quotes: not when double quotes are used", Dialogue.singles("\u201cHe said \u2018no\u2019 to me,\u201d she said."), false);
+        check("single quotes and tag", str(Dialogue.split("\u2018It\u2019s the boys\u2019 dog,\u2019 she said. \u2018Run!\u2019", false, true)),
+            "[q:It\u2019s the boys\u2019 dog,][n:she said.][q:Run!]");
+        check("single quotes: a quote from before", str(Dialogue.split("And we ran.\u2019 She laughed at \u2019em.", true, true)), "[q:And we ran.][n:She laughed at \u2019em.]");
+        check("single quotes: straight ones", str(Dialogue.split("'Don't go,' he said.", false, true)), "[q:Don't go,][n:he said.]");
+        check("single quotes: a word quoted mid-sentence", str(Dialogue.split("She was quick in saying \u2018Yes\u2019 to all this; and then a coach came.", false, true)),
+            "[n:She was quick in saying][q:Yes][n:to all this; and then a coach came.]");
+        check("single quotes: a plural's apostrophe inside, closed later", str(Dialogue.split("\u2018We fed the boys\u2019 dog,\u2019 she said.", false, true)),
+            "[q:We fed the boys\u2019 dog,][n:she said.]");
+        check("single quotes: still open after the sentence", Dialogue.run("\u2018We left at dawn. It was cold.", false, true), true);
         // the highlight follows the voice's own pauses: silence at either end doesn't count, and a pause at a comma or
         // full stop is matched to it in the text (a straight line through the clip would run ahead at each pause)
         {
