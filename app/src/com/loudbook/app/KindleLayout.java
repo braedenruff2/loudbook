@@ -57,6 +57,11 @@ final class KindleLayout {
             int tail = Math.min(n.length(), 30);
             int g = norm.indexOf(n.substring(n.length() - tail), at);
             if (g >= 0 && g - at < 400) { int e = g + tail; out.add(new int[]{at, e, Math.max(0, n.length() - (e - at)), n.length()}); at = e; continue; }
+            // (the page's only sentence, starting at its top and running on to the next page: all of the page is its start. Before
+            //  the next check, which would take a letter or two that the sentence ends with and the page starts with for its end)
+            if (k == 0 && at == 0 && k == sentences.size() - 1 && norm.length() > 0 && n.length() > norm.length() && n.startsWith(norm.toString())) {
+                out.add(new int[]{0, norm.length(), 0, n.length()}); at = norm.length(); continue;
+            }
             // (the page's first sentence, with fewer than 30 of its letters on this page: "ment to me." after a break)
             if (k == 0 && at == 0) {
                 int cut = -1;

@@ -273,6 +273,12 @@ public class UnitTest {
         check("a sentence with only a few words at the foot of the page is found", Arrays.toString(shortRun), "[64, 74, 0, 37]");
         KindleLayout top = new KindleLayout(Arrays.asList("ment to me. The road out of the", "valley was old."), Arrays.asList(new float[]{0, 100, 400, 140}, new float[]{0, 140, 400, 180}), null);
         check("a sentence with only a few words at the top of the page is found", Arrays.toString(top.spans(Arrays.asList("His attachment to me.", "The road out of the valley was old.")).get(0)), "[0, 8, 9, 17]");
+        {   // a page holding one long sentence from its top on to the next page, which ends with a letter the page starts with
+            // ("...the old road." on a page starting "The..."): it was taken as a sentence begun on the page before, marked on one letter
+            KindleLayout one = new KindleLayout(Arrays.asList("The road out of the valley was older", "than the town, and Mara walked it"), Arrays.asList(new float[]{0, 100, 400, 140}, new float[]{0, 140, 400, 180}), null);
+            check("a page's only sentence, running on, is found by its start", Arrays.toString(one.spans(Arrays.asList(
+                "The road out of the valley was older than the town, and Mara walked it every morning, rain or not.")).get(0)), "[0, 55, 0, 76]");
+        }
         check("on the next page, the start isn't there", KindleLayout.localFrac(new int[]{0, 15, 34, 49}, 0.5f), -1.0f);
         check("on the next page, its end is", Math.round(KindleLayout.localFrac(new int[]{0, 15, 34, 49}, 0.9f) * 100), 67);
         {   // the page didn't turn after the sentence over the break was read whole: it isn't read again
