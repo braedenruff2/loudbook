@@ -155,6 +155,15 @@ final class Chapter {
     private static final java.util.regex.Pattern OBJECT_TO = java.util.regex.Pattern.compile(
         "(?<=\\b(?:(?:[Tt]he|[Tt]hese|[Tt]hose|[Hh]is|[Hh]er|[Tt]heir|[Oo]ur|[Mm]y|[Yy]our|[Mm]any|[Ss]ome|[Aa]ll|[Bb]oth|[Mm]ost|[Ff]ew|[Tt]wo|[Tt]hree)[ \\t]\\p{Ll}{1,19}[a-rt-z]s"
         + "|[A-Z]\\p{Ll}{1,19}[a-rt-z]s|[Mm]any|[Ff]ew|[Bb]oth|[Oo]thers|[Pp]eople)[ \\t])object(?=[ \\t]+to\\b)");
+    // "articulate" the adjective it says as the verb ("-late"): "she is articulate", "an articulate speaker", "inarticulate rage" -> articulit
+    // (lab 2026-11-02: ɑːɹtˈɪkjʊlˌɪt); after "to/not/could/and" it's the verb and stays.
+    private static final java.util.regex.Pattern ARTICULATE = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:[Aa]n|[Ii]s|[Ww]as|[Aa]re|[Ww]ere|[Bb]e|[Bb]een|[Vv]ery|[Ss]o|[Tt]oo|[Mm]ore|[Mm]ost|[Qq]uite|[Hh]ighly|[Rr]emarkably|[Ss]urprisingly|[Ee]xtremely|[Uu]nusually|[Pp]erfectly|[Ll]ess|[Aa]s|[Ss]eemed|[Ss]ounded)[ \\t])articulate(?![-'\u2019\\p{L}])"
+        + "|\\b([Ii])narticulate(?![-'\u2019\\p{L}])");
+    // "intimate" the verb (to hint) it says as the adjective ("-mit"): "to intimate that", "she intimates that" -> intimayt (lab 2026-11-02:
+    // ˈɪntɪmˌeɪt); only before "that" after a verb word, so "so intimate that" and "intimate friends" stay.
+    private static final java.util.regex.Pattern INTIMATE = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:to|not|would|could|should|might|did|may|will|must|[Hh]e|[Ss]he|[Ii]t|[Tt]his|[Ww]hich|[Ww]ho)[ \\t])intimate(s?)(?=[ \\t]+that\\b)");
     // "had to" the voice runs together ("hadtuh"), and then takes the verb after it for the noun: "had to record it" ("RECK-ord"),
     // "had to use it" ("yooss"), "had to live with it" ("lyve"), "had to present"... "hadd to" it says apart, and the verb right
     // (lab 2026-11-01: 30 verbs; "have to", "has to", "used to" are fine). "has to read" it says "red" -> reed.
@@ -220,6 +229,14 @@ final class Chapter {
         if (t.contains("learned")) t = LEARNED.matcher(t).replaceAll("lernid");
         if (t.contains("ebel against")) t = REBEL.matcher(t).replaceAll("$1ebell");
         if (t.contains("object to")) t = OBJECT_TO.matcher(t).replaceAll("objekt");
+        if (t.contains("rticulate")) {
+            java.util.regex.Matcher m = ARTICULATE.matcher(t);
+            StringBuffer b = new StringBuffer();
+            while (m.find()) m.appendReplacement(b, m.group(1) != null ? m.group(1) + "narticulit" : "articulit");
+            m.appendTail(b);
+            t = b.toString();
+        }
+        if (t.contains("intimate")) t = INTIMATE.matcher(t).replaceAll("intimayt$1");
         if (t.contains("tear")) t = TEAR_RIP.matcher(t).replaceAll("tare$1");
         if (t.contains("s rebel")) t = REBEL_PL.matcher(t).replaceAll("rebell");
         if (t.contains("roduce")) {
