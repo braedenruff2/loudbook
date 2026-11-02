@@ -25,6 +25,9 @@ awk '/=== app in the background/{exit} 1' logcat.txt > foreground.txt
 echo "app open (fancy text, emoji): sentences said: $(grep -c 'LoudbookTest: speaking' foreground.txt), not found on the page: $(grep -c "words weren't found" foreground.txt), found in another paragraph: $(grep -c 'found in paragraph' foreground.txt)" > fancy.txt
 # (with no signal the pages of the chapters loaded ahead can't load: each is shown from its copy, and
 # highlighted there. They used to be the browser's error page, "its words weren't found on the page")
+# (dialogue in a second voice is on: chapter one quotes in double quotes, chapter two in single ones, with an apostrophe)
+{ grep -q "two voices: .*It never opens" logcat.txt && echo "second voice, double quotes (chapter one): yes" || echo "second voice, double quotes (chapter one): NO"
+  grep -q "two voices: 2 parts.*Is anyone here" logcat.txt && echo "second voice, single quotes (chapter two): yes" || echo "second voice, single quotes (chapter two): NO"; } > dual.txt
 awk '/=== no signal from here ===/{f=1} f' logcat.txt > nosignal.txt
 echo "no signal: chapters shown from their copy: $(grep -c 'shown from the copy read ahead' nosignal.txt), sentences not found on the page: $(grep -c "words weren't found" nosignal.txt)" > offline.txt
 # cold start: Loudbook closed, opened again, play pressed with nothing open -> carries on with the last story
