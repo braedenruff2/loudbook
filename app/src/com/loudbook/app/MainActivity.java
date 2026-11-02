@@ -483,6 +483,11 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     private void gotChapter(Chapter ch) {
         // (the browser's own error page, read as if it were a chapter: "This site can't be reached")
         if (ch.url == null || !ch.url.startsWith("http")) return;
+        // (a late answer from the chapter that just ended, as the next one opens: it would be read again from the start)
+        if (awaitingTurn != null && svc != null && svc.chapter() != null && Chapter.fromPageBefore(ch.url, svc.chapter().url, awaitingTurn)) {
+            Log.i("LoudbookTest", "page: an answer from the chapter just read ignored while the next one opens");
+            return;
+        }
         pageChapter = ch;
         if (awaitingTurn != null) {
             // the page we opened because the last chapter ended

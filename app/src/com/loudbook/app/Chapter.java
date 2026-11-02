@@ -363,6 +363,16 @@ final class Chapter {
         return n;
     }
 
+    /**
+     * A chapter that says it's at the page read just before (lastPage), while another address is being loaded: an answer that
+     * came late from the page before, not this one's (ChapterFetcher). A page that sends you on (a redirect) says its new
+     * address, which isn't the last one, so it still counts.
+     */
+    static boolean fromPageBefore(String pageUrl, String lastPage, String loading) {
+        if (pageUrl == null || pageUrl.isEmpty() || lastPage == null || loading == null) return false;
+        return pageUrl.equals(lastPage) && !pageUrl.equals(loading);
+    }
+
     /** Rough minutes left at a given speed (about 15 characters a second at 1x). */
     int minutesLeft(int pos, float speed) {
         long chars = 0;

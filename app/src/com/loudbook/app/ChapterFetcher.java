@@ -36,7 +36,8 @@ final class ChapterFetcher {
     private String js;
     private String loading;                          // the address being opened, or null
     private final List<Done> waiting = new ArrayList<>();
-    private int attempt;                             // bumped per load: late answers from an old page are ignored
+    private volatile int attempt;                    // bumped per load: late answers from an old page are ignored
+    private String lastPage;                         // the address the last chapter read here said it was at
     // chapters loaded already, by the address they were asked for (the next few are kept, also on
     // the phone's storage, so reading carries on without a signal)
     private final java.util.LinkedHashMap<String, Chapter> done = new java.util.LinkedHashMap<String, Chapter>(16, 0.75f, true) {
@@ -163,7 +164,7 @@ final class ChapterFetcher {
         String url = loading;
         loading = null;
         attempt++;
-        if (ch != null && url != null) { done.put(url, ch); toDisk(url, ch); }
+        if (ch != null && url != null) { done.put(url, ch); toDisk(url, ch); lastPage = ch.url; }
         if (web != null) web.loadUrl("about:blank");     // stop the page's scripts and ads
         Log.i("LoudbookTest", "fetched " + url + ": " + (ch != null ? ch.size() + " sentences, next " + ch.nextUrl : error));
         for (Done d : ds) { try { d.on(ch, error); } catch (Throwable t) { Log.w(TAG, "fetcher callback", t); } }
@@ -173,10 +174,15 @@ final class ChapterFetcher {
 
     final class Bridge {
         @JavascriptInterface public void onChapter(String json) {
+            final int at = attempt;                  // (the load this answer came during)
             main.post(() -> {
-                if (loading == null) return;
+                // (an answer from the page before: the page script answers each time it's run, and the next load can start
+                // straight from the first answer, e.g. the new-chapter check going on to the next story; it was taken as
+                // this address's chapter, and kept)
+                if (loading == null || at != attempt) return;
                 try {
                     Chapter c = new Chapter(new JSONObject(json));
+                    if (Chapter.fromPageBefore(c.url, lastPage, loading)) { Log.i("LoudbookTest", "fetcher: an answer from the page before ignored"); return; }
                     if (c.size() > 1) finish(c, null);
                 } catch (Exception e) { Log.w(TAG, "fetched chapter", e); }
             });
