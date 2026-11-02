@@ -744,6 +744,7 @@ function tidy(t) {
     .replace(/#(?=\d)/g, 'number ').replace(/(^|\s)#(?=\p{L})/gu, '$1')   // #hashtag (was "hash hashtag")                                // Rank #1
     .replace(/\b(\d+)\s?×(?=\s|$)/g, '$1 times').replace(/(^|\s)×\s?(?=\d)/g, '$1times ')   // 3× damage, ×3
     .replace(/(^|[:,;(\[•\-–]\s*|\s[-–]\s)(\d+)\s?x\s(?=\p{Lu}\p{Ll})/gu, '$1$2 ')   // Reward: 1x Potion, 3x Mana Crystal (not "one times")
+    .replace(/\b((?:bought|buys?|got|gets|received|receives?|obtained|looted|loots?|sold|sells?|collected|crafted|crafts?|found|finds?|dropped|drops|used|uses?|consumed|drank|ate|picked\s+up|took)\s+)(\d+)\s?x\s+(?=\p{Ll}{3,}s\b)/gu, '$1$2 ')   // bought 3x potions (a count, not "three times")
     .replace(/\b(\d+)x\b/g, '$1 times').replace(/\bx(\d+)\b/g, 'times $1')   // 2x damage, x3
     .replace(/\$(\d+(?:\.\d+)?)\s?(k|K|m|M|bn|b|B)\b/g, (m, n, u) => '$' + n + ' ' + { k: 'thousand', m: 'million', b: 'billion', bn: 'billion' }[u.toLowerCase()])   // $1.5M (then: a $1.5M deal -> million-dollar deal)
     .replace(/(\b(?:[Aa]n?|[Tt]he)\s)?\$(\d+(?:\.\d+)?)\s(thousand|million|billion|trillion)\b(\s+(?!(?:and|or|to|of|for|in|on|at|from|per|each|a|an|the|is|was|were|more|less|worth|plus|minus|dollars?)\b)\p{Ll})?/gu,
