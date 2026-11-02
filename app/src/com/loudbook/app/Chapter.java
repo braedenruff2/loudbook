@@ -134,6 +134,22 @@ final class Chapter {
     private static final java.util.regex.Pattern REBEL = java.util.regex.Pattern.compile(
         "(?<!\\b(?:[Aa]n?|[Tt]he|[Hh]is|[Hh]er|[Ii]ts|[Tt]heir|[Mm]y|[Yy]our|[Oo]ur|[Tt]his|[Tt]hat|[Nn]o|[Ee]very|[Ee]ach|[Ss]uch|[Ll]one|[Yy]oung|[Tt]rue|[Ff]ellow|[Bb]orn|[Nn]atural|[Rr]eal|[Ff]amous|[Ff]ormer|[Ll]ast|[Oo]ne|[Gg]reat)[ \\t])"
         + "\\b([Rr])ebel(?=[ \\t]+against\\b)");
+    // and "rebel" after a plural subject anywhere ("the slaves rebel at night", "the rebels rebel.", "Rebels rebel."): "REB-el" too
+    // (lab 2026-11-02); after "will/to/they/might" it's right already. Not before the noun it describes ("the villages rebel leaders").
+    private static final java.util.regex.Pattern REBEL_PL = java.util.regex.Pattern.compile(
+        "(?<=(?:\\b(?:[Tt]he|[Tt]hese|[Tt]hose|[Hh]is|[Hh]er|[Tt]heir|[Oo]ur|[Mm]any|[Ss]ome|[Aa]ll|[Mm]ost)[ \\t]\\p{Ll}{1,19}[a-rt-z]s|(?:^|[.!?][ \\t])[A-Z]\\p{Ll}{1,19}[a-rt-z]s)[ \\t])"
+        + "rebel(?![-'\u2019\\p{L}]|[ \\t]+(?:leaders?|army|armies|forces?|camps?|bases?|fleets?|troops|soldiers|fighters|groups?|factions?|movements?|cause|alliance|scum|ships?|strongholds?|territory|held|yell|spirit|side|heart|lines?|units?|commanders?|generals?|ranks|uprising|cells?|spies|spy|flags?|banners?)\\b)");
+    // "produce" the noun ("fresh produce", "baskets of produce", "Produce was scarce") it says as the verb ("pruh-DOOSE") after an
+    // adjective or "of", or at a sentence start: -> prodoose (lab 2026-11-02: pɹˈɑːduːs, as it says "the produce"). Not after a
+    // determiner ("let her produce it": it says "the/his produce" right anyway).
+    private static final java.util.regex.Pattern PRODUCE = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:of|[Ff]resh|[Ll]ocal|[Ff]arm|[Oo]rganic|[Ss]easonal|[Dd]airy|[Aa]gricultural|[Gg]arden|[Ss]urplus|[Rr]otten|[Rr]otting|[Ss]poiled|[Ee]xcess|[Ee]xotic|[Ii]mported|[Rr]aw|[Cc]heap|[Ss]pare|[Ll]eftover|[Hh]omegrown|[Hh]ome-grown|[Hh]arvested|[Bb]ruised|[Ww]ilted|[Ff]rozen|[Cc]anned|[Vv]illage|[Mm]arket)[ \\t])produce\\b(?![-'\u2019])"
+        + "|(?:^|(?<=[.!?\"\u201c][ \\t]))Produce(?=[ \\t]+(?:was|is|were|are|had|has|from|prices|stalls?|sellers?|carts?)\\b)");
+    // "a tear in the fabric", "a tear in his shirt" (the rip) it says "teer", as crying -> tare (lab 2026-11-02: tˈɛɹ). Not "a tear in her
+    // eye" / "a tear in the corner of his eye" (crying: anything with "eye" in the sentence after it stays).
+    private static final java.util.regex.Pattern TEAR_RIP = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:[Aa]|[Tt]he|[Ll]ong|[Ss]mall|[Tt]iny|[Ll]arge|[Hh]uge|[Jj]agged|[Rr]agged|[Ss]light|[Nn]asty|[Bb]ig|[Ww]ide)[ \\t])tear(s?)"
+        + "(?=[ \\t]+in[ \\t]+(?:the|his|her|their|my|your|its|our|a|an)[ \\t]+\\p{L})(?![^.!?\\n]{0,60}\\b(?:eyes?|cheeks?|voice|lashes)\\b)");
     // "had to" the voice runs together ("hadtuh"), and then takes the verb after it for the noun: "had to record it" ("RECK-ord"),
     // "had to use it" ("yooss"), "had to live with it" ("lyve"), "had to present"... "hadd to" it says apart, and the verb right
     // (lab 2026-11-01: 30 verbs; "have to", "has to", "used to" are fine). "has to read" it says "red" -> reed.
@@ -198,6 +214,15 @@ final class Chapter {
         if (t.contains("nsult")) t = INSULT.matcher(t).replaceAll("$1n-sult$2");
         if (t.contains("learned")) t = LEARNED.matcher(t).replaceAll("lernid");
         if (t.contains("ebel against")) t = REBEL.matcher(t).replaceAll("$1ebell");
+        if (t.contains("tear")) t = TEAR_RIP.matcher(t).replaceAll("tare$1");
+        if (t.contains("s rebel")) t = REBEL_PL.matcher(t).replaceAll("rebell");
+        if (t.contains("roduce")) {
+            java.util.regex.Matcher m = PRODUCE.matcher(t);
+            StringBuffer b = new StringBuffer();
+            while (m.find()) m.appendReplacement(b, m.group().charAt(0) == 'P' ? "Prodoose" : "prodoose");
+            m.appendTail(b);
+            t = b.toString();
+        }
         if (t.contains("resume")) t = RESUME.matcher(t).replaceAll("r\u00e9sum\u00e9$1");
         if (t.contains("ubject")) {
             java.util.regex.Matcher m = SUBJECT.matcher(t);
