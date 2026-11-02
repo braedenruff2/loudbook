@@ -164,6 +164,19 @@ final class Chapter {
     // ˈɪntɪmˌeɪt); only before "that" after a verb word, so "so intimate that" and "intimate friends" stay.
     private static final java.util.regex.Pattern INTIMATE = java.util.regex.Pattern.compile(
         "(?<=\\b(?:to|not|would|could|should|might|did|may|will|must|[Hh]e|[Ss]he|[Ii]t|[Tt]his|[Ww]hich|[Ww]ho)[ \\t])intimate(s?)(?=[ \\t]+that\\b)");
+    // "content" the adjective (happy) it says as the noun ("CON-tent") after most words but "is/was/be": "I'm content", "I am content to
+    // wait", "he felt content", "she seemed more content" -> contennt (lab 2026-11-02: kəntˈɛnt). Only after those verbs (and an adverb),
+    // so "more content coming soon", "the content of the letter" stay.
+    private static final java.util.regex.Pattern CONTENT = java.util.regex.Pattern.compile(
+        "(?<=(?:\\b(?:am|felt|feel|feels|feeling|seemed|seem|seems|looked|look|looks|looking|remained|remain|remains|stayed|grew)|['\u2019](?:m|re))"
+        + "(?:[ \\t](?:not|quite|perfectly|entirely|fairly|rather|very|so|more|almost|oddly|strangely|completely|mostly|reasonably))?[ \\t])content(?![-'\u2019\\p{L}])");
+    // "associate" / "advocate" the noun it says as the verb ("-ate"): "an associate of mine", "his associates", "a fierce advocate for them"
+    // -> associat / advokit (lab 2026-11-02: ɐsˈoʊʃət, ˈædvəkˌɪt). Only after a determiner (or an adjective after one): "they advocate
+    // change", "I associate it with fear" stay.
+    private static final java.util.regex.Pattern ASSOC_ADV = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:[Aa]n?|[Tt]he|[Hh]is|[Hh]er|[Mm]y|[Yy]our|[Tt]heir|[Oo]ur|[Ii]ts|[Tt]his|[Tt]hat|[Tt]hese|[Tt]hose|[Ff]ormer|[Cc]lose|[Tt]rusted|[Kk]nown|"
+        + "[Bb]usiness|[Ss]enior|[Jj]unior|[Oo]ld|[Ff]ierce|[Ss]taunch|[Ss]trong|[Pp]assionate|[Vv]ocal|[Tt]ireless|[Cc]hief|[Dd]evil['\u2019]s)[ \\t])"
+        + "(associate|advocate)(s?)(?![-'\u2019\\p{L}]|[ \\t]+(?:with|it|him|her|them|themselves|himself|herself)\\b)");
     // "had to" the voice runs together ("hadtuh"), and then takes the verb after it for the noun: "had to record it" ("RECK-ord"),
     // "had to use it" ("yooss"), "had to live with it" ("lyve"), "had to present"... "hadd to" it says apart, and the verb right
     // (lab 2026-11-01: 30 verbs; "have to", "has to", "used to" are fine). "has to read" it says "red" -> reed.
@@ -237,6 +250,14 @@ final class Chapter {
             t = b.toString();
         }
         if (t.contains("intimate")) t = INTIMATE.matcher(t).replaceAll("intimayt$1");
+        if (t.contains("content")) t = CONTENT.matcher(t).replaceAll("contennt");
+        if (t.contains("ate")) {
+            java.util.regex.Matcher m = ASSOC_ADV.matcher(t);
+            StringBuffer b = new StringBuffer();
+            while (m.find()) m.appendReplacement(b, (m.group(1).equals("associate") ? "associat" : "advokit") + m.group(2));
+            m.appendTail(b);
+            t = b.toString();
+        }
         if (t.contains("tear")) t = TEAR_RIP.matcher(t).replaceAll("tare$1");
         if (t.contains("s rebel")) t = REBEL_PL.matcher(t).replaceAll("rebell");
         if (t.contains("roduce")) {

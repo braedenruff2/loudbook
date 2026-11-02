@@ -77,6 +77,14 @@ public class UnitTest {
             + "He meant to intimate that she lied, and she intimates that too. They were so intimate that nobody asked. Intimate friends. He intimated it."),
             "She is articulit. An articulit man, more articulit than me, gave an inarticulit cry. Inarticulit rage. He could not articulate it. To articulate the idea. "
             + "He meant to intimayt that she lied, and she intimayts that too. They were so intimate that nobody asked. Intimate friends. He intimated it.");
+        check("content the adjective", Chapter.forKokoro("I'm content with that. I am content to wait. He felt content. She seemed more content now. I\u2019m not content. "
+            + "More content coming soon. The content of the letter. He was content. Content warning."),
+            "I'm contennt with that. I am contennt to wait. He felt contennt. She seemed more contennt now. I\u2019m not contennt. "
+            + "More content coming soon. The content of the letter. He was content. Content warning.");
+        check("associate and advocate the nouns", Chapter.forKokoro("An associate of mine. His associates left. A fierce advocate for them. The advocates spoke. "
+            + "They advocate change. I associate it with fear. The associate with him. Associated."),
+            "An associat of mine. His associats left. A fierce advokit for them. The advokits spoke. "
+            + "They advocate change. I associate it with fear. The associate with him. Associated.");
         check("object to, after a plural subject", Chapter.forKokoro("The villagers object to the plan. Many object to it. The guards objected to it. I object to that. The object to the left glowed. Their object to win."), "The villagers objekt to the plan. Many objekt to it. The guards objected to it. I object to that. The object to the left glowed. Their object to win.");
         // (the background browser: a late answer from the chapter read just before isn't the next address's chapter)
         check("late answer from the page before", Chapter.fromPageBefore("https://x.com/ch/1", "https://x.com/ch/1", "https://x.com/ch/2"), true);
