@@ -211,8 +211,10 @@ final class KindleText {
     static List<String> afterOverlap(List<String> prev, List<String> next) {
         if (prev == null || prev.isEmpty() || next.isEmpty()) return next;
         String pn = KindleLayout.normOf(String.join(" ", prev));
-        if (pn.length() < 25) return next;
-        String key = pn.substring(pn.length() - 20);
+        // (a short screen, a chapter heading or the last lines of one: only when the new one starts with all of it)
+        if (pn.length() < 10) return next;
+        boolean shortPage = pn.length() < 25;
+        String key = shortPage ? pn : pn.substring(pn.length() - 20);
         // where each letter of the new page is: {paragraph, character}
         StringBuilder nn = new StringBuilder();
         List<int[]> at = new ArrayList<>();
@@ -226,7 +228,7 @@ final class KindleText {
         for (int f = nn.indexOf(key); f >= 0; f = nn.indexOf(key, f + 1)) {
             int e = f + key.length(), n = 0;
             while (n < e && n < pn.length() && nn.charAt(e - 1 - n) == pn.charAt(pn.length() - 1 - n)) n++;
-            if ((n == e || n >= 60) && n > bestLen) { best = e; bestLen = n; }
+            if ((n == e || n >= 60) && n > bestLen && (!shortPage || f == 0)) { best = e; bestLen = n; }
         }
         if (best < 0) return next;
         int[] last = at.get(best - 1);

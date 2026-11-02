@@ -291,6 +291,13 @@ public class UnitTest {
             Arrays.asList("Mara walked it every morning, and liked it.", "Then she stayed in.")), "[Then she stayed in.]");
         check("turned page (no overlap): unchanged", KindleText.afterOverlap(
             Arrays.asList("The road out of the valley was older than the town."), Arrays.asList("Mara walked it every morning.")), "[Mara walked it every morning.]");
+        // (a short screen, under 25 letters, scrolled on: the new one starts with all of it; found by the fuzz of 2026-11-02)
+        check("scrolled screen: a short screen read already is dropped", KindleText.afterOverlap(
+            Arrays.asList("Chapter Three. The Gate"), Arrays.asList("Chapter Three. The Gate", "It swung open.")), "[It swung open.]");
+        check("short screen: not dropped unless the new one starts with it", KindleText.afterOverlap(
+            Arrays.asList("Chapter Three. The Gate"), Arrays.asList("It swung open. Chapter Three. The Gate was gone.")), "[It swung open. Chapter Three. The Gate was gone.]");
+        check("very short screen (under 10 letters): unchanged", KindleText.afterOverlap(
+            Arrays.asList("Yes."), Arrays.asList("Yes. No. Maybe so.")), "[Yes. No. Maybe so.]");
         // the sentence over a page break, whole, when the next page's start is known
         KindleText kb = new KindleText("");
         java.util.List<Chapter.Chunk> pgb = kb.chunks(Arrays.asList("It was late. He agreed with Mr. Morris"), false);
