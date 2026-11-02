@@ -13,7 +13,16 @@ final class SelfTest {
     static void commands(Context c, VoiceCommands vc) {
         try {
             step("download");
-            VoiceCommands.fetch(c, null);
+            // (the emulator's network can take a while to come up after boot: the first try failed with no reason shown,
+            // 2026-11-02. Android hides the stack of an UnknownHostException, so the reason goes in the message.)
+            for (int attempt = 1; ; attempt++) {
+                try { VoiceCommands.fetch(c, null); break; }
+                catch (Exception e) {
+                    step("download try " + attempt + " failed: " + e);
+                    if (attempt >= 4) throw e;
+                    Thread.sleep(15_000);
+                }
+            }
             for (String f : VoiceCommands.FILES) step("  " + f + " " + new java.io.File(VoiceCommands.dir(c), f).length());
             step("load");
             vc.load(c);
@@ -27,7 +36,7 @@ final class SelfTest {
             step("recorded " + rec.length + ", speech part " + (VoiceCommands.speechPart(rec) == null ? "none" : "some"));
             step("DONE commands");
         } catch (Throwable t) {
-            Log.e(TAG, "FAILED commands", t);
+            Log.e(TAG, "FAILED commands: " + t, t);
         }
     }
 

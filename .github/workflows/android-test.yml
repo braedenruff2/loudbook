@@ -76,6 +76,7 @@ jobs:
             echo '## Loudbook on the Android emulator'; echo
             echo "commit ${GITHUB_SHA::7}, run ${{ github.run_id }}, emulator step: ${{ steps.emu.outcome }}, retry: ${{ steps.emu2.outcome }}"; echo
             echo "app process after the test: $(cat alive.txt 2>/dev/null)"; echo
+            echo "voice commands self-test: $(grep -oE 'DONE commands|FAILED commands.*|download try [0-9]+ failed.*' logcat.txt 2>/dev/null | tr '\n' ';' | cut -c1-400)"; echo
             echo '```'
             grep -E "LoudbookTest|Loudbook|AndroidRuntime|FATAL| F DEBUG| F libc|sherpa-onnx|tombstone" logcat.txt 2>/dev/null | grep -v "SearchServiceCore\|ResourcesManager\|Choreographer" | tail -250
             echo '```'

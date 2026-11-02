@@ -745,6 +745,8 @@ function tidy(t) {
     .replace(/\b(\d+)\s?×(?=\s|$)/g, '$1 times').replace(/(^|\s)×\s?(?=\d)/g, '$1times ')   // 3× damage, ×3
     .replace(/(^|[:,;(\[•\-–]\s*|\s[-–]\s)(\d+)\s?x\s(?=\p{Lu}\p{Ll})/gu, '$1$2 ')   // Reward: 1x Potion, 3x Mana Crystal (not "one times")
     .replace(/\b((?:bought|buys?|got|gets|received|receives?|obtained|looted|loots?|sold|sells?|collected|crafted|crafts?|found|finds?|dropped|drops|used|uses?|consumed|drank|ate|picked\s+up|took)\s+)(\d+)\s?x\s+(?=\p{Ll}{3,}s\b)/gu, '$1$2 ')   // bought 3x potions (a count, not "three times")
+    .replace(/(?<![\d.,])\b(\d+)\s?x\s+(?=(?:(?!(?:more|less|fewer|stronger|faster|better|bigger|larger|greater|higher|cheaper|weaker|slower|smaller|longer|harder|heavier)\b)\p{Ll}+\s+)?(?:potions?|elixirs?|pills?|scrolls?|arrows?|bolts?|coins?|crystals?|cores?|gems?|stones?|ingots?|herbs?|vials?|bottles?|flasks?|keys?|tokens?|rations?|bandages?|runes?|daggers?|knives|swords?|bombs?|traps?|eggs?|ores?|pelts?|hides?|fangs?|claws?|horns?|tails?|feathers?|shards?|fragments?|beast\s+cores?|spirit\s+stones?)\b)/gu, '$1 ')   // 3x potions, 2x mana crystals (a count: items)
+    .replace(/\bB(\d{1,3})F\b/g, 'basement floor $1')   // B5F: a dungeon's fifth basement floor (Japanese style)
     .replace(/\b(\d+)x\b/g, '$1 times').replace(/\bx(\d+)\b/g, 'times $1')   // 2x damage, x3
     .replace(/\$(\d+(?:\.\d+)?)\s?(k|K|m|M|bn|b|B)\b/g, (m, n, u) => '$' + n + ' ' + { k: 'thousand', m: 'million', b: 'billion', bn: 'billion' }[u.toLowerCase()])   // $1.5M (then: a $1.5M deal -> million-dollar deal)
     .replace(/(\b(?:[Aa]n?|[Tt]he)\s)?\$(\d+(?:\.\d+)?)\s(thousand|million|billion|trillion)\b(\s+(?!(?:and|or|to|of|for|in|on|at|from|per|each|a|an|the|is|was|were|more|less|worth|plus|minus|dollars?)\b)\p{Ll})?/gu,
@@ -1085,6 +1087,7 @@ function tidy(t) {
     // "&" inside letters: Q&A, R&D, AT&T ("AT&T" ran together; a lone "A" became "uh", so it's "eh")
     .replace(/\b([A-Z]{1,2})&([A-Z]{1,2})\b/g, (m, a, b) => [a, b].map((x) => (x === 'A' ? 'eh' : x.split('').join('-'))).join(' and '))
     .replace(/\bQ([1-4])\b/g, 'Q $1').replace(/\bFY\s?(?=\d{2,4}\b)/g, 'F-Y ')   // Q1, FY2024
+    .replace(/(?<![\d.,$])\b0?(\.\d+)c\b(?![\w'’+#])/g, '0$1 C')   // 0.3c: a share of light speed (sci-fi), not cents
     .replace(/(\d)\s?¢|\b(\d+)c\b(?![\w'’+#])/g, (m, a, b) => (a || b) + ((a || b) === '1' ? ' cent' : ' cents'))   // 50c
     .replace(/\b(\d+)\s?gp\b/g, '$1 gold')                          // 5 gp (gold pieces)
     .replace(/\b(\d+)\s?(cp|sp|ep|pp)\b(?![\w'’]|\.\w)/g, (m, n, u, at, all) => (/\b(?:gold|silver|copper|platinum|coins?)\b/i.test(all) ? n + ' ' + { cp: 'copper', sp: 'silver', ep: 'electrum', pp: 'platinum' }[u] : m))   // "10 gp, 5 sp" (was "S P")

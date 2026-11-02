@@ -1,5 +1,5 @@
 Characters in a second voice: stories that quote speech in single quotes (‘Yes,’ she said) now get the second voice too, without mistaking apostrophes (the boys’ dog) for quotes.
-Reading: "Lt. Col. in 1944" says Lieutenant Colonel, "~$300" says about three hundred dollars, and "Version v1.2" no longer says "version" twice. Very long runs of emoji or fancy letters with no spaces are no longer cut in half.
+Reading: "Lt. Col. in 1944" says Lieutenant Colonel, "~$300" says about three hundred dollars, and "Version v1.2" no longer says "version" twice. "3x potions" says three potions (still "three times" for 3x damage), dungeon floors like B5F say basement floor five, and a starship's "0.3c" is no longer "cents". Very long runs of emoji or fancy letters with no spaces are no longer cut in half.
 Kindle: the screen works normally while Loudbook reads. Taps, Kindle's buttons, back, home and switching apps work as usual, instead of the screen-reader "touch to hear, double-tap to press" (Android 11 and newer).
 Kindle: after leaving Kindle (or closing it and Loudbook) while paused, the old highlight no longer shows when you open Kindle again; it comes back when you press play.
 Kindle: a page holding just one long sentence that runs on to the next page is highlighted properly; before, the highlight could sit on one letter at the top of the page.
