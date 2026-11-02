@@ -226,7 +226,13 @@ public class KindleService extends AccessibilityService {
             hideHighlight(); hidePicker();
             if (exploreOn && left) { Log.i("LoudbookTest", "kindle: left Kindle, screen-reader touch off"); setExplore(false); }
             if (speaking && left && now - awayAt > 2500 && !busy) { Log.i("LoudbookTest", "kindle: left Kindle, reading paused"); svc.pause(); speaking = false; }
-        } else if (reading) main.post(paint); else hideHighlight();
+        }
+        // left Kindle (or closed it, with Loudbook) while paused: coming back, the marks of the page read before don't show (the
+        // book may be shut or on another page) until reading goes on
+        if (left) awaySincePause = true; else if (speaking) awaySincePause = false;
+        if (kindle && reading && awaySincePause && !awayLogged) { awayLogged = true; Log.i("LoudbookTest", "kindle: back in Kindle after leaving it paused: no highlight until reading goes on"); }
+        if (!awaySincePause) awayLogged = false;
+        if (kindle) { if (reading && !awaySincePause) main.post(paint); else hideHighlight(); }
         if (kindle && loudbookOpen() || speaking) showBubble(); else hideBubble();
         // explore-by-touch only while reading Kindle (so the phone works normally the rest of the time)
         // (reading takes a moment to start: leave things as they are meanwhile)
@@ -353,6 +359,7 @@ public class KindleService extends AccessibilityService {
 
     // ---------------------------------------------------------------- the highlight on Kindle's page
     private volatile boolean kindleOnScreen;
+    private boolean awaySincePause, awayLogged;
     private HighlightView hl;
     private volatile int spansFor = -1;
     private int lastLit = -1;
@@ -365,7 +372,7 @@ public class KindleService extends AccessibilityService {
         main.removeCallbacks(paint);
         if (me != this) return;
         boolean reading = svc != null && svc.readingKindle() && svc.isPlaying();
-        if (!reading || !kindleOnScreen) { hideHighlight(); return; }
+        if (!reading || !kindleOnScreen || awaySincePause) { hideHighlight(); return; }
         if (++paints % 5 == 0 && kindleRoot() == null) { kindleOnScreen = false; hideHighlight(); watch(); return; }
         KindleLayout lay = shown;
         float[] now = svc.kindleNow();
@@ -723,10 +730,27 @@ public class KindleService extends AccessibilityService {
             setServiceInfo(i);
             exploreOn = on;
             Log.i("LoudbookTest", "explore by touch " + (on ? "on" : "off"));
+            if (on) touchesPassThrough();
             if (on) { main.removeCallbacks(tick); main.postDelayed(tick, 500); }   // (watched from now on, so it never outlasts Kindle)
             // Kindle closes the book when a screen reader comes or goes: open it again
             if (bookOpen) new Thread(KindleService.this::reopenBook, "lb-kindle-reopen").start();
         } catch (Exception e) { Log.w(TAG, "explore by touch", e); }
+    }
+
+    /**
+     * Screen-reader touch is on only so Kindle shares its text: the screen itself keeps working as usual. Touches anywhere go
+     * straight to the app under the finger (Kindle's own buttons, the gold button, back, home and the app switcher), not
+     * a screen reader's "touch to hear, double-tap to press" (he had to leave Kindle by opening the camera). Android 11+.
+     */
+    private void touchesPassThrough() {
+        if (android.os.Build.VERSION.SDK_INT < 30) return;
+        try {
+            Rect all = wm != null ? wm.getMaximumWindowMetrics().getBounds() : new Rect(0, 0, 4096, 8192);
+            android.graphics.Region r = new android.graphics.Region(0, 0, Math.max(all.width(), all.height()) + 1, Math.max(all.width(), all.height()) + 1);
+            setGestureDetectionPassthroughRegion(android.view.Display.DEFAULT_DISPLAY, r);
+            setTouchExplorationPassthroughRegion(android.view.Display.DEFAULT_DISPLAY, r);
+            Log.i("LoudbookTest", "kindle: touches pass through the screen reader");
+        } catch (Throwable t) { Log.w(TAG, "touch pass-through", t); }
     }
 
     /** If Kindle closed the book (it does when screen-reader mode switches), opens it again (Kindle's "Most recent book"). */

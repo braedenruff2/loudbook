@@ -30,14 +30,15 @@ final class Chapter {
         "(?<!\\b(?:[Aa]n|[Tt]he|[Nn]o|[Aa]ny|[Pp]oor|[Gg]ood|[Bb]ad|[Ll]ame|[Pp]erfect|[Ee]very|[Ss]ome|[Aa]nother|[Bb]est|[Oo]nly|[Ff]eeble|[Ff]limsy|[Cc]onvenient|[Mm]y|[Hh]is|[Hh]er|[Yy]our|[Tt]heir|[Oo]ur|[Ii]ts)[ \\t])\\b([Ee])xcuse(?=[ \\t]+(?:me|us|him|her|them|my|our|your|his|their|myself|himself|herself|themselves|yourself|yourselves|ourselves|this|that|the)\\b)");
     // (at a sentence start only: mid-sentence it says these right)
     private static final java.util.regex.Pattern START_VERB = java.util.regex.Pattern.compile(
-        "(?:^|(?<=[.!?]|[.!?][\"\u201d\u2019')]|[\"\u201c\u2018(]))([ \\t]*)(Use|Abuse|Separate|Record|Present|Polish|Tear|Permit|Insult|Increase|Decrease|Estimate|Moderate|Conduct|Project|Object|Protest|Suspect|Convict|Console|Contract|Torment|Escort|Transport|Export)" + OBJ);
+        "(?:^|(?<=[.!?]|[.!?][\"\u201d\u2019')]|[\"\u201c\u2018(]))([ \\t]*)(Use|Abuse|Separate|Record|Present|Polish|Tear|Permit|Insult|Increase|Decrease|Estimate|Moderate|Conduct|Project|Object|Protest|Suspect|Convict|Console|Contract|Torment|Escort|Transport|Export|Insert|Desert|Contest)" + OBJ);
     private static final java.util.Map<String, String> START_SAID = new java.util.HashMap<>();
     static {
         String[] w = {"Use", "Uze", "Abuse", "Abuze", "Separate", "Sepper-ate", "Record", "Re-cord", "Present", "Pree-zent", "Polish", "Pollish",
             "Tear", "Tare", "Permit", "Per-mit", "Insult", "In-sult", "Increase", "In-crease", "Decrease", "Dee-crease",
             "Estimate", "Esti-mate", "Moderate", "Moder-ate", "Conduct", "Kun-duct", "Project", "Pruh-ject", "Object", "Ub-ject",
             "Protest", "Pruh-test", "Suspect", "Suh-spect", "Convict", "Kun-vict", "Console", "Kun-sole", "Contract", "Kun-tract",
-            "Torment", "Tor-ment", "Escort", "Ess-cort", "Transport", "Trans-port", "Export", "Ex-port"};
+            "Torment", "Tor-ment", "Escort", "Ess-cort", "Transport", "Trans-port", "Export", "Ex-port",
+            "Insert", "In-sert", "Desert", "Dessert", "Contest", "Kun-test"};
         for (int i = 0; i < w.length; i += 2) START_SAID.put(w[i], w[i + 1]);
     }
     // after an adverb ("they always use it", "she carefully recorded"... "he quickly present(s)") it takes them for nouns too
@@ -47,19 +48,19 @@ final class Chapter {
         "(?<!\\b(?:[Tt]he|[Aa]|[Aa]n|[Hh]is|[Hh]er|[Ii]ts|[Tt]heir|[Mm]y|[Yy]our|[Oo]ur|[Tt]his|[Tt]hat|[Nn]o|[Aa]ny|[Ee]very|[Ss]ome|[Ee]ach|[Ww]as|[Ww]ere|[Ii]s|[Aa]re|[Bb]e|[Bb]een|[Bb]eing|[Aa]m)[ \\t])"
         + "\\b((?!(?:early|only|family|ally|belly|bully|jelly|lily|rally|tally|fly|reply|supply|apply|rely|assembly|holy|ugly|lovely|lonely|friendly|elderly|silly|jolly|daily|weekly|monthly|yearly|hourly|nightly|likely|deadly|costly|bodily|orderly|lowly|kindly|curly|burly|surly|chilly|hilly|oily|wily|lively|comely|homely|manly|womanly|worldly|scholarly|cowardly|stately|ghastly|ghostly|beastly|sickly|smelly|bubbly|wobbly|prickly|melancholy|anomaly|monopoly|italy|july|sally|molly|holly|emily|lily|kelly|billy|willy|polly)\\b)"
         + "(?:[a-z]+ly|always|often|also|sometimes|usually|seldom|then|now|soon|just|still|even)[ \\t]+)"
-        + "(use|abuse|separate|record|present|polish|tear|permit|insult|increase|decrease|estimate|moderate|conduct|project|object|protest|suspect|convict|console|contract|torment|escort|transport|export)" + OBJ);
+        + "(use|abuse|separate|record|present|polish|tear|permit|insult|increase|decrease|estimate|moderate|conduct|project|object|protest|suspect|convict|console|contract|torment|escort|transport|export|insert|desert|contest)" + OBJ);
     // and after "had better", "would rather", "you'd", "let's", "let me", "help him", "make them", "did he", "why not", "go", "come and", "Now," "Please,"
     // (lab 2026-11-01; "I'll", "don't", "to", "will", "then", "just" are fine)
     private static final java.util.regex.Pattern PRE_VERB = java.util.regex.Pattern.compile(
         "(?<=\\b(?:(?:[Yy]ou|[Tt]hey|I|[Hh]e|[Ss]he|[Ww]e)['\u2019]d|[Ll]et['\u2019]s|(?:[Ll]et|[Hh]elp|[Hh]elped|[Mm]ake|[Mm]ade|[Ww]atch|[Ss]ee)[ \\t](?:me|him|her|us|them|you)"
         + "|(?:[Dd]id|[Dd]oes|[Dd]o)[ \\t](?:he|she|they|you|I|we|it)|[Ww]hy[ \\t]not|(?:[Hh]ad|[Ww]ould|['\u2019]d)[ \\t](?:better|rather)|[Gg]o|[Cc]ome[ \\t]and|(?:[Nn]ow|[Pp]lease|[Qq]uick|[Hh]urry|[Oo]kay|OK|[Nn]ext|[Ff]irst|[Tt]hen),)[ \\t])"
-        + "(use|abuse|separate|record|present|polish|tear|permit|insult|increase|decrease|estimate|moderate|conduct|project|object|protest|suspect|convict|console|contract|torment|escort|transport|export)" + OBJ);
+        + "(use|abuse|separate|record|present|polish|tear|permit|insult|increase|decrease|estimate|moderate|conduct|project|object|protest|suspect|convict|console|contract|torment|escort|transport|export|insert|desert|contest)" + OBJ);
     // and after a plural subject ("the guards escort the prisoner", "mages use their mana", "many suspect him") or "and"
     // ("stood up and record the scene"): present-tense web fiction (lab 2026-11-01)
     private static final java.util.regex.Pattern PL_VERB = java.util.regex.Pattern.compile(
         "(?<=\\b(?:(?:[Tt]he|[Tt]hese|[Tt]hose|[Hh]is|[Hh]er|[Tt]heir|[Oo]ur|[Mm]y|[Yy]our|[Mm]any|[Ss]ome|[Aa]ll|[Bb]oth|[Mm]ost|[Ff]ew|[Tt]wo|[Tt]hree)[ \\t]\\p{Ll}{1,19}[a-rt-z]s"
         + "|[A-Z]\\p{Ll}{1,19}[a-rt-z]s|[Mm]any|[Ff]ew|[Bb]oth|[Oo]thers|[Pp]eople|and)[ \\t])"
-        + "(use|abuse|separate|record|present|polish|tear|permit|insult|increase|decrease|estimate|moderate|conduct|project|object|protest|suspect|convict|console|contract|torment|escort|transport|export)" + OBJ);
+        + "(use|abuse|separate|record|present|polish|tear|permit|insult|increase|decrease|estimate|moderate|conduct|project|object|protest|suspect|convict|console|contract|torment|escort|transport|export|insert|desert|contest)" + OBJ);
     private static final java.util.regex.Pattern AND_USE = java.util.regex.Pattern.compile(
         "(?<=\\b(?:and|then|[Pp]lease|[Jj]ust|[Nn]ow|[Ss]o|[Oo]r)[ \\t])use" + OBJ);
     private static final java.util.regex.Pattern WIND = java.util.regex.Pattern.compile(
