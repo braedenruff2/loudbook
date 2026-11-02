@@ -732,6 +732,7 @@ function tidy(t) {
     // stats named in a sentence: "his INT", "INT rose by 2, WIS by 1", "AGI and STR" (the voice spelled them: "I-N-T")
     .replace(/\b(my|his|her|their|your|its|our|high|low|base|total) (STR|AGI|DEX|INT|VIT|END|WIS|CHA|LUK|LCK|PER|CON|SPD|DEF|ATK|MAG|RES|SPI|FOC|WIL)\b(?![a-z'’])/g, (m, w, k) => w + ' ' + STATS[k])
     .replace(/\b(STR|AGI|DEX|INT|VIT|END|WIS|CHA|LUK|LCK|PER|CON|SPD|DEF|ATK|MAG|RES|SPI|FOC|WIL)(?=(?: (?:rose|increased|went up|grew|dropped|fell|decreased|was raised|was lowered))? by [+-]?\d)/g, (m, k) => STATS[k])
+    .replace(/\b(STR|AGI|DEX|INT|VIT|END|WIS|CHA|LUK|LCK|PER|CON|SPD|DEF|ATK|MAG|RES|SPI|FOC|WIL)(?= (?:stat|stats|score|scores|points?|value|check|checks|build|bonus|modifier|requirement|cap)\b)/g, (m, k) => STATS[k])   // her INT stat, a DEX build
     .replace(/\b(STR|AGI|DEX|INT|VIT|END|WIS|CHA|LUK|LCK|PER|CON|SPD|DEF|ATK|MAG|RES|SPI|FOC|WIL)((?:, |,? and |,? or )(STR|AGI|DEX|INT|VIT|END|WIS|CHA|LUK|LCK|PER|CON|SPD|DEF|ATK|MAG|RES|SPI|FOC|WIL))+\b(?![a-z'’])/g, (m) => m.replace(/[A-Z]{3}/g, (k) => STATS[k]))
     .replace(/(^|[\s(\[])\+(?=\d)/g, '$1plus ')                     // +5 Agility
     .replace(/(^|[\s(\[])[-−](?=\d)/g, '$1minus ')
