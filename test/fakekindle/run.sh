@@ -160,4 +160,24 @@ grep -c "kindle speaking [0-9]*: She liked the quiet" away-log.txt | sed 's/^/ti
 grep -q "kindle speaking [0-9]*: and she liked that nobody else bothered" away-log.txt && echo "the rest of it read with the next page's words: yes" >> away.txt || echo "the rest of it read with the next page's words: NO" >> away.txt
 adb shell am force-stop com.amazon.kindle
 adb shell input keyevent KEYCODE_HOME
+# a quote open over the page break, read with the second voice on: the character's words after the break must stay in the
+# character's voice ("[q n]": quote, then "he said" in the reader's); the paragraph used to be split in two at the break,
+# which swapped them ("[n q]"), 2026-11-03
+sleep 5
+adb shell am start -n com.loudbook.app/.MainActivity --ez dual true                     # (second voice on)
+sleep 4
+adb shell log -t LoudbookTest "=== quote over the page break ==="
+adb shell am start -S -n com.amazon.kindle/.Reader --ez explore true --ez next true --ez quote true
+sleep 6
+adb shell input tap $X $Y
+# (once more if the tap wasn't seen at all; not if it was: a second tap would pause)
+for i in $(seq 1 8); do sleep 2; adb logcat -d | sed -n '/=== quote over the page break/,$p' | grep -q "kindle button tapped" && break; done
+adb logcat -d | sed -n '/=== quote over the page break/,$p' | grep -q "kindle button tapped" || adb shell input tap $X $Y
+for i in $(seq 1 30); do sleep 2; adb logcat -d | sed -n '/=== quote over the page break/,$p' | grep -q "two voices: 2 parts.*I never thought" && break; done
+sleep 4
+adb logcat -d | sed -n '/=== quote over the page break/,$p' > quote-log.txt
+grep -q "sentence over the page break.*still standing" quote-log.txt && echo "quote over the page break, sentence read whole: yes" > quote.txt || echo "quote over the page break, sentence read whole: NO" > quote.txt
+grep -q 'two voices: 2 parts.*I never thought.*\[q n\]' quote-log.txt && echo "quote over the page break, character's words in the character's voice: yes" >> quote.txt || echo "quote over the page break, character's words in the character's voice: NO ($(grep -o 'two voices: 2 parts.*I never thought.*' quote-log.txt | head -1))" >> quote.txt
+adb shell am force-stop com.amazon.kindle
+adb shell input keyevent KEYCODE_HOME
 adb logcat -d > logcat.txt

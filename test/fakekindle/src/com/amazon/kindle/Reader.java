@@ -19,13 +19,20 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 public class Reader extends Activity {
-    static final String[][] PAGES = {
+    static final String[][] BOOK = {
         {"Chapter Three", "The road out of the valley was older than the town, and in places the stones had sunk so deep that grass grew over them.",
          "Mara walked it every morning. She liked the quiet, and she liked that nobody else", },
         {"bothered to come this way anymore, not since the new highway had opened on the far side of the hill.",
          "\"You'll wear out your boots,\" her aunt said, every single time.", "\"Then I'll buy new ones.\""},
         {"The last page has only one paragraph, and it ends the chapter cleanly when Mr. Hale reaches Lv. 5 in Chapter IV."},
     };
+    // quote: a book whose page ends inside a quote that goes on over the page break (the second voice must keep the
+    // character's words in the character's voice after the break, not swap them with "he said")
+    static final String[][] QUOTE = {
+        {"Chapter Five", "Tom stopped at the gate. \"Wait. I never thought we would find the old house"},
+        {"still standing,\" he said quietly.", "The gate creaked behind them."},
+    };
+    String[][] PAGES = BOOK;
     int page = 0;
     LinearLayout body;
     // explore mode: the page is drawn (like Kindle's renderer) and its text is shared only while
@@ -154,6 +161,7 @@ public class Reader extends Activity {
         explore = getIntent().getBooleanExtra("explore", false);
         next = explore && getIntent().getBooleanExtra("next", false);
         away = getIntent().getBooleanExtra("away", false);
+        if (getIntent().getBooleanExtra("quote", false)) PAGES = QUOTE;
         body = new LinearLayout(this); body.setOrientation(LinearLayout.VERTICAL);
         if (explore) {
             drawn = new Drawn();

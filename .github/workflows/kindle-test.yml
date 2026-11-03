@@ -5,7 +5,7 @@ name: Kindle test
 on:
   push:
     branches: [main]
-    paths: ['app/src/com/loudbook/app/Kindle*.java', 'app/src/com/loudbook/app/ReaderService.java', 'app/src/com/loudbook/app/SpeechTiming.java', 'app/src/com/loudbook/app/Chapter.java', 'app/src/com/loudbook/app/Voice.java', 'app/src/com/loudbook/app/InkLayout.java', 'app/res/xml/kindle_service.xml', 'test/fakekindle/**', '.github/workflows/kindle-test.yml']
+    paths: ['app/src/com/loudbook/app/Kindle*.java', 'app/src/com/loudbook/app/ReaderService.java', 'app/src/com/loudbook/app/SpeechTiming.java', 'app/src/com/loudbook/app/Chapter.java', 'app/src/com/loudbook/app/Dialogue.java', 'app/src/com/loudbook/app/Voice.java', 'app/src/com/loudbook/app/InkLayout.java', 'app/res/xml/kindle_service.xml', 'test/fakekindle/**', '.github/workflows/kindle-test.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -66,7 +66,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           {
-            echo '## Kindle reader on the emulator'; echo; cat explore-state.txt closed.txt pick.txt leave.txt bridge.txt away.txt 2>/dev/null; echo; echo '```'
+            echo '## Kindle reader on the emulator'; echo; cat explore-state.txt closed.txt pick.txt leave.txt bridge.txt away.txt quote.txt 2>/dev/null; echo; echo '```'
             echo "commit ${GITHUB_SHA::7}, run ${{ github.run_id }}, emulator step: ${{ steps.emu.outcome }}, retry: ${{ steps.emu2.outcome }}"; echo
             grep -E "LoudbookTest|FakeKindle|Loudbook|MediaFocusControl|AndroidRuntime|FATAL| F DEBUG" logcat.txt 2>/dev/null | grep -v "SearchServiceCore" | tail -120
             echo '```'

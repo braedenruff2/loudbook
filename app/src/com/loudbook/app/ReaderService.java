@@ -559,7 +559,9 @@ public class ReaderService extends Service {
         java.util.List<String[]> parts = Dialogue.split(text, Dialogue.openAt(ch, i), Dialogue.singles(ch, i));
         int other = dialogueVoice(want);
         if (parts.size() == 1) return makeHere(text, "q".equals(parts.get(0)[1]) ? other : want, sp);
-        Log.i("LoudbookTest", "two voices: " + parts.size() + " parts, characters in voice " + other + ": " + text.substring(0, Math.min(40, text.length())));
+        StringBuilder kinds = new StringBuilder();                // (q: a character's words, n: the reader's; kindle-test checks them)
+        for (String[] p : parts) kinds.append(kinds.length() > 0 ? " " : "").append(p[1]);
+        Log.i("LoudbookTest", "two voices: " + parts.size() + " parts, characters in voice " + other + ": " + text.substring(0, Math.min(40, text.length())) + " [" + kinds + "]");
         java.util.List<Voice.Clip> clips = new java.util.ArrayList<>();
         for (String[] p : parts) clips.add(makeHere(p[0], "q".equals(p[1]) ? other : want, sp));
         return Voice.join(clips, 0.08);
