@@ -1,3 +1,4 @@
+Kindle: a shorter pause when a page ends with its sentence. The next page's first words are made while the last sentence is still being read (when Kindle shares how the next page starts), so reading carries on sooner after the turn.
 If the phone's audio output fails while reading (it can when Bluetooth or the audio system restarts), Loudbook starts the sentence again instead of going silent while still showing it's playing.
 Kindle, second voice: when a character's speech runs over a page break, the rest of it after the turn stays in the character's voice (it could switch to the narrator, or swap the two), and there's no paragraph-length pause in the middle of a paragraph at the turn.
 Kindle: no more pause of a few seconds after a page turns in the middle of a sentence. The new page's first sentences are now made while that sentence is still being read (most noticeable with the PC's voice).

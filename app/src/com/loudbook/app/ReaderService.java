@@ -666,6 +666,8 @@ public class ReaderService extends Service {
         logKindle("start", p.paragraphs, raw);
         kindleSig = p.signature;
         kindleParas = p.paragraphs;
+        kindleNext = p.nextStart;
+        { Future<Voice.Clip> ah = aheadClip; aheadClip = null; aheadKey = null; if (ah != null) ah.cancel(false); }
         kindleEnded = false; kindleBusy = false; kindleHidden = false;
         splitIdx = -1; splitTurned = false;
         final java.util.List<Chapter.Chunk> page = raw;
@@ -766,6 +768,39 @@ public class ReaderService extends Service {
     private volatile boolean kindleQueued;
     /** The Kindle chapter kt belongs to (null between a new start and its chapter being set): only it turns Kindle's pages. */
     private volatile Chapter kindleCh;
+    /** How the next Kindle page starts, if Kindle shares it (KindleService.Page.nextStart). */
+    private volatile String kindleNext;
+    /** The next page's first piece, made while this page's last sentence is heard ({sid|speed|say}, its clip). */
+    private volatile String aheadKey;
+    private volatile Future<Voice.Clip> aheadClip;
+    /**
+     * The page ends with its sentence (nothing runs over the break): the page only turns after its last word, and the new
+     * page's first words were made only then, their whole making time in silence (with the PC's voice several seconds).
+     * When Kindle shares how the next page starts, its first piece is made now, while the last sentence is heard.
+     */
+    private void makeNextPageAhead(Chapter ch) {
+        final KindleText kts = kt;
+        final String ns = kindleNext;
+        if (kts == null || ns == null || kindleCh != ch || aheadClip != null) return;
+        kindleThread.submit(() -> {
+            try {
+                if (kts != kt || chapter != ch) return null;
+                String piece = kts.nextFirstPiece(ns);
+                if (piece == null) return null;
+                java.util.List<Chapter.Chunk> said = spoken(java.util.Collections.singletonList(new Chapter.Chunk(-1, piece, kts.sayOf(piece))));
+                if (said.size() != 1) return null;
+                final String say = said.get(0).say;
+                // (with the second voice, quotes are voiced from their paragraph: those are made after the turn as before)
+                boolean voiced = prefs.getBoolean("dualVoice", false) && prefs.getString("pcVoice", "").isEmpty();
+                if (voiced && say.matches("(?s).*[\"'\u201c\u201d\u2018\u2019].*")) return null;
+                final int want = sid; final float sp = speed;
+                aheadKey = want + "|" + sp + "|" + say;
+                aheadClip = synth.submit(() -> learned(makeHere(say, want, sp), want));
+                Log.i("LoudbookTest", "kindle: making the next page's first words ahead: " + clip40(say));
+            } catch (Throwable t) { Log.w(TAG, "kindle: next page ahead", t); }
+            return null;
+        });
+    }
     /** The paragraphs on the Kindle screen being read (to tell what's new on the next one). */
     private volatile java.util.List<String> kindleParas;
     /** The page couldn't be turned because Kindle wasn't on screen: turn it when Kindle's back. */
@@ -830,6 +865,7 @@ public class ReaderService extends Service {
                     if (k == null || !k.kindleVisible()) main.post(() -> status("Kindle isn't on screen, so the page can't be turned. Open it to carry on.", false));
                 } else {
                     kindleSig = p.signature;
+                    kindleNext = p.nextStart;
                     // (with Kindle's continuous scrolling the new screen can start with the end of the last one again)
                     java.util.List<String> paras = KindleText.afterOverlap(kindleParas, p.paragraphs);
                     if (paras.size() != p.paragraphs.size() || (!paras.isEmpty() && !paras.get(0).equals(p.paragraphs.get(0))))
@@ -844,6 +880,18 @@ public class ReaderService extends Service {
                     // the sentence that ran over the page break (being heard now) is partly on this page too
                     int pageFrom = splitIdx >= 0 && splitTurned && splitIdx == from - 1 ? splitIdx : from;
                     ch.chunks.addAll(more);
+                    // (the page ended with its sentence: its first words may have been made already, see makeNextPageAhead)
+                    Future<Voice.Clip> ah = aheadClip; String ak = aheadKey;
+                    aheadClip = null; aheadKey = null;
+                    if (ah != null) {
+                        if (chapter == ch && !more.isEmpty() && ak != null && ak.equals(sid + "|" + speed + "|" + more.get(0).say)) {
+                            synchronized (clips) { if (!clips.containsKey(from)) clips.put(from, ah); }
+                            Log.i("LoudbookTest", "kindle: the new page's first words were made ahead (" + (ah.isDone() ? "ready" : "still being made") + ")");
+                        } else {
+                            ah.cancel(false);
+                            Log.i("LoudbookTest", "kindle: the new page doesn't start as expected; its first words made ahead aren't used");
+                        }
+                    }
                     // the page turned in the middle of a sentence: the player is still putting that sentence into the speaker
                     // (it gets to the next one only as it ends), so the new page's first sentences are made now, while it's
                     // heard. They used to be started only once it ended: the voice's whole time to make one, in silence
@@ -1517,6 +1565,7 @@ public class ReaderService extends Service {
                 else if (kt != null && "kindle".equals(ch.site) && next >= ch.size() && !kindleEnded) {
                     // Kindle: everything on this page is queued. Turn the page only once its last
                     // word has been heard (the screen shows what's being read), then carry on
+                    makeNextPageAhead(ch);
                     if (!drain(myGen, ch, marks)) return;
                     Log.i("LoudbookTest", "kindle: page read to its last word, turning");
                     kindleMore(ch);

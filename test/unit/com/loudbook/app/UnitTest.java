@@ -411,6 +411,26 @@ public class UnitTest {
         kw2.chunks(Arrays.asList("It was late. You must there"), false);
         check("split word, next page (no bridge)", kw2.chunks(Arrays.asList("fore allow me to go. Then he left."), false).get(0).text.startsWith("You must therefore allow"), true);
         KindleText.dictionary = null;
+        // the next page's first piece, known before the turn (made ahead): the same as what the turned page starts with
+        {
+            String[][] runs = {
+                {"It was late. They went home.", "Mr. Bennet looked up from his book, and said nothing for a long while, until at last he spoke to her. Then more."},
+                {"One.", "Yes. No. Maybe so, he said, and then the long walk began again, past the mill and the river. Then."},
+                {"End here!", "\u201cWhat do you mean?\u201d she asked."},
+                {"A page.", "Short."},
+            };
+            for (String[] r : runs) {
+                KindleText kp = new KindleText("");
+                kp.chunks(Arrays.asList(r[0]), false);
+                String guess = kp.nextFirstPiece(r[1]);
+                java.util.List<Chapter.Chunk> got = kp.chunks(Arrays.asList(r[1], "Next paragraph here."), false);
+                check("next page's first piece known ahead: " + r[1].substring(0, Math.min(12, r[1].length())), guess, got.get(0).text);
+            }
+            KindleText kc = new KindleText("");
+            kc.chunks(Arrays.asList("It was late. They went"), false);
+            check("next page's first piece: not when a sentence runs over the break", kc.nextFirstPiece("home. Then."), null);
+            check("next page's first piece: not when unknown", new KindleText("").nextFirstPiece(null), null);
+        }
         // a line that wraps onto two rows on screen (known from the character boxes): a box per row
         float[][] cb = new float[11][];
         for (int i = 0; i < 11; i++) cb[i] = i < 5 ? new float[]{10 + i * 10, 100, 20 + i * 10, 120} : i == 5 ? new float[]{0, 0, 0, 0} : new float[]{10 + (i - 6) * 10, 120, 20 + (i - 6) * 10, 140};

@@ -294,6 +294,20 @@ final class KindleText {
     }
 
     String sayOf(String s) { return say(s); }
+
+    /**
+     * The first piece the next page will start with, if this page ended with its sentence (nothing carried over) and Kindle
+     * shared how the next page starts (nextStart): so its voice can be made before the page turns. null if it can't be known.
+     * (What chunks() gives for that page starts with the same piece, see UnitTest.)
+     */
+    String nextFirstPiece(String nextStart) {
+        if (nextStart == null || !carry.isEmpty() || skip != null) return null;
+        String t = nextStart.replaceAll("\\s+", " ").trim();
+        if (t.isEmpty()) return null;
+        List<String> ss = sentences(t);
+        if (ss.isEmpty()) return null;
+        return quickStart(ss.get(0)).get(0);
+    }
     private String say(String s) {
         String t = s;
         for (String[] f : fixes) t = t.replaceAll("(?i)\\b" + Pattern.quote(f[0]) + "\\b", Matcher.quoteReplacement(f[1]));

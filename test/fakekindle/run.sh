@@ -130,6 +130,22 @@ b = next(i for i, (s, x) in start.items() if x.startswith('She liked the quiet')
 gap = start[b + 1][0] - start[b][0] - clip[b]
 print("silence after the sentence over the break (want under 0.8 s; the usual pause between sentences is ~0.4 s; was 1.4 s): %.1f s" % gap)
 PY
+# a page that ends with its sentence ("Then I'll buy new ones."): the next page's first words are made while it's heard
+grep -q "the new page's first words were made ahead" bridge-log.txt && echo "page ending with its sentence, next page's first words made ahead: yes" >> bridge.txt || echo "page ending with its sentence, next page's first words made ahead: NO" >> bridge.txt
+python3 - >> bridge.txt <<'PY' || echo "silence at the turn of a page ending with its sentence: not measured" >> bridge.txt
+import re
+t = lambda s: (lambda h, m, x: int(h) * 3600 + int(m) * 60 + float(x))(*s.split(':'))
+log = open('bridge-log.txt', errors='replace').read().splitlines()
+clip, start = {}, {}
+for l in log:
+    m = re.search(r'(\d\d:\d\d:\d\d\.\d+).*LoudbookTest: clip (\d+): ([\d.]+) s', l)
+    if m: clip[int(m.group(2))] = float(m.group(3))
+    m = re.search(r'(\d\d:\d\d:\d\d\.\d+).*LoudbookTest: kindle speaking (\d+): (.*)', l)
+    if m and int(m.group(2)) not in start: start[int(m.group(2))] = (t(m.group(1)), m.group(3))
+b = next(i for i, (s, x) in start.items() if x.startswith('"Then I\'ll buy new ones'))
+gap = start[b + 1][0] - start[b][0] - clip[b]
+print("silence at the turn of a page ending with its sentence (want under 1.2 s; was 2.0 s): %.1f s" % gap)
+PY
 adb shell am force-stop com.amazon.kindle
 adb shell input keyevent KEYCODE_HOME
 # leaving Kindle just as a page ends (the stand-in Kindle goes to the background instead of turning, once):
