@@ -670,6 +670,7 @@ public class ReaderService extends Service {
         final java.util.List<Chapter.Chunk> page = raw;
         final KindleText kts = kt;
         kindleThread.submit(() -> {
+          try {
             final Chapter.Chunk bridge = kts.bridge(p.nextStart);            // (may look in the dictionary: not on the main thread)
             java.util.List<Chapter.Chunk> first = new java.util.ArrayList<>(spoken(page));
             float frac = addBridge(first, bridge, kts);
@@ -716,6 +717,13 @@ public class ReaderService extends Service {
                 kindleCh = ch;
                 setChapter(ch, startAt, true);
             });
+          } catch (Throwable t) {
+            // (an error here used to vanish into the executor: the gold button did nothing, and the reading before it, which
+            // had already stopped turning pages for this one (kindleCh), ran to the end of its page and stopped)
+            Log.e(TAG, "kindle start", t);
+            Log.i("LoudbookTest", "kindle start failed: " + t);
+            main.post(() -> { if (kt == kts) { stopPlayback(); status("Couldn't start reading this Kindle page (" + t.getClass().getSimpleName() + "). Tap the gold button to try again.", true); } });
+          }
             return null;
         });
     }
