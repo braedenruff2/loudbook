@@ -58,6 +58,8 @@ public class UnitTest {
         check("verbs for the phone voice: read (past)", Chapter.forKokoro("She read the note twice. He slowly read it. The sign read \"Stop\". Did he read it? Let her read. She will read it. They read every night. He's well read."), "She red the note twice. He slowly red it. The sign red \"Stop\". Did he read it? Let her read. She will read it. They read every night. He's well read.");
         check("verbs for the phone voice: after Please", Chapter.forKokoro("Please permit me. Please present your papers. Please escort them out. The permit, please."),
             "Please per-mit me. Please pree-zent your papers. Please ess-cort them out. The permit, please.");
+        check("verbs for the phone voice: after \"Quickly,\"", Chapter.forKokoro("Quickly, record everything. Sadly, record sales fell. Silently, present the gift."),
+            "Quickly, re-cord everything. Sadly, record sales fell. Silently, pree-zent the gift.");
         check("verbs for the phone voice: dove after a noun", Chapter.forKokoro("The hawk dove into the water. The boy dove beneath the waves. The dove into the cage? A white dove through the window. The dove in the tree. The stone dove onto the path."),
             "The hawk dohv into the water. The boy dohv beneath the waves. The dove into the cage? A white dove through the window. The dove in the tree. The stone dove onto the path.");
         check("verbs for the phone voice: dove", Chapter.forKokoro("She dove into the lake. Harry dove for the ball. The dove in the cage. A white dove flew."), "She dohv into the lake. Harry dohv for the ball. The dove in the cage. A white dove flew.");
