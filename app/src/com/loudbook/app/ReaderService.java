@@ -673,7 +673,7 @@ public class ReaderService extends Service {
         kindleSig = p.signature;
         kindleParas = p.paragraphs;
         kindleNext = p.nextStart;
-        { Future<Voice.Clip> ah = aheadClip; aheadClip = null; aheadKey = null; if (ah != null) ah.cancel(false); }
+        { Future<Voice.Clip> ah = aheadClip; aheadClip = null; aheadKey = null; pageAheadAsked = null; if (ah != null) ah.cancel(false); }
         kindleEnded = false; kindleBusy = false; kindleHidden = false;
         splitIdx = -1; splitTurned = false;
         final java.util.List<Chapter.Chunk> page = raw;
@@ -786,6 +786,7 @@ public class ReaderService extends Service {
     /** The next page's first piece, made while this page's last sentence is heard ({sid|speed|say}, its clip). */
     private volatile String aheadKey;
     private volatile Future<Voice.Clip> aheadClip;
+    private volatile String pageAheadAsked;          // (the nextStart it was last asked for: once per page)
     /**
      * The page ends with its sentence (nothing runs over the break): the page only turns after its last word, and the new
      * page's first words were made only then, their whole making time in silence (with the PC's voice several seconds).
@@ -794,7 +795,8 @@ public class ReaderService extends Service {
     private void makeNextPageAhead(Chapter ch) {
         final KindleText kts = kt;
         final String ns = kindleNext;
-        if (kts == null || ns == null || kindleCh != ch || aheadClip != null) return;
+        if (kts == null || ns == null || kindleCh != ch || aheadClip != null || ns.equals(pageAheadAsked)) return;
+        pageAheadAsked = ns;
         kindleThread.submit(() -> {
             try {
                 if (kts != kt || chapter != ch) return null;
@@ -1610,6 +1612,8 @@ public class ReaderService extends Service {
                 // waited behind the read-ahead: the pause at every sentence.)
                 Future<Voice.Clip> f = clipFor(next);
                 for (int k = 1; k <= READ_AHEAD; k++) clipFor(next + k);
+                // Kindle: the rest of the page is all asked for: the next page's first words next (after them, on the same voice thread)
+                if (kt != null && "kindle".equals(ch.site) && next + READ_AHEAD >= ch.size() - 1 && splitIdx != ch.size() - 1) makeNextPageAhead(ch);
                 final int keepFrom = next - 1;
                 synchronized (clips) { clips.keySet().removeIf(k -> k < keepFrom); fills.keySet().removeIf(k -> k < keepFrom); }
                 if (f == null) return;
