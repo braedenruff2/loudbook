@@ -1613,7 +1613,8 @@ public class ReaderService extends Service {
             }
         } catch (Throwable t) {
             Log.e(TAG, "player", t);
-            main.post(() -> status("Playback stopped: " + t.getMessage(), true));
+            // (and shown as stopped: it stayed "playing", with nothing to hear, and play did nothing)
+            main.post(() -> { if (gen == myGen) stopPlayback(); status("Playback stopped: " + t.getMessage(), true); });
         }
     }
 
