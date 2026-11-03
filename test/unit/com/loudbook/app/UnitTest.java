@@ -369,6 +369,35 @@ public class UnitTest {
         check("not a word together: two words", KindleText.joinBreak("nobody else", "bothered to come"), "nobody else bothered to come");
         check("a capital starts a new word", KindleText.joinBreak("You must there", "Fore"), "You must there Fore");
         check("a kept hyphen joins", KindleText.joinBreak("a well-", "known man"), "a well-known man");
+        {   // a paragraph over the page break stays one paragraph (same block): a quote opened before the break is still open after it
+            KindleText kp = new KindleText("");
+            java.util.List<Chapter.Chunk> pa = kp.chunks(Arrays.asList("It was late.", "\"I went there. Then I saw"), false);
+            Chapter.Chunk pb = kp.bridge("the thing. It was big,\" he said. \"Run.\"");
+            java.util.List<Chapter.Chunk> pc = kp.chunks(Arrays.asList("the thing. It was big,\" he said. \"Run.\"", "She ran."), false);
+            Chapter ch = new Chapter("kindle", "kindle", "t", "t", new java.util.ArrayList<>());
+            ch.chunks.addAll(pa); ch.chunks.add(pb); ch.chunks.addAll(pc);
+            check("paragraph over the break: one block", pa.get(1).block + " " + pb.block + " " + pc.get(0).block, pa.get(1).block + " " + pa.get(1).block + " " + pa.get(1).block);
+            check("paragraph over the break: next paragraphs new", pc.get(pc.size() - 1).block > pa.get(1).block && pa.get(0).block < pa.get(1).block, true);
+            check("paragraph over the break: quote still open in the bridge", Dialogue.openAt(ch, pa.size()), true);
+            int it = pa.size() + 1;
+            check("paragraph over the break: next page's sentence", ch.chunks.get(it).text.startsWith("It was big,\" he said."), true);
+            check("paragraph over the break: its speech voiced as speech", Dialogue.split(ch.chunks.get(it).say, Dialogue.openAt(ch, it), Dialogue.singles(ch, it)).get(0)[1], "q");
+            // the same without the next page's start known (no bridge): the joined sentence goes on in the paragraph
+            KindleText kn = new KindleText("");
+            java.util.List<Chapter.Chunk> a2 = kn.chunks(Arrays.asList("\u2018I went there. Then I saw"), false);
+            java.util.List<Chapter.Chunk> c2 = kn.chunks(Arrays.asList("the thing,\u2019 he said.", "She ran."), false);
+            check("paragraph over the break, no bridge: one block", c2.get(0).block, a2.get(0).block);
+            check("paragraph over the break, no bridge: next paragraph new", c2.get(1).block, a2.get(0).block + 1);
+            Chapter ch2 = new Chapter("kindle", "kindle", "t", "t", new java.util.ArrayList<>());
+            ch2.chunks.addAll(a2); ch2.chunks.addAll(c2);
+            check("paragraph over the break, single quotes: seen over the break", Dialogue.singles(ch2, 1) && Dialogue.openAt(ch2, 1), true);
+            // a page that is all one carried sentence (no earlier part on it): blocks still go up, never shared by two paragraphs
+            KindleText ko = new KindleText("");
+            java.util.List<Chapter.Chunk> o1 = ko.chunks(Arrays.asList("One.", "Two goes on"), false);
+            Chapter.Chunk ob = ko.bridge("over. Three.");
+            java.util.List<Chapter.Chunk> o2 = ko.chunks(Arrays.asList("over.", "Three."), false);
+            check("whole paragraph over the break: its own block, next one new", o1.get(0).block + " " + ob.block + " " + o2.get(0).block, "0 1 2");
+        }
         KindleText kw = new KindleText("");
         kw.chunks(Arrays.asList("It was late. You must there"), false);
         check("split word over the break, whole sentence", kw.bridge("fore allow me to go. Then he left.").text, "You must therefore allow me to go.");

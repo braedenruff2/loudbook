@@ -12,6 +12,9 @@ import java.util.regex.Pattern;
 final class KindleText {
     private String carry = "";
     private int block = 0;
+    // the block (paragraph number) of the paragraph the carried sentence belongs to: its rest on the next page is the same
+    // paragraph (for the dialogue voice, a quote opened before the break is still open after it; no paragraph pause there)
+    private int carryBlock = -1;
     private final String[][] fixes;
 
     KindleText(String fixesText) {
@@ -41,6 +44,8 @@ final class KindleText {
     List<Chapter.Chunk> chunks(List<String> paragraphs, boolean last) {
         List<String> paras = new ArrayList<>();
         for (String p : paragraphs) { String t = p.replaceAll("\\s+", " ").trim(); if (!t.isEmpty()) paras.add(t); }
+        // paras.get(0) goes on with the paragraph the last page ended in (carryBlock), if it's still that one
+        int cont = carry.isEmpty() && skip == null ? -1 : carryBlock;
         if (skip != null) {
             // the start of this page was already read with the sentence that ran over the page
             // break (see bridge): carry on after it
@@ -48,36 +53,45 @@ final class KindleText {
             int after = s0.startsWith(skip) ? skip.length() : afterLetters(s0, skip);
             if (after >= 0) {
                 String rest0 = s0.substring(after).trim();
-                if (rest0.isEmpty()) paras.remove(0); else paras.set(0, rest0);
+                if (rest0.isEmpty()) { paras.remove(0); cont = -1; } else paras.set(0, rest0);
                 carry = "";
             }
             // (no next page after all, but the sentence over the break was read whole already: not again)
             if (paras.isEmpty()) carry = "";
             skip = null;
         }
+        carryBlock = -1;
         if (!carry.isEmpty()) {
             if (paras.isEmpty()) paras.add(carry);
             else paras.set(0, joinBreak(carry, paras.get(0)));
             carry = "";
         }
+        boolean lastKept = false;
+        int lastAlone = -1;
         if (!last && !paras.isEmpty()) {
             // the page ends mid-sentence: keep the unfinished part for the next page
             String lp = paras.get(paras.size() - 1);
             if (!END.matcher(lp).find()) {
                 carry = lastSentence(lp);
                 String rest = lp.substring(0, lp.length() - carry.length()).trim();
-                if (rest.isEmpty()) paras.remove(paras.size() - 1); else paras.set(paras.size() - 1, rest);
+                if (rest.isEmpty()) {
+                    paras.remove(paras.size() - 1);
+                    // (the whole paragraph is carried; if it was the one the page began with, it's still that paragraph)
+                    if (paras.isEmpty()) lastAlone = cont;
+                } else { paras.set(paras.size() - 1, rest); lastKept = true; }
             }
         }
         List<Chapter.Chunk> out = new ArrayList<>();
-        for (String p : paras) {
-            List<String> ss = sentences(p);
+        for (int pi = 0; pi < paras.size(); pi++) {
+            List<String> ss = sentences(paras.get(pi));
             // the page's first sentence is what's waited for after a page turn: make its first
             // piece short (at a comma, or before "and"/"but"...), so the voice can start sooner
             if (out.isEmpty() && !ss.isEmpty()) { List<String> q = quickStart(ss.get(0)); ss.remove(0); ss.addAll(0, q); }
-            for (String s : ss) out.add(new Chapter.Chunk(block, s, say(s)));
-            block++;
+            int b = pi == 0 && cont >= 0 ? cont : block++;
+            for (String s : ss) out.add(new Chapter.Chunk(b, s, say(s)));
+            if (pi == paras.size() - 1 && lastKept) carryBlock = b;
         }
+        if (!carry.isEmpty() && !lastKept) carryBlock = lastAlone;
         return out;
     }
 
@@ -132,7 +146,9 @@ final class KindleText {
         String whole = joinBreak(carry, first);
         skip = first;
         bridgeHead = carry.length();
-        return new Chapter.Chunk(block, whole, say(whole));
+        // (its own paragraph if the carried part was one alone: the next page's rest of it goes on in this one)
+        if (carryBlock < 0) carryBlock = block++;
+        return new Chapter.Chunk(carryBlock, whole, say(whole));
     }
 
     private static final Pattern PAUSE = Pattern.compile("[,;:\u2014\u2013]\\s");
