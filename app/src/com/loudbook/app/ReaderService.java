@@ -556,8 +556,14 @@ public class ReaderService extends Service {
 
     /** A sentence, with the parts in quotes said in the dialogue voice when that's on. */
     private Voice.Clip makeVoiced(Chapter ch, int i, String text, int want, float sp) throws Exception {
-        if (!prefs.getBoolean("dualVoice", false) || !prefs.getString("pcVoice", "").isEmpty()) return makeHere(text, want, sp);
-        java.util.List<String[]> parts = Dialogue.split(text, Dialogue.openAt(ch, i), Dialogue.singles(ch, i));
+        if (!twoVoices()) return makeHere(text, want, sp);
+        return makeParts(text, Dialogue.openAt(ch, i), Dialogue.singles(ch, i), want, sp);
+    }
+    /** The second voice is on (not with a recorded PC voice). */
+    private boolean twoVoices() { return prefs.getBoolean("dualVoice", false) && prefs.getString("pcVoice", "").isEmpty(); }
+    /** A sentence with its quoted parts in the dialogue voice: open = a quote is open from before it; singles = 'single quotes'. */
+    private Voice.Clip makeParts(String text, boolean open, boolean singles, int want, float sp) throws Exception {
+        java.util.List<String[]> parts = Dialogue.split(text, open, singles);
         int other = dialogueVoice(want);
         if (parts.size() == 1) return makeHere(text, "q".equals(parts.get(0)[1]) ? other : want, sp);
         StringBuilder kinds = new StringBuilder();                // (q: a character's words, n: the reader's; kindle-test checks them)
@@ -737,13 +743,20 @@ public class ReaderService extends Service {
         for (String p : text.replace("\r", "").split("\n\\s*\n|\n")) if (!p.trim().isEmpty()) paras.add(p.trim());
         if (paras.isEmpty()) return;
         kindleThread.submit(() -> {
-            java.util.List<Chapter.Chunk> raw = new KindleText(prefs.getString("fixes", "")).chunks(paras, true);
-            java.util.List<Chapter.Chunk> said = spoken(raw);
-            main.post(() -> {
-                Chapter ch = new Chapter("text:" + System.currentTimeMillis(), "text", title, "Shared text", said);
-                setChapter(ch, 0, true);
-                if (listener != null) listener.onSpeaking(ch, 0);
-            });
+            try {
+                java.util.List<Chapter.Chunk> raw = new KindleText(prefs.getString("fixes", "")).chunks(paras, true);
+                java.util.List<Chapter.Chunk> said = spoken(raw);
+                if (said.isEmpty()) { main.post(() -> status("Nothing to read in the shared text.", false)); return null; }
+                main.post(() -> {
+                    Chapter ch = new Chapter("text:" + System.currentTimeMillis(), "text", title, "Shared text", said);
+                    setChapter(ch, 0, true);
+                    if (listener != null) listener.onSpeaking(ch, 0);
+                });
+            } catch (Throwable t) {
+                // (it used to vanish into the executor: sharing text did nothing)
+                Log.e(TAG, "shared text", t);
+                main.post(() -> status("Couldn't read the shared text (" + t.getClass().getSimpleName() + ").", true));
+            }
             return null;
         });
     }
@@ -790,16 +803,20 @@ public class ReaderService extends Service {
                 java.util.List<Chapter.Chunk> said = spoken(java.util.Collections.singletonList(new Chapter.Chunk(-1, piece, kts.sayOf(piece))));
                 if (said.size() != 1) return null;
                 final String say = said.get(0).say;
-                // (with the second voice, quotes are voiced from their paragraph: those are made after the turn as before)
-                boolean voiced = prefs.getBoolean("dualVoice", false) && prefs.getString("pcVoice", "").isEmpty();
-                if (voiced && say.matches("(?s).*[\"'\u201c\u201d\u2018\u2019].*")) return null;
+                // (with the second voice: a new paragraph, so no quote open from before; single quotes or not from its text.
+                // After the turn this is checked against the real page, see aheadFor)
+                final boolean dual = twoVoices();
+                final boolean sg = dual && Dialogue.singles(kts.sayOf(ns.replaceAll("\\s+", " ").trim()));
                 final int want = sid; final float sp = speed;
-                aheadKey = want + "|" + sp + "|" + say;
-                aheadClip = synth.submit(() -> learned(makeHere(say, want, sp), want));
+                aheadKey = aheadFor(want, sp, dual, false, sg, say);
+                aheadClip = synth.submit(() -> learned(dual ? makeParts(say, false, sg, want, sp) : makeHere(say, want, sp), want));
                 Log.i("LoudbookTest", "kindle: making the next page's first words ahead: " + clip40(say));
             } catch (Throwable t) { Log.w(TAG, "kindle: next page ahead", t); }
             return null;
         });
+    }
+    private static String aheadFor(int want, float sp, boolean dual, boolean open, boolean singles, String say) {
+        return want + "|" + sp + "|" + (dual ? "d" + (open ? "o" : "") + (singles ? "s" : "") : "-") + "|" + say;
     }
     /** The paragraphs on the Kindle screen being read (to tell what's new on the next one). */
     private volatile java.util.List<String> kindleParas;
@@ -884,7 +901,7 @@ public class ReaderService extends Service {
                     Future<Voice.Clip> ah = aheadClip; String ak = aheadKey;
                     aheadClip = null; aheadKey = null;
                     if (ah != null) {
-                        if (chapter == ch && !more.isEmpty() && ak != null && ak.equals(sid + "|" + speed + "|" + more.get(0).say)) {
+                        if (chapter == ch && !more.isEmpty() && ak != null && ak.equals(aheadFor(sid, speed, twoVoices(), Dialogue.openAt(ch, from), Dialogue.singles(ch, from), more.get(0).say))) {
                             synchronized (clips) { if (!clips.containsKey(from)) clips.put(from, ah); }
                             Log.i("LoudbookTest", "kindle: the new page's first words were made ahead (" + (ah.isDone() ? "ready" : "still being made") + ")");
                         } else {

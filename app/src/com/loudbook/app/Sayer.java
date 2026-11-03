@@ -48,7 +48,14 @@ final class Sayer {
         });
         try { done.await(4, TimeUnit.SECONDS); } catch (InterruptedException ignored) { }
         try {
-            if (out[0] == null || out[0].equals("null")) return texts;
+            if (out[0] == null || out[0].equals("null")) {
+                // (no answer in time, or the script threw / isn't there: a "ready" flag set before the script had run once kept
+                // it from ever being put in again, and every Kindle page after that went to the voice without its clean-ups
+                // (numbers, "Mr.", ...). After a "null" answer it's put in again next time; the log says which it was)
+                if (out[0] != null) ready = false;
+                Log.w("Loudbook", "sayer: " + (out[0] == null ? "no answer in time" : "the page script isn't loaded; loading it again"));
+                return texts;
+            }
             // evaluateJavascript hands back a JSON string holding our JSON array
             JSONArray a = new JSONArray(new JSONArray("[" + out[0] + "]").getString(0));
             if (a.length() != texts.size()) return texts;
