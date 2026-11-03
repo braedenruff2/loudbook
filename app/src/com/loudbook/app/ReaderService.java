@@ -1515,6 +1515,13 @@ public class ReaderService extends Service {
                     while (gen == myGen && next >= ch.size() && (kindleBusy || !kindleQueued) && System.currentTimeMillis() < until) { heard(ch, marks, myGen); sleep(40); }
                     if (!kindleBack(myGen, ch, marks)) return;
                 }
+                if (next >= ch.size() && "kindle".equals(ch.site) && kindleCh != ch) {
+                    // a new Kindle reading is starting (startKindle) and takes over in a moment: not the end of this one
+                    // (that stopped playback and the foreground service, and said "End of chapter.", just before it began)
+                    long until = System.currentTimeMillis() + 15_000;
+                    while (gen == myGen && kindleCh != ch && System.currentTimeMillis() < until) { heard(ch, marks, myGen); sleep(40); }
+                    if (gen != myGen) return;
+                }
                 if (next >= ch.size()) {
                     if (!drain(myGen, ch, marks)) return;          // let the last words finish
                     pos = ch.size();
