@@ -640,7 +640,7 @@ public class ReaderService extends Service {
     private volatile int splitIdx = -1;
     private volatile float splitFrac;
     private volatile boolean splitTurned;
-    private float addBridge(java.util.List<Chapter.Chunk> list, Chapter.Chunk bridge) {
+    private float addBridge(java.util.List<Chapter.Chunk> list, Chapter.Chunk bridge, KindleText kt) {
         if (bridge == null) return -1;
         java.util.List<Chapter.Chunk> said = spoken(java.util.Collections.singletonList(bridge));
         if (said.isEmpty()) return -1;
@@ -667,7 +667,7 @@ public class ReaderService extends Service {
         kindleThread.submit(() -> {
             final Chapter.Chunk bridge = kts.bridge(p.nextStart);            // (may look in the dictionary: not on the main thread)
             java.util.List<Chapter.Chunk> first = new java.util.ArrayList<>(spoken(page));
-            float frac = addBridge(first, bridge);
+            float frac = addBridge(first, bridge, kts);
             // the sentence at the place tapped (or the first)
             int at = 0;
             if (letter > 0) {
@@ -773,16 +773,26 @@ public class ReaderService extends Service {
         if (kindleBusy || kindleEnded || kt == null || chapter != ch) return;
         kindleBusy = true;
         kindleQueued = false;
+        // (this reading's own KindleText: if he starts reading another page or book while the page is being turned,
+        // startKindle makes a new one, and what this turn finds mustn't go into that one's state, see kts != kt below)
+        final KindleText kts = kt;
         kindleThread.submit(() -> {
             try {
-                if (chapter != ch) return null;                                  // (a new start since)
+                if (chapter != ch || kts != kt) return null;                     // (a new start since)
                 KindleService k = KindleService.me;
                 KindleService.Page p = k == null ? new KindleService.Page() : k.nextPage(kindleSig);
-                if (p.paragraphs.isEmpty() && k != null && k.kindleVisible() && chapter == ch) {
+                if (p.paragraphs.isEmpty() && k != null && k.kindleVisible() && chapter == ch && kts == kt) {
                     // (one more go after a moment before taking it as the end of the book: Kindle may have been busy)
                     try { Thread.sleep(1500); } catch (InterruptedException ignored) { }
                     Log.i("LoudbookTest", "kindle: the page didn't turn, trying again");
                     p = k.nextPage(kindleSig);
+                }
+                if (kts != kt) {
+                    // reading started again (another page or book) while this page was being turned: what was found here is
+                    // that new reading's page, not this one's next; it used to go into the new reading's state (its page
+                    // signature, sentence carried over the break, "end of the book")
+                    Log.i("LoudbookTest", "kindle: a new reading started during the page turn; this turn's page is dropped");
+                    return null;
                 }
                 if (p.paragraphs.isEmpty() && k != null && !k.kindleVisible()) {
                     // Kindle isn't on screen (he switched apps just as the page ended, or Kindle's own
@@ -793,7 +803,7 @@ public class ReaderService extends Service {
                     main.post(() -> status("Kindle isn't on screen, so the page can't be turned. Open it to carry on.", false));
                 } else if (p.paragraphs.isEmpty()) {
                     kindleEnded = true;
-                    java.util.List<Chapter.Chunk> rest = spoken(kt.chunks(new java.util.ArrayList<>(), true));   // whatever was held back
+                    java.util.List<Chapter.Chunk> rest = spoken(kts.chunks(new java.util.ArrayList<>(), true));   // whatever was held back
                     if (!rest.isEmpty()) ch.chunks.addAll(rest);
                     if (k == null || !k.kindleVisible()) main.post(() -> status("Kindle isn't on screen, so the page can't be turned. Open it to carry on.", false));
                 } else {
@@ -803,11 +813,11 @@ public class ReaderService extends Service {
                     if (paras.size() != p.paragraphs.size() || (!paras.isEmpty() && !paras.get(0).equals(p.paragraphs.get(0))))
                         Log.i("LoudbookTest", "kindle: this screen starts with words already read, from: " + ends(paras.isEmpty() ? "" : paras.get(0)));
                     kindleParas = p.paragraphs;
-                    java.util.List<Chapter.Chunk> got = kt.chunks(paras, false);
+                    java.util.List<Chapter.Chunk> got = kts.chunks(paras, false);
                     logKindle("turned", paras, got);
-                    Chapter.Chunk bridge = kt.bridge(p.nextStart);
+                    Chapter.Chunk bridge = kts.bridge(p.nextStart);
                     java.util.List<Chapter.Chunk> more = new java.util.ArrayList<>(spoken(got));
-                    float frac = addBridge(more, bridge);
+                    float frac = addBridge(more, bridge, kts);
                     int from = ch.size();
                     // the sentence that ran over the page break (being heard now) is partly on this page too
                     int pageFrom = splitIdx >= 0 && splitTurned && splitIdx == from - 1 ? splitIdx : from;
@@ -825,7 +835,8 @@ public class ReaderService extends Service {
                     Log.i("LoudbookTest", "kindle page turned: +" + more.size() + " sentences");
                 }
             } catch (Throwable t) { Log.w(TAG, "kindle page", t); kindleEnded = true; }
-            finally { kindleQueued = true; kindleBusy = false; }
+            // (not after a new start: its own page turn may be the one running now)
+            finally { if (kts == kt) { kindleQueued = true; kindleBusy = false; } }
             return null;
         });
     }
