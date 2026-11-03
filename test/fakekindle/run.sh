@@ -144,7 +144,7 @@ for l in log:
     if m and int(m.group(2)) not in start: start[int(m.group(2))] = (t(m.group(1)), m.group(3))
 b = next(i for i, (s, x) in start.items() if x.startswith('"Then I\'ll buy new ones'))
 gap = start[b + 1][0] - start[b][0] - clip[b]
-print("silence at the turn of a page ending with its sentence (want under 1.2 s; was 2.0 s): %.1f s" % gap)
+print("silence at the turn of a page ending with its sentence (want under 0.9 s; was 2.0 s before 2026-11-03): %.1f s" % gap)
 PY
 adb shell am force-stop com.amazon.kindle
 adb shell input keyevent KEYCODE_HOME
