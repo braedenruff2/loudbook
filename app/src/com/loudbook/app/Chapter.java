@@ -80,6 +80,10 @@ final class Chapter {
         + "(?:[ \\t]+(?:also|then|just|never|only|quickly|slowly|silently|carefully|quietly|finally|again|once|first|already|eagerly|still|simply|merely|briefly|hastily|calmly))?[ \\t]+)([Rr])ead\\b(?![-'\u2019])");
     private static final java.util.regex.Pattern DOVE = java.util.regex.Pattern.compile(
         "(?<!\\b(?:The|This|That|A|An|One|Each|Every|My|His|Her|Their|Our|Your|Its|White|Grey|Gray|Mourning|Turtle|Rock|Little)[ \\t])(?<=\\b(?:[Hh]e|[Ss]he|[Ii]t|I|[Ww]e|[Tt]hey|[Yy]ou|then|and|instantly|immediately|quickly|[A-Z][a-z]{1,20})[ \\t])dove(?=[ \\t]+(?:into|in|under|for|off|through|after|at|behind|toward|towards|down|out|forward|headfirst|aside|over|across|between|beneath|below|onto|back|away|deep|deeper|straight|sideways|low)\\b)");
+    // "The hawk dove into the water", "the boy dove beneath the waves": after "the/a/his... <noun>", only before words that
+    // make it the verb (into, onto, headfirst...: "the dove in the cage" stays the bird). Kokoro lab 2026-11-03: dʌv -> dˈoʊv.
+    private static final java.util.regex.Pattern DOVE_NOUN = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:[Tt]he|[Aa]|[Aa]n|[Hh]is|[Hh]er|[Tt]heir|[Mm]y|[Oo]ur|[Yy]our|[Ii]ts|[Tt]his|[Tt]hat)[ \\t][a-z]{2,15}[ \\t])(?<!\\b(?:white|grey|gray|mourning|turtle|rock|little|peace|stone|wooden|silver|golden|paper|ice|snow)[ \\t])dove(?=[ \\t]+(?:into|onto|headfirst|toward|towards|sideways|beneath|underneath|through|forward|deep|deeper|straight)\\b)");
     private static final java.util.regex.Pattern LEAD = java.util.regex.Pattern.compile(
         "\\b([Ll])ead(?=-(?:lined|grey|gray|coloured|colored|heavy|tipped|weighted|filled|sheathed)\\b|[ \\t]+(?:pipe|pipes|weight|weights|poisoning|bullet|bullets|shot|paint|ball|balls|sheet|sheets|pencil|pencils|crystal|mine|mines|ore|seal|seals|coffin|apron|plate|plates|slug|slugs|sinker|sinkers|lining|roof|roofs|pellet|pellets|ingot|ingots|casket|shielding|alloy|piping)\\b)"
         + "|(?<=\\b(?:[Mm]olten|[Ll]iquid|[Ss]olid|[Pp]ure|[Mm]elted|[Ss]heet|[Ww]hite|[Rr]ed)[ \\t])(l)ead\\b"
@@ -235,7 +239,7 @@ final class Chapter {
             t = READ.matcher(t).replaceAll("$1$2ed");
             t = LEAD.matcher(t).replaceAll("$1$2$3ed");
         }
-        if (t.contains("dove")) t = DOVE.matcher(t).replaceAll("dohv");
+        if (t.contains("dove")) t = DOVE_NOUN.matcher(DOVE.matcher(t).replaceAll("dohv")).replaceAll("dohv");
         if (t.contains("desert")) t = DESERT.matcher(t).replaceAll("dessert");
         if (t.contains("inute")) t = MINUTE.matcher(t).replaceAll("$1y-nute");
         if (t.contains("does")) t = DOES.matcher(t).replaceAll("doze");
