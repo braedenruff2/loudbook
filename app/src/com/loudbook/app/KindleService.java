@@ -213,8 +213,9 @@ public class KindleService extends AccessibilityService {
         boolean speaking = reading && svc.isPlaying() && !svc.isPaused();
         long now = System.currentTimeMillis();
         // (Kindle's "continuous scrolling turned off" notice over the book: pressed away, then the book opened again)
-        if ((reading || exploreOn) && !noticeBusy) {
-            noticeBusy = true;
+        // (every 1.5 s, not every tick: each look is a thread and a walk over Kindle's windows, all the time Kindle is read)
+        if ((reading || exploreOn) && !noticeBusy && now - noticeAt > 1500) {
+            noticeBusy = true; noticeAt = now;
             new Thread(() -> { try { if (dismissScrollNotice()) { pause(800); reopenBook(); } } finally { noticeBusy = false; } }, "lb-kindle-notice").start();
         }
         if (kindle) awayAt = 0; else if (awayAt == 0) awayAt = now;
@@ -262,6 +263,7 @@ public class KindleService extends AccessibilityService {
     }
     private long awayAt, pausedAt;
     private volatile boolean noticeBusy;
+    private long noticeAt;
 
     /** Another app (not Kindle, not Loudbook) is the one in front: he's left Kindle. */
     private boolean otherAppInFront() {

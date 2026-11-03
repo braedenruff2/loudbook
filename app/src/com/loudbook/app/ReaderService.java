@@ -181,7 +181,7 @@ public class ReaderService extends Service {
         String a = intent == null ? null : intent.getAction();
         if (ACT_PLAY.equals(a)) play();
         else if (ACT_PAUSE.equals(a)) pause();
-        else if (ACT_TOGGLE.equals(a)) { if (playing) pause(); else play(); }
+        else if (ACT_TOGGLE.equals(a)) { if (playing && !paused) pause(); else play(); }   // (paused is still "playing": play resumes it)
         else if (ACT_BACK.equals(a)) seek(pos - 1);
         else if (ACT_FWD.equals(a)) seek(pos + 1);
         else if (ACT_STOP.equals(a)) { pause(); dropForeground(true); stopSelf(); }
@@ -427,6 +427,7 @@ public class ReaderService extends Service {
 
     void pause() {
         if (!playing) return;
+        pausedForFocus = false;          // (his own pause: a call ending mustn't start reading again; the focus listener sets it after)
         paused = true;
         if (track != null) track.pause();
         state();
