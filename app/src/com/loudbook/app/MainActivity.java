@@ -312,6 +312,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             CloudVoice.HOST = i.getStringExtra("gemhost");
             if (svc != null) svc.cloudChanged();
         }
+        if (KindleService.testBuild() && i.getBooleanExtra("audiofail", false) && svc != null) { i.removeExtra("audiofail"); svc.testAudioFail(); }   // (chapter-test)
         if (i.getBooleanExtra("home", false)) { i.removeExtra("home"); web.loadUrl(HOME); return true; }      // (screenshots in CI)
         if (i.getBooleanExtra("settings", false)) { i.removeExtra("settings"); main.postDelayed(this::showSettings, 1500); }   // (screenshots in CI)
         if (url == null) return false;

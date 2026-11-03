@@ -9,7 +9,11 @@ adb logcat -c
 adb shell am start -n com.loudbook.app/.MainActivity
 sleep 100                                   # the phone voice downloads and loads the first time
 adb shell am start -n com.loudbook.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "http://localhost:8000/ch1.html" --ez play true --ez dual true
-sleep 12
+sleep 8
+# the audio output fails once mid-sentence (as when the phone's audio server restarts): reading must go on (2026-11-03: it
+# used to stop without a word, still showing "playing")
+adb shell am start -n com.loudbook.app/.MainActivity --ez audiofail true
+sleep 4
 adb shell input keyevent KEYCODE_HOME
 sleep 2
 adb shell input keyevent KEYCODE_SLEEP
@@ -28,6 +32,9 @@ echo "app open (fancy text, emoji): sentences said: $(grep -c 'LoudbookTest: spe
 # (dialogue in a second voice is on: chapter one quotes in double quotes, chapter two in single ones, with an apostrophe)
 { grep -qE "two voices: .*(Tom tried it|It never opens)" logcat.txt && echo "second voice, double quotes (chapter one): yes" || echo "second voice, double quotes (chapter one): NO"
   grep -q "two voices: 2 parts.*Is anyone here" logcat.txt && echo "second voice, single quotes (chapter two): yes" || echo "second voice, single quotes (chapter two): NO"; } > dual.txt
+awk '/test: the next audio write fails/{f=1} f' foreground.txt > audiofail.txt
+{ grep -q "audio write failed" audiofail.txt && echo "audio output failed once: noticed" || echo "audio output failed once: NOT noticed (test hook not reached?)"
+  grep -q "audio write failed" audiofail.txt && { sed -n '/audio write failed/,$p' logcat.txt | grep -q "LoudbookTest: speaking" && echo "reading went on after it: yes" || echo "reading went on after it: NO"; }; } > audio.txt
 awk '/=== no signal from here ===/{f=1} f' logcat.txt > nosignal.txt
 echo "no signal: chapters shown from their copy: $(grep -c 'shown from the copy read ahead' nosignal.txt), sentences not found on the page: $(grep -c "words weren't found" nosignal.txt)" > offline.txt
 # cold start: Loudbook closed, opened again, play pressed with nothing open -> carries on with the last story

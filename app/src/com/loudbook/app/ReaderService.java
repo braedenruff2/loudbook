@@ -1443,7 +1443,7 @@ public class ReaderService extends Service {
                 while (off < x.length && gen == myGen) {
                     if (paused) { sleep(40); continue; }
                     int w = t.write(x, off, Math.min(2048, x.length - off), AudioTrack.WRITE_BLOCKING);
-                    if (w < 0) return -1;
+                    if (w < 0) { audioFailed(w, myGen); return -1; }
                     off += w; framesWritten += w; at += w; starved = false;
                     heard(ch, marks, myGen);
                 }
@@ -1617,6 +1617,34 @@ public class ReaderService extends Service {
         }
     }
 
+    private long audioFailAt;
+    private int audioFails;
+    /** Test builds (chapter-test): the next write to the audio output fails as if the audio server had died. */
+    private volatile boolean failNextWrite;
+    void testAudioFail() { if (KindleService.testBuild()) { failNextWrite = true; Log.i("LoudbookTest", "test: the next audio write fails"); } }
+    /**
+     * The audio output refused what was written (AudioTrack error, e.g. -6 dead object: the phone's audio server restarted,
+     * or the output changed under it). The player used to stop there without a word, still showing "playing" with nothing
+     * heard. Now: a new AudioTrack and the sentence again; after 3 failures within a minute it stops and says so.
+     */
+    private void audioFailed(int code, int myGen) {
+        if (gen != myGen) return;
+        Log.w(TAG, "audio write failed: " + code);
+        Log.i("LoudbookTest", "audio write failed (" + code + "): reading on from the sentence on a new audio track");
+        main.post(() -> {
+            if (gen != myGen || !playing) return;
+            long now = System.currentTimeMillis();
+            if (now - audioFailAt > 60_000) audioFails = 0;
+            audioFailAt = now;
+            AudioTrack old = track;
+            track = null;
+            stopPlayback();
+            if (old != null) { try { old.release(); } catch (Exception ignored) { } }
+            if (++audioFails > 3) { status("Playback stopped: the phone's audio output failed (error " + code + "). Tap play to try again.", true); return; }
+            play();
+        });
+    }
+
     /** Queues one sentence's audio behind whatever is already playing. false = interrupted. */
     private boolean stream(AudioTrack t, Voice.Clip c, int myGen, Chapter ch, java.util.ArrayDeque<long[]> marks) {
         applyRate(t, c);
@@ -1627,7 +1655,8 @@ public class ReaderService extends Service {
             if (paused) { sleep(40); continue; }
             if (t.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) t.play();
             int n = t.write(s, off, Math.min(2048, s.length - off), AudioTrack.WRITE_BLOCKING);
-            if (n < 0) return false;
+            if (failNextWrite) { failNextWrite = false; n = AudioTrack.ERROR_DEAD_OBJECT; }
+            if (n < 0) { audioFailed(n, myGen); return false; }
             off += n;
             framesWritten += n;
             heard(ch, marks, myGen);
@@ -1666,7 +1695,7 @@ public class ReaderService extends Service {
             if (gen != myGen) return false;
             if (paused) { sleep(40); continue; }
             int n = t.write(z, 0, Math.min(z.length, frames), AudioTrack.WRITE_BLOCKING);
-            if (n < 0) return false;
+            if (n < 0) { audioFailed(n, myGen); return false; }
             frames -= n; framesWritten += n;
             heard(ch, marks, myGen);
         }
