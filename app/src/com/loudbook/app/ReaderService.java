@@ -652,6 +652,9 @@ public class ReaderService extends Service {
 
     /** Starts reading the page open in Kindle (from KindleService's button); letter: where on the page to start (0 = the top). */
     void startKindle(KindleService.Page p, int letter) {
+        // (the reading going on now mustn't turn Kindle's page any more: this page is the one to be read. Until the new
+        // chapter is set below, the old reading still runs with the new kt, see kindleMore)
+        kindleCh = null;
         kt = new KindleText(prefs.getString("fixes", ""));
         final android.content.Context app = getApplicationContext();
         KindleText.dictionary = w -> Voice.hasWord(app, w);
@@ -708,6 +711,7 @@ public class ReaderService extends Service {
                 Log.i("LoudbookTest", "kindle start: " + p.paragraphs.size() + " paragraphs, " + first.size() + " sentences, from sentence " + startAt + ", title " + p.title);
                 kindleFrom = 0; kindleTo = first.size();
                 splitTurned = false; splitIdx = frac >= 0 ? first.size() - 1 : -1; splitFrac = frac;
+                kindleCh = ch;
                 setChapter(ch, startAt, true);
             });
             return null;
@@ -749,6 +753,8 @@ public class ReaderService extends Service {
 
     /** Turns Kindle's page and adds its sentences to what's being read. */
     private volatile boolean kindleQueued;
+    /** The Kindle chapter kt belongs to (null between a new start and its chapter being set): only it turns Kindle's pages. */
+    private volatile Chapter kindleCh;
     /** The paragraphs on the Kindle screen being read (to tell what's new on the next one). */
     private volatile java.util.List<String> kindleParas;
     /** The page couldn't be turned because Kindle wasn't on screen: turn it when Kindle's back. */
@@ -771,6 +777,11 @@ public class ReaderService extends Service {
     }
     private void kindleMore(Chapter ch) {
         if (kindleBusy || kindleEnded || kt == null || chapter != ch) return;
+        if (kindleCh != ch) {
+            // a new reading is starting (startKindle): turning the page now would move Kindle off the page it's about to read
+            Log.i("LoudbookTest", "kindle: a new reading is starting; not turning the page for the old one");
+            return;
+        }
         kindleBusy = true;
         kindleQueued = false;
         // (this reading's own KindleText: if he starts reading another page or book while the page is being turned,
