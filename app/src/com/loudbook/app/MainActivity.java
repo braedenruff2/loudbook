@@ -99,6 +99,15 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         super.onCreate(state);
         installCrashCatcher();
         prefs = getSharedPreferences("lb", MODE_PRIVATE);
+        homeKey = prefs.getString("homeKey", "");
+        if (homeKey.isEmpty()) {
+            byte[] r = new byte[12];
+            new java.security.SecureRandom().nextBytes(r);
+            StringBuilder k = new StringBuilder();
+            for (byte b : r) k.append(String.format("%02x", b));
+            homeKey = k.toString();
+            prefs.edit().putString("homeKey", homeKey).apply();
+        }
         getWindow().setStatusBarColor(C_BG);
         getWindow().setNavigationBarColor(C_PANEL);
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
@@ -115,7 +124,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         if (again && first != null && first.getAction() != null && !Intent.ACTION_MAIN.equals(first.getAction()))
             Log.i("LoudbookTest", "opened again with its first intent (" + first.getAction() + "): not handled again");
         if (again || !handleIntent(first)) {
-            if (state != null) web.restoreState(state); else web.loadUrl(HOME);
+            if (state != null) web.restoreState(state); else web.loadUrl(homeUrl());
         }
         showLastCrash();
         if (VoiceCommands.crashedLastTime(this))
@@ -319,7 +328,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             if (svc != null) svc.cloudChanged();
         }
         if (KindleService.testBuild() && i.getBooleanExtra("audiofail", false) && svc != null) { i.removeExtra("audiofail"); svc.testAudioFail(); }   // (chapter-test)
-        if (i.getBooleanExtra("home", false)) { i.removeExtra("home"); web.loadUrl(HOME); return true; }      // (screenshots in CI)
+        if (i.getBooleanExtra("home", false)) { i.removeExtra("home"); web.loadUrl(homeUrl()); return true; }      // (screenshots in CI)
         if (i.getBooleanExtra("settings", false)) { i.removeExtra("settings"); main.postDelayed(this::showSettings, 1500); }   // (screenshots in CI)
         if (url == null) return false;
         go(url);
@@ -359,7 +368,6 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 return !("http".equals(scheme) || "https".equals(scheme) || "file".equals(scheme));
             }
             @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap icon) {
-                shownUrl = url;
                 address.setText(url.startsWith("file:") ? "" : url);
                 pageChapter = null;
                 readThisBtn.setVisibility(View.GONE);
@@ -444,13 +452,15 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         web.evaluateJavascript("window.LB && LB.run(" + JSONObject.quote(fixes) + "," + tidy + ")", null);
     }
 
-    /** The page the browser is showing (set as it starts loading): the start page's own calls only work there. */
-    private volatile String shownUrl;
     /**
-     * The start page is showing (not a story site): LoudbookNative is there for every page the browser opens, ads and all,
-     * and any of them could call home() and read what he's been reading (the stories, chapters and addresses).
+     * The start page's key: LoudbookNative is there for every page the browser opens, ads and all, and any of them could
+     * call home() and read what he's been reading (the stories, chapters and addresses). The start page is opened with this
+     * key after its # (homeUrl) and hands it back; other pages can't see it. (Checking the page shown instead raced: the
+     * start page's script asks before the browser says the page has started, and got nothing on a cold start.)
      */
-    private boolean onStartPage() { String u = shownUrl; return u != null && u.startsWith("file:///android_asset/web/"); }
+    private String homeKey = "";
+    String homeUrl() { return HOME + "#k=" + homeKey; }
+    private boolean onStartPage(String key) { return key != null && !homeKey.isEmpty() && homeKey.equals(key); }
 
     /** Called from the page script. Runs on a WebView thread: hop to the main thread. */
     final class Bridge {
@@ -472,8 +482,9 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             });
         }
         /** For the start page: the last chapter, to carry on. */
-        @JavascriptInterface public String home() {
-            if (!onStartPage()) { Log.w(TAG, "home() asked for by a page that isn't the start page"); return "{}"; }
+        @JavascriptInterface public String home(String key) {
+            if (!onStartPage(key)) { Log.w(TAG, "home() asked for by a page that isn't the start page"); return "{}"; }
+            Log.i("LoudbookTest", "start page: last story " + (prefs.getString("lastUrl", "").isEmpty() ? "none" : "there"));
             try {
                 return new JSONObject().put("lastUrl", prefs.getString("lastUrl", ""))
                     .put("lastTitle", prefs.getString("lastTitle", "")).put("lastFiction", prefs.getString("lastFiction", ""))
@@ -481,12 +492,12 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                     .put("news", newsToShow()).toString();
             } catch (Exception e) { return "{}"; }
         }
-        @JavascriptInterface public void resume(String url) { if (onStartPage()) main.post(() -> { resumeOnLoad = url; web.loadUrl(url); }); }
+        @JavascriptInterface public void resume(String key, String url) { if (onStartPage(key)) main.post(() -> { resumeOnLoad = url; web.loadUrl(url); }); }
         /** "What's new" was read: don't show it again until there's something newer. */
-        @JavascriptInterface public void newsSeen() { if (onStartPage()) prefs.edit().putInt("newsSeen", readAsset("web/new.txt").hashCode()).apply(); }
+        @JavascriptInterface public void newsSeen(String key) { if (onStartPage(key)) prefs.edit().putInt("newsSeen", readAsset("web/new.txt").hashCode()).apply(); }
         /** Takes a story off "Your stories". */
-        @JavascriptInterface public void forget(String url) {
-            if (!onStartPage()) return;
+        @JavascriptInterface public void forget(String key, String url) {
+            if (!onStartPage(key)) return;
             main.post(() -> {
                 synchronized (NewChapters.SHELF) { try {
                     org.json.JSONArray a = new org.json.JSONArray(prefs.getString("shelf", "[]")), b = new org.json.JSONArray();
@@ -1465,7 +1476,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         LinearLayout top = hbox(dp(8), dp(6));
         top.setBackgroundColor(C_PANEL);
         View home = imageButton(R.drawable.ic_home, C_DIM, 0);
-        home.setOnClickListener(v -> web.loadUrl(HOME));
+        home.setOnClickListener(v -> web.loadUrl(homeUrl()));
         top.addView(home);
         address = new EditText(this);
         address.setSingleLine(true);

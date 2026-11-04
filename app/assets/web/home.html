@@ -45,7 +45,8 @@
 <p class="tip">Tip: in Chrome, tap Share on any chapter and pick Loudbook. Long-press a paragraph to read from there. The ⚙ button has voices, speed, sleep timer and pronunciation fixes.</p>
 <script>
   try {
-    const d = JSON.parse(LoudbookNative.home());
+    const K = (location.hash.match(/k=([0-9a-f]+)/) || [])[1] || '';   // (the app's key for its own start page)
+    const d = JSON.parse(LoudbookNative.home(K));
     if (d.lastUrl) {
       document.getElementById('rt').textContent = d.lastFiction || d.lastTitle;
       document.getElementById('rs').textContent = [d.lastFiction ? d.lastTitle : '', d.lastPct ? d.lastPct + '% through' : ''].filter(Boolean).join(' · ');
@@ -53,13 +54,13 @@
       // the background check found a new chapter after the one finished: say so (tapping goes on to it)
       const mine = (d.shelf || []).find(x => x.url === d.lastUrl);
       if (mine && mine.newUrl) { const rs = document.getElementById('rs'); rs.className = 'new'; rs.textContent = 'New chapter out \u00b7 tap to listen'; }
-      r.onclick = (e) => { e.preventDefault(); LoudbookNative.resume(d.lastUrl); };
+      r.onclick = (e) => { e.preventDefault(); LoudbookNative.resume(K, d.lastUrl); };
     }
     if (d.news) {
       const ul = document.getElementById('newsList');
       for (const line of d.news.split('\n')) if (line.trim()) { const li = document.createElement('li'); li.textContent = line.trim(); ul.appendChild(li); }
       document.getElementById('news').hidden = false;
-      document.getElementById('newsOk').onclick = () => { LoudbookNative.newsSeen(); document.getElementById('news').hidden = true; };
+      document.getElementById('newsOk').onclick = () => { LoudbookNative.newsSeen(K); document.getElementById('news').hidden = true; };
     }
     // the other stories read lately (the newest is "Continue listening" above)
     const others = (d.shelf || []).filter(x => x.url !== d.lastUrl);
@@ -74,9 +75,9 @@
         const bar = document.createElement('div'); bar.className = 'bar';
         const fill = document.createElement('i'); fill.style.width = Math.max(2, Math.min(100, x.pct || 0)) + '%'; bar.appendChild(fill);
         a.append(b, sp, bar);
-        a.onclick = (e) => { e.preventDefault(); LoudbookNative.resume(x.url); };
+        a.onclick = (e) => { e.preventDefault(); LoudbookNative.resume(K, x.url); };
         const del = document.createElement('button'); del.textContent = '\u00d7'; del.title = 'Remove';
-        del.onclick = () => { LoudbookNative.forget(x.url); row.remove(); if (!list.children.length) document.getElementById('shelf').hidden = true; };
+        del.onclick = () => { LoudbookNative.forget(K, x.url); row.remove(); if (!list.children.length) document.getElementById('shelf').hidden = true; };
         row.append(a, del); list.appendChild(row);
       }
       document.getElementById('shelf').hidden = false;
