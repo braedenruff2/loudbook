@@ -82,11 +82,12 @@ final class KindleText {
             }
         }
         List<Chapter.Chunk> out = new ArrayList<>();
+        Ramp ramp = new Ramp();
         for (int pi = 0; pi < paras.size(); pi++) {
-            List<String> ss = sentences(paras.get(pi));
             // the page's first sentence is what's waited for after a page turn: make its first
-            // piece short (at a comma, or before "and"/"but"...), so the voice can start sooner
-            if (out.isEmpty() && !ss.isEmpty()) ss = rampStart(ss);
+            // piece short (at a comma, or before "and"/"but"...), so the voice can start sooner; and the next few
+            // (in this paragraph or the next ones) cut too while one is much longer than the piece before it
+            List<String> ss = ramp.pieces(sentences(paras.get(pi)));
             int b = pi == 0 && cont >= 0 ? cont : block++;
             for (String s : ss) out.add(new Chapter.Chunk(b, s, say(s)));
             if (pi == paras.size() - 1 && lastKept) carryBlock = b;
@@ -172,28 +173,31 @@ final class KindleText {
         return out;
     }
     /**
-     * The page's first sentences: the first one cut short (quickStart), and the next ones of that paragraph cut at commas
-     * while one is much longer than the piece before it, near the start only. (After a page turn a long sentence that came
-     * after a short first one was made while nothing was said: 2.9 s of silence in the Kindle lab, "Upon the whole, I am
-     * much pleased with him." then a 14 s sentence.)
+     * The page's first sentences, as pieces that are each ready in time: the first one cut short (quickStart), and the next
+     * ones (in its paragraph or the next) cut at commas while one is much longer than the piece before it, near the page's
+     * start only. (After a page turn a long sentence that came after a short first one was made while nothing was said: about
+     * 3 s of silence in the Kindle lab, "Upon the whole, I am much pleased with him.” then a new paragraph's 14 s sentence.)
      */
-    static List<String> rampStart(List<String> ss) {
-        List<String> out = new ArrayList<>(quickStart(ss.get(0)));
-        int said = 0;
-        for (String p : out) said += p.length();
-        for (int i = 1; i < ss.size(); i++) {
-            String s = ss.get(i);
-            int last = out.get(out.size() - 1).length();
-            if (said < 200 && s.length() > Math.max(70, 3 * last + 10)) {
-                List<String> t = new ArrayList<>();
-                t.add(out.get(out.size() - 1));
-                rampRest(t, s, 4);
-                t.remove(0);
+    static final class Ramp {
+        private String last;                          // (the last piece so far; null before the first sentence)
+        private int said;                             // (letters in the sentences so far)
+        List<String> pieces(List<String> ss) {
+            List<String> out = new ArrayList<>();
+            for (String s : ss) {
+                List<String> t;
+                if (last == null) t = quickStart(s);
+                else if (said < 200 && s.length() > Math.max(70, 3 * last.length() + 10)) {
+                    t = new ArrayList<>();
+                    t.add(last);
+                    rampRest(t, s, 4);
+                    t.remove(0);
+                } else t = java.util.Collections.singletonList(s);
                 out.addAll(t);
-            } else out.add(s);
-            said += s.length();
+                last = t.get(t.size() - 1);
+                said += s.length();
+            }
+            return out;
         }
-        return out;
     }
     /** Adds rest to out, cut at commas first if it's long next to out's last piece (each piece at most about 3 times the one before). */
     private static void rampRest(List<String> out, String rest, int pieces) {

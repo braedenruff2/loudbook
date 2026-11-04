@@ -169,6 +169,14 @@ public class UnitTest {
         for (Chapter.Chunk c : pr) prw.append(c.text).append(' ');
         check("cutting keeps every word", prw.toString().trim(), "Upon the whole, I am much pleased with him. As Elizabeth had no longer any interest of her own to pursue, she turned her attention almost entirely to her sister and Mr. Bingley; and the train of agreeable reflections which her observations gave birth to, made her perhaps almost as happy as Jane. She saw her in idea settled in that very house, in all the felicity which a marriage of true affection could bestow; and she felt capable, under such circumstances, of endeavouring even to like Bingley's two sisters.");
         check("pieces of one paragraph keep its block", pr.get(0).block == pr.get(pr.size() - 1).block, true);
+        // the same when the long sentence starts the next paragraph (as in the lab: the short one ends a quote)
+        KindleText kr2 = new KindleText("");
+        List<Chapter.Chunk> pr2 = kr2.chunks(Arrays.asList("Upon the whole, I am much pleased with him.\u201d", "As Elizabeth had no longer any interest of her own to pursue, she turned her attention almost entirely to her sister and Mr. Bingley; and the train of agreeable reflections which her observations gave birth to, made her perhaps almost as happy as Jane."), true);
+        check("a long sentence starting the next paragraph is cut too", pr2.size() + ":" + pr2.get(1).text + "|" + (pr2.get(1).block != pr2.get(0).block) + "|" + (pr2.get(2).block == pr2.get(1).block),
+            "3:As Elizabeth had no longer any interest of her own to pursue, she turned her attention almost entirely to her sister and Mr. Bingley;|true|true");
+        KindleText kr3 = new KindleText("");
+        List<Chapter.Chunk> pr3 = kr3.chunks(Arrays.asList("The night was cold and very long and nobody in the house could sleep at all through it, not even the dog. They sat up by the fire and talked of the war, of the harvest, of the price of grain in the town. Then the old man stood, and went to the door, and opened it to the snow and the dark and the wind that came off the mountain in the winter, as it always had, as it always would."), true);
+        check("not cut once 200 letters are said", pr3.size(), 3);
         // a recorded voice: too short is refused, long enough is a WAV
         byte[] quiet = new byte[24000 * 2 * 3];
         check("silence refused", VoiceRecording.toWav(quiet, 24000) == null, true);
