@@ -190,7 +190,8 @@ final class Voice {
             try {
                 String engine = prefs(app).getString("pcEngine", "natural");
                 String rec = prefs(app).getString("pcVoice", "");          // a voice recorded on the PC
-                PcLink.Audio a = l.speak(text, sid, speed, engine, rec.isEmpty() ? null : rec, 30000);
+                // (the PC reads with Kokoro too when asked for it or when its natural voice can't: the same respellings as the phone's)
+                PcLink.Audio a = l.speak(text, Chapter.forKokoro(text), sid, speed, engine, rec.isEmpty() ? null : rec, 30000);
                 pcOk = true; pcError = ""; lastSource = "pc:" + a.engine;
                 float[] f = new float[a.pcm.length];
                 for (int i = 0; i < f.length; i++) f[i] = a.pcm[i] / 32768f;

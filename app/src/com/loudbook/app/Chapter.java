@@ -8,6 +8,9 @@ import java.util.List;
 
 /** A chapter as the page script (assets/web/loudbook.js) hands it over. */
 final class Chapter {
+    /** A dash between words: an em or en dash (spaced or not), two or more hyphens, or a hyphen with a space each side. */
+    private static final java.util.regex.Pattern DASH = java.util.regex.Pattern.compile(
+        "(?<=[\\p{L}\\p{N},.!?\u2019\u201d)])(?:[ \\u00a0]?[\\u2014\\u2013][ \\u00a0]?|[ \\u00a0]?--+[ \\u00a0]?| - )(?=[\\p{L}\\p{N}\u2018\u201c(])");
     // the letter A said as a letter: the phone voice reads a lone "A" before a word as "uh" ("Plan A failed",
     // "an A on the test"); "Eigh" it says as the letter. Only for the phone voice (Gemini reads A fine).
     private static final java.util.regex.Pattern LETTER_A = java.util.regex.Pattern.compile(
@@ -320,6 +323,18 @@ final class Chapter {
         if (t.indexOf('A') >= 0) t = LETTER_A.matcher(t).replaceAll("Eigh");
         // "Mm-hmm" it spells out ("M M hmm"); "Um-hmm" it says as the sound
         if (t.contains("m-hmm")) t = t.replace("Mm-hmm", "Um-hmm").replace("mm-hmm", "um-hmm");
+        // a dash between words ("Wait—no—stop", "the man--tall--walked", "He - well"): Kokoro pauses only at a spaced em dash,
+        // and ran the rest together ("Wait no stop"; the highlight's timing expects a pause there, see SpeechTiming.breaks)
+        if (t.indexOf('\u2014') >= 0 || t.indexOf('\u2013') >= 0 || t.contains("-")) {
+            java.util.regex.Matcher m = DASH.matcher(t);
+            StringBuffer b = new StringBuffer();
+            while (m.find()) {
+                boolean digits = m.start() > 0 && m.end() < t.length() && Character.isDigit(t.charAt(m.start() - 1)) && Character.isDigit(t.charAt(m.end()));
+                m.appendReplacement(b, digits ? java.util.regex.Matcher.quoteReplacement(m.group()) : " \u2014 ");
+            }
+            m.appendTail(b);
+            t = b.toString();
+        }
         return t;
     }
     static final class Chunk {

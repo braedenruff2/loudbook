@@ -17,6 +17,9 @@ public class PcTest { public static void main(String[] a) throws Exception {
         System.out.println("speak " + eng + ": " + au.pcm.length + " samples @" + au.rate + " work " + au.workMs + "ms, engine " + au.engine + ", made at " + au.madeAt);
         if (a.length > 2) java.nio.file.Files.write(java.nio.file.Paths.get(eng + ".pcm"), toBytes(au.pcm));
       }
+      // the phone's respelling for Kokoro (forKokoro) goes along; the PC's Kokoro reads that one
+      PcLink.Audio k2 = l.speak("Close the door\u2014now.", "Cloze the door \u2014 now.", 3, 1f, "kokoro", null, 60000);
+      System.out.println("speak kokoro with its own text: " + k2.pcm.length + " samples, engine " + k2.engine);
     } catch (Exception e) { System.out.println("USE FAILED: " + e.getMessage()); }
   } else if (cmd.equals("voice")) {
     // a "recorded voice": the Kokoro sentence from "use x save", four times over (about 10 s)

@@ -45,6 +45,10 @@ public class UnitTest {
         // a "next" link back to the same page isn't a next chapter
         check("the letter A for the phone voice", Chapter.forKokoro("Plan A failed. He got an A on the test, an A-plus, Grade A. A man came. Type A people. A. Smith, a plan A."),
             "Plan Eigh failed. He got an Eigh on the test, an A-plus, Grade Eigh. A man came. Type Eigh people. A. Smith, a plan Eigh.");
+        check("dashes as pauses for the phone voice", Chapter.forKokoro("\"Wait\u2014no\u2014stop!\" The man--tall, thin--walked in. He - well, he left. It was\u2013how to put it\u2013odd. She smiled\u2014\u201cYes.\u201d"),
+            "\"Wait \u2014 no \u2014 stop!\" The man \u2014 tall, thin \u2014 walked in. He \u2014 well, he left. It was \u2014 how to put it \u2014 odd. She smiled \u2014 \u201cYes.\u201d");
+        check("dashes for the phone voice: ranges, hyphens and a cut-off word stay", Chapter.forKokoro("Open 9\u20135, pages 10--12, a well-known A-plus man. \"I\u2014\" she began. Three \u2014 four."),
+            "Open 9\u20135, pages 10--12, a well-known A-plus man. \"I\u2014\" she began. Three \u2014 four.");
         check("mm-hmm for the phone voice", Chapter.forKokoro("Mm-hmm. She said mm-hmm and left."), "Um-hmm. She said um-hmm and left.");
         check("verbs for the phone voice: close", Chapter.forKokoro("Close the door. \"Close your eyes,\" she said, and close the gate."), "Cloze the door. \"Cloze your eyes,\" she said, and cloze the gate.");
         check("verbs for the phone voice: close as \"near\" stays", Chapter.forKokoro("She stood close the whole time. He was so close the heat burned. Up close the beast was worse. It's close to midnight. The door was closed."), "She stood close the whole time. He was so close the heat burned. Up close the beast was worse. It's close to midnight. The door was closed.");

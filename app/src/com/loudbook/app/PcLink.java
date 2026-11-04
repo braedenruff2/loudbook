@@ -71,11 +71,15 @@ final class PcLink {
     Audio speak(String text, int sid, float speed, String engine, int timeoutMs) throws IOException { return speak(text, sid, speed, engine, null, timeoutMs); }
 
     /** voice: a voice recorded on the PC (its id), or null for the usual ones. */
-    Audio speak(String text, int sid, float speed, String engine, String voice, int timeoutMs) throws IOException {
+    Audio speak(String text, int sid, float speed, String engine, String voice, int timeoutMs) throws IOException { return speak(text, null, sid, speed, engine, voice, timeoutMs); }
+
+    /** kokoroText: the text respelled for Kokoro (Chapter.forKokoro), for when the PC reads with Kokoro; null if the same. */
+    Audio speak(String text, String kokoroText, int sid, float speed, String engine, String voice, int timeoutMs) throws IOException {
         HttpsURLConnection c = open("/v1/speak", fp, timeoutMs);
         c.setRequestProperty("Authorization", "Bearer " + token);
         byte[] req = ("{\"text\":" + quote(text) + ",\"sid\":" + sid + ",\"speed\":" + speed + ",\"engine\":" + quote(engine)
-            + (voice != null && !voice.isEmpty() ? ",\"voice\":" + quote(voice) : "") + "}").getBytes(StandardCharsets.UTF_8);
+            + (voice != null && !voice.isEmpty() ? ",\"voice\":" + quote(voice) : "")
+            + (kokoroText != null && !kokoroText.equals(text) ? ",\"kokoro_text\":" + quote(kokoroText) : "") + "}").getBytes(StandardCharsets.UTF_8);
         post(c, req);
         int code = c.getResponseCode();
         if (code != 200) { String e = errorText(c); c.disconnect(); throw new IOException("PC said " + code + (e.isEmpty() ? "" : ": " + e)); }

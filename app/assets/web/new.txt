@@ -1,3 +1,4 @@
+Phone voice: a dash between words ("Wait—no—stop", "the man--tall--walked in") is now a short pause instead of running the words together. The PC's Kokoro voice gets the phone voice's pronunciation fixes too (once the PC voice is restarted).
 Times written with a dot, as in British stories ("at 7.30", "by the 3.30", "9.30-5.00"), are now read as times ("seven thirty"), not "seven point three zero".
 Kindle: a shorter pause when a page ends with its sentence. The next page's first words are made while the last sentence is still being read (when Kindle shares how the next page starts), so reading carries on sooner after the turn.
 If the phone's audio output fails while reading (it can when Bluetooth or the audio system restarts), Loudbook starts the sentence again instead of going silent while still showing it's playing.

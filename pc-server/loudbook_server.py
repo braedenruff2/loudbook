@@ -503,7 +503,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         print("Loudbook PC voice: natural voice failed:", repr(e)[:200], flush=True)
                         use_natural = False
                 if not use_natural:
-                    pcm, rate = Handler.engine.speak(text, sid, speed); made_at = speed; used = "kokoro"
+                    # (the phone's respellings for Kokoro, e.g. heteronym verbs and dashes as pauses, if it sent them)
+                    ktext = str(req.get("kokoro_text") or text)[:MAX_TEXT]
+                    pcm, rate = Handler.engine.speak(ktext, sid, speed); made_at = speed; used = "kokoro"
                 return self.reply(200, pcm, "audio/L16", {"X-Sample-Rate": str(rate), "X-Work-Ms": str(int((time.time() - t0) * 1000)),
                                                           "X-Made-At": f"{made_at:.3f}", "X-Engine": used})
             self.reply(404, {"error": "no such thing"})
