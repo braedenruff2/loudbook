@@ -83,14 +83,14 @@
       .replace(/\$(\d[\d,]*)(?:\.(\d{2}))?\b/g, (_, d, c) => { const n = +d.replace(/,/g, ''); if (n === 0 && c && +c) return words(+c) + (+c === 1 ? ' cent' : ' cents');   // $0.99 -> ninety-nine cents
         return digitWords(d.replace(/,/g, '')) + (n === 1 ? ' dollar' : ' dollars') + (c && +c ? ' and ' + words(+c) + ' cents' : ''); })
       // 9:00 -> nine o'clock, 15:00 -> fifteen hundred, but "10:00 o'clock" and "3:00 AM" don't get a second o'clock
-      .replace(/\b(\d{1,2}):(\d{2})\b/g, (_, h, m, at, all) => (+h === 0 && +m === 0 ? (/(?:\b(?:at|past|after|until|till|before|by|around|about|since)\s+)$/i.test(all.slice(Math.max(0, at - 9), at)) ? 'midnight' : 'zero zero') : words(+h) + (+m === 0 && +h >= 13 && +h <= 24 ? ' hundred' : +m === 0 ? (/^\s*(o'clock|o’clock|[ap]\.?m\b|[AP]M\b)/i.test(all.slice(at + 3 + h.length)) ? '' : " o'clock") : +m < 10 ? ' oh ' + words(+m) : ' ' + words(+m))))
+      .replace(/\b(\d{1,2}):(\d{2})\b/g, (_, h, m, at, all) => (+h === 0 && +m === 0 ? (/(?:\b(?:at|past|after|until|till|before|by|around|about|since)\s+)$/i.test(all.slice(Math.max(0, at - 9), at)) ? 'midnight' : 'zero zero') : words(+h) + (+m === 0 && +h >= 13 && +h <= 24 ? ' hundred' : +m === 0 ? (/^\s*(o'clock|o’clock|[ap]\.?m\b|[AP]M\b|noon\b|midnight\b)/i.test(all.slice(at + 3 + h.length)) ? '' : " o'clock") : +m < 10 ? ' oh ' + words(+m) : ' ' + words(+m))))
       // British-style times with a dot: "at 7.30" -> seven thirty, "7.30 pm", "from 9.30 to 5.00" (were "seven point three zero").
       // Only after at/by/until/... or before am/pm, and not followed by a word that makes it an amount ("at 2.50 pounds")
-      .replace(/(\b(?:[Aa]t|[Bb]y|[Uu]ntil|[Tt]ill|[Bb]efore|[Aa]fter|[Aa]round|[Ff]rom|[Ss]ince|[Pp]ast|[Bb]etween|[Tt]he)\s+|(?<![\d.,:\/$£€]))([1-9]|1\d|2[0-3])\.([0-5]\d)(?![\d.]\d)(?=(\s*(?:[AP]M|[ap]\.?m\.?)(?![a-z]))|(?:[.,;:!?)"”’\]]|\s*[-–]\s*\d|\s*$)|\s+(?:sharp|exactly|precisely|tonight|tomorrow|today|this|that|every|and|or|in|on|at|o['’]clock|when|then|so|but|he|she|they|we|I|you|it|until|till|to|the|his|her|their|our|my)\b)/g,
+      .replace(/(\b(?:[Aa]t|[Bb]y|[Uu]ntil|[Tt]ill|[Bb]efore|[Aa]fter|[Aa]round|[Ff]rom|[Ss]ince|[Pp]ast|[Bb]etween|[Tt]he)\s+|(?<![\d.,:\/$£€]))([1-9]|1\d|2[0-3])\.([0-5]\d)(?![\d.]\d)(?=(\s*(?:[AP]M|[ap]\.?m\.?)(?![a-z]))|(?:[.,;:!?)"”’\]]|\s*[-–]\s*\d|\s*$)|\s+(?:sharp|exactly|precisely|tonight|tomorrow|today|this|that|every|and|or|in|on|at|o['’]clock|noon|midnight|train|bus|express|from|when|then|so|but|he|she|they|we|I|you|it|until|till|to|the|his|her|their|our|my)\b)/g,
         (m, pre, h, mm, ampm, at, all) => {
           if (!pre && !ampm && !/\b(?:[1-9]|1\d|2[0-3])\.[0-5]\d\s*(?:to|until|till|and|-|–)\s*$/.test(all.slice(Math.max(0, at - 16), at))
             && !/^\s*(?:to|until|till|-|–)\s*(?:[1-9]|1\d|2[0-3])\.[0-5]\d(?![\d.]\d)/.test(all.slice(at + m.length))) return m;   // (a bare 7.30 stays a number)
-          return pre + words(+h) + (+mm === 0 ? (ampm ? '' : +h >= 13 ? ' hundred' : " o'clock") : +mm < 10 ? ' oh ' + ONES[+mm] : ' ' + words(+mm));
+          return pre + words(+h) + (+mm === 0 ? (ampm || /^\s*(?:noon|midnight)\b/.test(all.slice(at + m.length)) ? '' : +h >= 13 ? ' hundred' : " o'clock") : +mm < 10 ? ' oh ' + ONES[+mm] : ' ' + words(+mm));
         })
       .replace(/\b(\d+)(st|nd|rd|th)\b/gi, (_, d) => ordinal(+d))
       // years before 1100 or after 2099, where it's clearly a year: "the year 1066", "the year 2525", "in 1066.", "800 AD" -> ten sixty-six, eight hundred AD
