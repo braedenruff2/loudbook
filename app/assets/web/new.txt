@@ -1,3 +1,4 @@
+Privacy: websites opened in Loudbook's browser can no longer read your list of stories and where you are in them (only Loudbook's start page can).
 Second voice: in stories that quote speech in single quotes, a quotation inside it (‘He told me “never”,’ she said) stays in the character's voice; it used to swap the two voices.
 Reopening Loudbook from Recents (or after Android closed it in the background) no longer reads out text you shared to it earlier again, or jumps back to a link you opened with it.
 Hours written short ("3h later", "slept 8h") are read as hours, and the phone voice spells AoE as letters.

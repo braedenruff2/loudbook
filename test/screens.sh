@@ -27,6 +27,8 @@ for i in $(seq -w 1 12); do
 done
 adb shell input keyevent KEYCODE_BACK
 sleep 1
+# (the start page after reading: "Continue listening" and the stories come from LoudbookNative.home(), which only answers
+# the start page itself since 2026-11-04)
 adb shell am start -n com.loudbook.app/.MainActivity --ez home true
 sleep 4
 adb shell screencap -p /sdcard/s.png; adb pull /sdcard/s.png shots/05-home-after.png

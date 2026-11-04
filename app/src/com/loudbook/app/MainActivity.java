@@ -359,6 +359,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 return !("http".equals(scheme) || "https".equals(scheme) || "file".equals(scheme));
             }
             @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap icon) {
+                shownUrl = url;
                 address.setText(url.startsWith("file:") ? "" : url);
                 pageChapter = null;
                 readThisBtn.setVisibility(View.GONE);
@@ -443,6 +444,14 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         web.evaluateJavascript("window.LB && LB.run(" + JSONObject.quote(fixes) + "," + tidy + ")", null);
     }
 
+    /** The page the browser is showing (set as it starts loading): the start page's own calls only work there. */
+    private volatile String shownUrl;
+    /**
+     * The start page is showing (not a story site): LoudbookNative is there for every page the browser opens, ads and all,
+     * and any of them could call home() and read what he's been reading (the stories, chapters and addresses).
+     */
+    private boolean onStartPage() { String u = shownUrl; return u != null && u.startsWith("file:///android_asset/web/"); }
+
     /** Called from the page script. Runs on a WebView thread: hop to the main thread. */
     final class Bridge {
         @JavascriptInterface public void onChapter(String json) {
@@ -464,6 +473,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         }
         /** For the start page: the last chapter, to carry on. */
         @JavascriptInterface public String home() {
+            if (!onStartPage()) { Log.w(TAG, "home() asked for by a page that isn't the start page"); return "{}"; }
             try {
                 return new JSONObject().put("lastUrl", prefs.getString("lastUrl", ""))
                     .put("lastTitle", prefs.getString("lastTitle", "")).put("lastFiction", prefs.getString("lastFiction", ""))
@@ -471,11 +481,12 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                     .put("news", newsToShow()).toString();
             } catch (Exception e) { return "{}"; }
         }
-        @JavascriptInterface public void resume(String url) { main.post(() -> { resumeOnLoad = url; web.loadUrl(url); }); }
+        @JavascriptInterface public void resume(String url) { if (onStartPage()) main.post(() -> { resumeOnLoad = url; web.loadUrl(url); }); }
         /** "What's new" was read: don't show it again until there's something newer. */
-        @JavascriptInterface public void newsSeen() { prefs.edit().putInt("newsSeen", readAsset("web/new.txt").hashCode()).apply(); }
+        @JavascriptInterface public void newsSeen() { if (onStartPage()) prefs.edit().putInt("newsSeen", readAsset("web/new.txt").hashCode()).apply(); }
         /** Takes a story off "Your stories". */
         @JavascriptInterface public void forget(String url) {
+            if (!onStartPage()) return;
             main.post(() -> {
                 synchronized (NewChapters.SHELF) { try {
                     org.json.JSONArray a = new org.json.JSONArray(prefs.getString("shelf", "[]")), b = new org.json.JSONArray();
