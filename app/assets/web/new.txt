@@ -1,3 +1,4 @@
+Reopening Loudbook from Recents (or after Android closed it in the background) no longer reads out text you shared to it earlier again, or jumps back to a link you opened with it.
 Hours written short ("3h later", "slept 8h") are read as hours, and the phone voice spells AoE as letters.
 Phone voice: a dash between words ("Wait—no—stop", "the man--tall--walked in") is now a short pause instead of running the words together. The PC's Kokoro voice gets the phone voice's pronunciation fixes too (once the PC voice is restarted).
 Times written with a dot, as in British stories ("at 7.30", "by the 3.30", "9.30-5.00"), are now read as times ("seven thirty"), not "seven point three zero".

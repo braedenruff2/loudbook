@@ -108,7 +108,13 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         ReaderService.start(this);
         NewChapters.schedule(this);
         bindService(new Intent(this, ReaderService.class), conn, BIND_AUTO_CREATE);
-        if (!handleIntent(getIntent())) {
+        // (not the share or link that first opened Loudbook again: Android hands that same intent back when it's reopened from
+        // Recents or brought back after being closed in the background, and the shared text was read out again from the start)
+        Intent first = getIntent();
+        boolean again = state != null || (first != null && (first.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0);
+        if (again && first != null && first.getAction() != null && !Intent.ACTION_MAIN.equals(first.getAction()))
+            Log.i("LoudbookTest", "opened again with its first intent (" + first.getAction() + "): not handled again");
+        if (again || !handleIntent(first)) {
             if (state != null) web.restoreState(state); else web.loadUrl(HOME);
         }
         showLastCrash();
@@ -471,11 +477,11 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         /** Takes a story off "Your stories". */
         @JavascriptInterface public void forget(String url) {
             main.post(() -> {
-                try {
+                synchronized (NewChapters.SHELF) { try {
                     org.json.JSONArray a = new org.json.JSONArray(prefs.getString("shelf", "[]")), b = new org.json.JSONArray();
                     for (int i = 0; i < a.length(); i++) if (!a.getJSONObject(i).optString("url").equals(url)) b.put(a.getJSONObject(i));
                     prefs.edit().putString("shelf", b.toString()).apply();
-                } catch (Exception ignored) { }
+                } catch (Exception ignored) { } }
             });
         }
     }

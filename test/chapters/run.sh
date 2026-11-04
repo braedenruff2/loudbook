@@ -71,3 +71,11 @@ adb shell input tap $((W * 46 / 100)) $((H * 89 / 100))          # the big play 
 sleep 25
 adb logcat -d > logcat.txt
 grep -o "resumed with the next chapter: [^ ]*" logcat.txt | head -1 | sed 's/^/new chapter on play: /' >> newchapter.txt
+# reopened from Recents after a share: Android hands back the share that first opened it; it mustn't be read out again
+adb shell am force-stop com.loudbook.app
+adb shell log -t LoudbookTest "=== reopened from Recents after a share ==="
+adb shell am start -n com.loudbook.app/.MainActivity -f 0x10100000 -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "'Pelicans circled the harbour wall all afternoon.'"
+sleep 15
+adb logcat -d > logcat.txt
+sed -n '/=== reopened from Recents after a share/,$p' logcat.txt > recents-log.txt
+grep -q "opened again with its first intent" recents-log.txt && ! grep -q "Pelicans" recents-log.txt && echo "reopened from Recents: the old share not read again: yes" > recents.txt || echo "reopened from Recents: the old share not read again: NO" > recents.txt

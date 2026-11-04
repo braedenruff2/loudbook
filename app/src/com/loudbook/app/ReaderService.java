@@ -2391,7 +2391,7 @@ public class ReaderService extends Service {
     /** "Your stories" on the start page: each story read lately, where you got to (newest first, eight at most). */
     private void shelve(Chapter ch, int at) {
         if (ch.fiction == null || ch.fiction.trim().isEmpty()) return;
-        try {
+        synchronized (NewChapters.SHELF) { try {
             org.json.JSONArray old = new org.json.JSONArray(prefs.getString("shelf", "[]")), now = new org.json.JSONArray();
             boolean caught = false;                       // (still caught up if it's the same, latest, chapter)
             String newUrl = null;                         // (and a new chapter found after it is still new)
@@ -2408,7 +2408,7 @@ public class ReaderService extends Service {
                 if (!(o.optString("fiction").equals(ch.fiction) && o.optString("site").equals(ch.site))) now.put(o);
             }
             prefs.edit().putString("shelf", now.toString()).apply();
-        } catch (Exception e) { Log.w(TAG, "shelf", e); }
+        } catch (Exception e) { Log.w(TAG, "shelf", e); } }
     }
     int savedPos(String url) { return prefs.getInt("pos:" + url, 0); }
 

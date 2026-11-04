@@ -45,16 +45,21 @@ public class NewChapters extends JobService {
     /** The story's latest chapter was just read to the end: watch it for a next one. */
     static void caughtUp(Context c, Chapter ch) { mark(c, ch.url, true, null); }
     /** on: watch it; newUrl: the new chapter found after it (the start page shows "New chapter out"). */
+    /**
+     * Held while "Your stories" (the "shelf" setting) is read, changed and written back: the player thread saves it every few
+     * sentences while this job marks a story's new chapter on the main thread, and one could write over the other's change.
+     */
+    static final Object SHELF = new Object();
     private static void mark(Context c, String url, boolean on, String newUrl) {
         SharedPreferences p = Voice.prefs(c);
-        try {
+        synchronized (SHELF) { try {
             JSONArray a = new JSONArray(p.getString("shelf", "[]"));
             for (int i = 0; i < a.length(); i++) if (a.getJSONObject(i).optString("url").equals(url)) {
                 a.getJSONObject(i).put("caughtUp", on);
                 if (newUrl != null) a.getJSONObject(i).put("newUrl", newUrl);
             }
             p.edit().putString("shelf", a.toString()).apply();
-        } catch (Exception e) { Log.w(TAG, "shelf", e); }
+        } catch (Exception e) { Log.w(TAG, "shelf", e); } }
     }
 
     private ChapterFetcher fetcher;

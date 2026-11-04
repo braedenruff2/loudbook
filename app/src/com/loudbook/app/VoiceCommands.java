@@ -86,25 +86,37 @@ final class VoiceCommands {
         // the native code can take the whole app down; remember we were in here so the next start
         // turns voice commands off instead of crashing again
         prefs(c).edit().putBoolean("cmdLoading", true).commit();
-        OnlineTransducerModelConfig tr = OnlineTransducerModelConfig.builder()
-            .setEncoder(new File(d, "kws-encoder.onnx").getPath())
-            .setDecoder(new File(d, "kws-decoder.onnx").getPath())
-            .setJoiner(new File(d, "kws-joiner.onnx").getPath()).build();
-        OnlineModelConfig m = OnlineModelConfig.builder().setTransducer(tr)
-            .setTokens(new File(d, "kws-tokens.txt").getPath()).setNumThreads(1).setProvider("cpu").setDebug(false).build();
-        KeywordSpotterConfig kc = KeywordSpotterConfig.builder()
-            .setFeatureConfig(FeatureConfig.builder().setSampleRate(RATE).setFeatureDim(80).build())
-            .setOnlineModelConfig(m).setKeywordsFile(new File(d, "keywords.txt").getPath())
-            .setKeywordsThreshold(0.25f).setKeywordsScore(1.0f).setMaxActivePaths(4).build();
-        kws = new KeywordSpotter(kc);
-        spk = new SpeakerEmbeddingExtractor(SpeakerEmbeddingExtractorConfig.builder()
-            .setModel(new File(d, "speaker.onnx").getPath()).setNumThreads(1).setProvider("cpu").setDebug(false).build());
-        // try both once, so a problem shows up here and not in the middle of setup
-        embed(new float[RATE]);
-        spot(new float[RATE / 2]);
+        try {
+            OnlineTransducerModelConfig tr = OnlineTransducerModelConfig.builder()
+                .setEncoder(new File(d, "kws-encoder.onnx").getPath())
+                .setDecoder(new File(d, "kws-decoder.onnx").getPath())
+                .setJoiner(new File(d, "kws-joiner.onnx").getPath()).build();
+            OnlineModelConfig m = OnlineModelConfig.builder().setTransducer(tr)
+                .setTokens(new File(d, "kws-tokens.txt").getPath()).setNumThreads(1).setProvider("cpu").setDebug(false).build();
+            KeywordSpotterConfig kc = KeywordSpotterConfig.builder()
+                .setFeatureConfig(FeatureConfig.builder().setSampleRate(RATE).setFeatureDim(80).build())
+                .setOnlineModelConfig(m).setKeywordsFile(new File(d, "keywords.txt").getPath())
+                .setKeywordsThreshold(0.25f).setKeywordsScore(1.0f).setMaxActivePaths(4).build();
+            kws = new KeywordSpotter(kc);
+            spk = new SpeakerEmbeddingExtractor(SpeakerEmbeddingExtractorConfig.builder()
+                .setModel(new File(d, "speaker.onnx").getPath()).setNumThreads(1).setProvider("cpu").setDebug(false).build());
+            // try both once, so a problem shows up here and not in the middle of setup
+            embed(new float[RATE]);
+            spot(new float[RATE / 2]);
+        } catch (Throwable t) {
+            // a Java error here (not the native crash cmdLoading is for): it used to leave kws set with no speaker check, so
+            // loaded() said yes, load() never tried again and the listener failed on it; and the next start took cmdLoading
+            // for a crash, deleted the downloaded models and turned voice commands off
+            Log.w(TAG, "voice commands: loading failed", t);
+            try { if (kws != null) kws.release(); } catch (Throwable ignored) { }
+            try { if (spk != null) spk.release(); } catch (Throwable ignored) { }
+            kws = null; spk = null;
+            prefs(c).edit().putBoolean("cmdLoading", false).commit();
+            throw t;
+        }
         prefs(c).edit().putBoolean("cmdLoading", false).commit();
     }
-    boolean loaded() { return kws != null; }
+    boolean loaded() { return kws != null && spk != null; }
 
     /** True once if the app died while loading the voice-command models last time (and turns them off). */
     static boolean crashedLastTime(Context c) {
