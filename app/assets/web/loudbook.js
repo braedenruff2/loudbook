@@ -839,6 +839,9 @@ function tidy(t) {
     .replace(/\b(Univ|Govt|Assn)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, a, mid) => ({ Univ: 'University', Govt: 'Government', Assn: 'Association' }[a]) + (mid !== undefined ? '' : '.'))   // Univ. of Arcana
     .replace(/(?<![\w.$])(\d+(?:\.\d+)?)(?:B|bn)(?=\s+(?:views|followers|subscribers|people|users|players|dollars|years|credits|coins|gold|souls|lives|stars|galaxies|cells|neurons|parameters|tons)\b)/g, '$1 billion')   // 3B credits (Room 12B stays)
     .replace(/(?<![\w.$])(\d+(?:\.\d+)?)[mM](?=\s+(?:views|followers|subs|subscribers|people|users|readers|players|fans|likes|downloads|copies|gold|coins|credits|souls|lives|years|troops|soldiers|monsters)\b)/g, '$1 million')   // 3.4m followers (was "meters")
+    .replace(/(^|[^$\w.#])(\d+(?:\.\d+)?)h(?![\w\/-])(?=\s*(?:[.,;:!?)]|$)|\s+(?:later|ago|left|before|after|straight|a day|a week|each|per|of|and|or|to|in|on|at|from|until|till|by|with|without|since|now|more|less|than|max|total|long|away|remaining|later)\b)/g,
+      (m, pre, n, at, all) => /\b(?:[Rr]oom|[Aa]pt|[Ff]loor|[Ss]eat|[Rr]ow|[Gg]ate|[Uu]nit|[Bb]lock|[Ss]uite|[Cc]abin|[Bb]ay|[Pp]latform|[Cc]ell|[Ss]ector|[Gg]rid|[Ss]quare|[Bb]ox|[Ll]ocker|[Bb]ed|[Ww]ard|[Cc]ar|[Hh]all|[Ww]ing|[Zz]one|[Ll]ot|[Pp]od|[Dd]orm|[Ll]ab|[Tt]ower|[Bb]uilding|[Vv]ersion|[Vv]ol|[Cc]h|[Pp]art|[Pp]age|[Ff]ig|[Ee]x|[Pp]roblem|[Qq]uestion|[Ss]ection)\s$/.test(all.slice(0, at) + pre)
+        ? m : pre + n + (n === '1' ? ' hour' : ' hours'))   // "3h later", "slept 8h" -> hours (was "three aitch"); Room 3h stays
     .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|wpm|ft|yds|yd|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|m\/s|m|g|L|KB|MB|GB|TB|PB|kHz|MHz|GHz|Hz|Mbps|Gbps|kWh|kW|MW|kV|mAh|ly|V|W)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
       (m, pre, n, u, at, all) => {
         // "a 10 km run", "the 5 kg bag" -> ten-kilometer run (the adjective form takes the singular)

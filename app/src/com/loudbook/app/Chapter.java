@@ -323,6 +323,8 @@ final class Chapter {
         if (t.indexOf('A') >= 0) t = LETTER_A.matcher(t).replaceAll("Eigh");
         // "Mm-hmm" it spells out ("M M hmm"); "Um-hmm" it says as the sound
         if (t.contains("m-hmm")) t = t.replace("Mm-hmm", "Um-hmm").replace("mm-hmm", "um-hmm");
+        // "AOE" it says as a word ("ay-ah") at a sentence start or after an adjective ("Huge AOE and DPS"); spelled, it's letters
+        if (t.contains("AOE")) t = t.replaceAll("\\bAOE(?=s?\\b)", "A-O-E");
         // a dash between words ("Wait—no—stop", "the man--tall--walked", "He - well"): Kokoro pauses only at a spaced em dash,
         // and ran the rest together ("Wait no stop"; the highlight's timing expects a pause there, see SpeechTiming.breaks)
         if (t.indexOf('\u2014') >= 0 || t.indexOf('\u2013') >= 0 || t.contains("-")) {
