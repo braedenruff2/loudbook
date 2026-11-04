@@ -158,6 +158,17 @@ public class UnitTest {
         KindleText kq = new KindleText("");
         List<Chapter.Chunk> pq = kq.chunks(Arrays.asList("It was late in the year, and the first snow had already come to the high passes. Nobody went up."), true);
         check("only the page's first sentence is cut", pq.size() + ":" + pq.get(0).text + "|" + pq.get(1).block, "2:It was late in the year,|0");
+        // a short first sentence, then a long one: the long one is cut at commas too, so it's ready when the short one ends (lab 2026-11-04)
+        KindleText kr = new KindleText("");
+        List<Chapter.Chunk> pr = kr.chunks(Arrays.asList("Upon the whole, I am much pleased with him. As Elizabeth had no longer any interest of her own to pursue, she turned her attention almost entirely to her sister and Mr. Bingley; and the train of agreeable reflections which her observations gave birth to, made her perhaps almost as happy as Jane. She saw her in idea settled in that very house, in all the felicity which a marriage of true affection could bestow; and she felt capable, under such circumstances, of endeavouring even to like Bingley's two sisters."), true);
+        StringBuilder prs = new StringBuilder();
+        for (Chapter.Chunk c : pr) prs.append(c.text).append(" | ");
+        check("a long sentence after a short first one is cut too", prs.toString(),
+            "Upon the whole, I am much pleased with him. | As Elizabeth had no longer any interest of her own to pursue, she turned her attention almost entirely to her sister and Mr. Bingley; | and the train of agreeable reflections which her observations gave birth to, made her perhaps almost as happy as Jane. | She saw her in idea settled in that very house, in all the felicity which a marriage of true affection could bestow; and she felt capable, under such circumstances, of endeavouring even to like Bingley's two sisters. | ");
+        StringBuilder prw = new StringBuilder();
+        for (Chapter.Chunk c : pr) prw.append(c.text).append(' ');
+        check("cutting keeps every word", prw.toString().trim(), "Upon the whole, I am much pleased with him. As Elizabeth had no longer any interest of her own to pursue, she turned her attention almost entirely to her sister and Mr. Bingley; and the train of agreeable reflections which her observations gave birth to, made her perhaps almost as happy as Jane. She saw her in idea settled in that very house, in all the felicity which a marriage of true affection could bestow; and she felt capable, under such circumstances, of endeavouring even to like Bingley's two sisters.");
+        check("pieces of one paragraph keep its block", pr.get(0).block == pr.get(pr.size() - 1).block, true);
         // a recorded voice: too short is refused, long enough is a WAV
         byte[] quiet = new byte[24000 * 2 * 3];
         check("silence refused", VoiceRecording.toWav(quiet, 24000) == null, true);

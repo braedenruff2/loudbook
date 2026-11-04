@@ -86,7 +86,7 @@ final class KindleText {
             List<String> ss = sentences(paras.get(pi));
             // the page's first sentence is what's waited for after a page turn: make its first
             // piece short (at a comma, or before "and"/"but"...), so the voice can start sooner
-            if (out.isEmpty() && !ss.isEmpty()) { List<String> q = quickStart(ss.get(0)); ss.remove(0); ss.addAll(0, q); }
+            if (out.isEmpty() && !ss.isEmpty()) ss = rampStart(ss);
             int b = pi == 0 && cont >= 0 ? cont : block++;
             for (String s : ss) out.add(new Chapter.Chunk(b, s, say(s)));
             if (pi == paras.size() - 1 && lastKept) carryBlock = b;
@@ -168,10 +168,39 @@ final class KindleText {
         }
         if (cut < 0) { out.add(s); return out; }
         out.add(s.substring(0, cut).trim());
-        String rest = s.substring(cut).trim();
+        rampRest(out, s.substring(cut).trim(), 4);
+        return out;
+    }
+    /**
+     * The page's first sentences: the first one cut short (quickStart), and the next ones of that paragraph cut at commas
+     * while one is much longer than the piece before it, near the start only. (After a page turn a long sentence that came
+     * after a short first one was made while nothing was said: 2.9 s of silence in the Kindle lab, "Upon the whole, I am
+     * much pleased with him." then a 14 s sentence.)
+     */
+    static List<String> rampStart(List<String> ss) {
+        List<String> out = new ArrayList<>(quickStart(ss.get(0)));
+        int said = 0;
+        for (String p : out) said += p.length();
+        for (int i = 1; i < ss.size(); i++) {
+            String s = ss.get(i);
+            int last = out.get(out.size() - 1).length();
+            if (said < 200 && s.length() > Math.max(70, 3 * last + 10)) {
+                List<String> t = new ArrayList<>();
+                t.add(out.get(out.size() - 1));
+                rampRest(t, s, 4);
+                t.remove(0);
+                out.addAll(t);
+            } else out.add(s);
+            said += s.length();
+        }
+        return out;
+    }
+    /** Adds rest to out, cut at commas first if it's long next to out's last piece (each piece at most about 3 times the one before). */
+    private static void rampRest(List<String> out, String rest, int pieces) {
         // a long rest takes longer to make than the short piece takes to say: cut it again at a
         // comma (only), each piece at most about three times the one before, so each is ready in time
-        while (out.size() < 4) {
+        int start = out.size();
+        while (out.size() < start + pieces - 1) {
             int last = out.get(out.size() - 1).length(), most = Math.max(70, 3 * last + 10);
             if (rest.length() <= Math.max(60, 2 * last)) break;
             int c = -1;
@@ -182,7 +211,6 @@ final class KindleText {
             rest = rest.substring(c).trim();
         }
         out.add(rest);
-        return out;
     }
 
     /**
