@@ -152,6 +152,8 @@ public class UnitTest {
             "[The road out of the valley was older than the town, and in places the stones had sunk into the grass.]");
         check("a long rest is cut again at a comma", KindleText.quickStart("She liked the quiet, and she liked that nobody else bothered to come this way anymore, not since the new highway had opened on the far side of the hill."),
             "[She liked the quiet,, and she liked that nobody else bothered to come this way anymore,, not since the new highway had opened on the far side of the hill.]");
+        check("a comma too near the end: cut before and instead", KindleText.quickStart("The night was cold and very long and nobody in the house could sleep at all through it, not even the dog."),
+            "[The night was cold and very long, and nobody in the house could sleep at all through it, not even the dog.]");
         check("short sentence stays whole", KindleText.quickStart("Mara walked it every morning."), "[Mara walked it every morning.]");
         check("no good place stays whole", KindleText.quickStart("Abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghij."),
             "[Abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghij.]");
@@ -176,7 +178,7 @@ public class UnitTest {
             "3:As Elizabeth had no longer any interest of her own to pursue, she turned her attention almost entirely to her sister and Mr. Bingley;|true|true");
         KindleText kr3 = new KindleText("");
         List<Chapter.Chunk> pr3 = kr3.chunks(Arrays.asList("The night was cold and very long and nobody in the house could sleep at all through it, not even the dog. They sat up by the fire and talked of the war, of the harvest, of the price of grain in the town. Then the old man stood, and went to the door, and opened it to the snow and the dark and the wind that came off the mountain in the winter, as it always had, as it always would."), true);
-        check("not cut once 200 letters are said", pr3.size(), 3);
+        check("not cut once 200 letters are said", pr3.size() + ":" + pr3.get(pr3.size() - 1).text.startsWith("Then the old man"), "4:true");
         // a recorded voice: too short is refused, long enough is a WAV
         byte[] quiet = new byte[24000 * 2 * 3];
         check("silence refused", VoiceRecording.toWav(quiet, 24000) == null, true);

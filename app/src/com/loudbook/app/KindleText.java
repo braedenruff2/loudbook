@@ -160,12 +160,12 @@ final class KindleText {
         int cut = -1;
         if (s.length() >= 70) {
             Matcher m = PAUSE.matcher(s);
-            while (m.find()) { if (m.end() > 90) break; if (m.end() >= 18) { cut = m.end(); break; } }
+            // (not where the rest would be too short to say on its own: then before "and"/"but"... if there's a place)
+            while (m.find()) { if (m.end() > 90 || s.length() - m.end() < 20) break; if (m.end() >= 18) { cut = m.end(); break; } }
             if (cut < 0) {
                 m = JOIN.matcher(s);
-                while (m.find()) { if (m.start() > 90) break; if (m.start() >= 25) { cut = m.start(); break; } }
+                while (m.find()) { if (m.start() > 90 || s.length() - m.start() < 20) break; if (m.start() >= 25) { cut = m.start(); break; } }
             }
-            if (cut > 0 && s.length() - cut < 20) cut = -1;           // the rest too short to say on its own
         }
         if (cut < 0) { out.add(s); return out; }
         out.add(s.substring(0, cut).trim());
