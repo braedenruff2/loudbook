@@ -22,8 +22,8 @@ final class Dialogue {
     }
 
     /**
-     * Does sentence i's paragraph quote speech in single quotes (‘Yes,’ she said: British style)? Only when it has no
-     * double quotes at all and a single quote opens somewhere (an apostrophe alone doesn't count).
+     * Does sentence i's paragraph quote speech in single quotes (‘Yes,’ she said: British style)? When a single quote opens
+     * somewhere (an apostrophe alone doesn't count) and any double quotes are inside the single-quoted speech.
      */
     static boolean singles(Chapter ch, int i) {
         if (i < 0 || i >= ch.size()) return false;
@@ -37,9 +37,22 @@ final class Dialogue {
         return singles(b.toString());
     }
     static boolean singles(String para) {
-        if (para.indexOf('“') >= 0 || para.indexOf('”') >= 0 || para.indexOf('"') >= 0) return false;
-        for (int c = 0; c < para.length(); c++) if (opensSingle(para, c)) return true;
-        return false;
+        int first = -1;
+        for (int c = 0; c < para.length() && first < 0; c++) if (opensSingle(para, c)) first = c;
+        if (first < 0) return false;
+        boolean doubles = para.indexOf('“') >= 0 || para.indexOf('”') >= 0 || para.indexOf('"') >= 0;
+        if (!doubles) return true;
+        // a quote inside a quote, British style: ‘He told me “never”,’ she said. The double quotes are part of what she says
+        // (they were taken for the speech, and the rest for narration). Only when every double quote is inside single-quoted
+        // speech; American style (“He said ‘no’,” she said) and a paragraph with both kinds of speech stay double-quoted
+        byte[] m = singleMarks(para, false);
+        boolean open = false, inside = false;      // (inside: a double quote in the speech open now; it must close too)
+        for (int c = 0; c < para.length(); c++) {
+            if (m[c] != 0) { open = m[c] > 0; if (!open) inside = false; continue; }
+            char ch = para.charAt(c);
+            if (ch == '“' || ch == '”' || ch == '"') { if (!open) return false; inside = true; }
+        }
+        return !inside;                            // (not "on 'Change, is the "beautiful quadroon."": an elision, never closed)
     }
     /**
      * Where single quotes open (1) and close (-1) speech in this text. A quote closes at the first clear close (,’ .’ !’ or

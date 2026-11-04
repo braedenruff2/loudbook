@@ -1,3 +1,4 @@
+Second voice: in stories that quote speech in single quotes, a quotation inside it (‘He told me “never”,’ she said) stays in the character's voice; it used to swap the two voices.
 Reopening Loudbook from Recents (or after Android closed it in the background) no longer reads out text you shared to it earlier again, or jumps back to a link you opened with it.
 Hours written short ("3h later", "slept 8h") are read as hours, and the phone voice spells AoE as letters.
 Phone voice: a dash between words ("Wait—no—stop", "the man--tall--walked in") is now a short pause instead of running the words together. The PC's Kokoro voice gets the phone voice's pronunciation fixes too (once the PC voice is restarted).

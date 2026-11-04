@@ -174,6 +174,11 @@ public class UnitTest {
         check("single quotes: a paragraph that uses them", Dialogue.singles("\u2018It\u2019s the boys\u2019 dog,\u2019 she said."), true);
         check("single quotes: apostrophes alone aren't", Dialogue.singles("It\u2019s the boys\u2019 dog, and \u2019em too in the \u201890s."), false);
         check("single quotes: not when double quotes are used", Dialogue.singles("\u201cHe said \u2018no\u2019 to me,\u201d she said."), false);
+        check("single quotes: a quote inside a quote (British style)", Dialogue.singles("\u2018He told me \u201cnever\u201d, and left,\u2019 she said."), true);
+        check("single quotes: an elision before double-quoted words isn't speech", Dialogue.singles("The talk on 'Change is the \"beautiful quadroon.\" A man came."), false);
+        check("single quotes: double-quoted speech outside them", Dialogue.singles("He said \u2018go\u2019 and then \u201cStop.\u201d"), false);
+        check("single quotes: a quote inside a quote stays in the speech", str(Dialogue.split("\u2018Read the sign: \u201cKeep out\u201d.\u2019 He pointed.", false, true)),
+            "[q:Read the sign: \u201cKeep out\u201d.][n:He pointed.]");
         check("single quotes and tag", str(Dialogue.split("\u2018It\u2019s the boys\u2019 dog,\u2019 she said. \u2018Run!\u2019", false, true)),
             "[q:It\u2019s the boys\u2019 dog,][n:she said.][q:Run!]");
         check("single quotes: a quote from before", str(Dialogue.split("And we ran.\u2019 She laughed at \u2019em.", true, true)), "[q:And we ran.][n:She laughed at \u2019em.]");
