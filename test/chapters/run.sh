@@ -78,6 +78,9 @@ adb shell am start -n com.loudbook.app/.MainActivity -f 0x10100000 -a android.in
 sleep 15
 adb logcat -d > logcat.txt
 sed -n '/=== reopened from Recents after a share/,$p' logcat.txt > recents-log.txt
-grep -q "opened again with its first intent" recents-log.txt && ! grep -q "Pelicans" recents-log.txt && echo "reopened from Recents: the old share not read again: yes" > recents.txt || echo "reopened from Recents: the old share not read again: NO" > recents.txt
+grep -q "opened again with its first intent" recents-log.txt && ! grep -q "Pelicans" recents-log.txt && echo "reopened from Recents: the old share not read again: yes" > recents.txt || {
+  echo "reopened from Recents: the old share not read again: NO ($(wc -l < recents-log.txt) log lines after the marker; the last of them:)" > recents.txt
+  grep -E "LoudbookTest|Loudbook|ActivityTaskManager|AndroidRuntime" recents-log.txt | tail -12 | sed 's/^/    /' >> recents.txt
+  tail -3 logcat.txt | sed 's/^/    (logcat ends) /' >> recents.txt; }
 # the start page gets "Continue listening" from LoudbookNative.home() (only the start page itself may ask, 2026-11-04)
 grep -q "start page: last story there" logcat.txt && ! grep -q "isn't the start page" logcat.txt && echo "start page shows the last story: yes" >> recents.txt || echo "start page shows the last story: NO" >> recents.txt
