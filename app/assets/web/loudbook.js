@@ -716,6 +716,7 @@ function tidy(t) {
       const g = rest.trim().split(/[ \u00a0\u202f]/);
       return g.length > 1 || /00$/.test(g[0]) ? a + g.join('') : m; })
     // stammers: "N-no" -> "no", "S-stop" -> "stop" (otherwise "en no", "ess stop")
+    .replace(/(?<![\p{L}-])([Mm])m+(?:-[Mm]m+)+(?![\p{L}-])/gu, (m, a) => (a === 'M' ? 'Uh-uh' : 'uh-uh'))   // "Mm-mm" is no (not a stutter: "Mm")
     .replace(/\b(\p{L})(?:-\1)*-(\1)(?!(?<=\b[Dd]-[Dd])ay\b|(?<=\b[Hh]-[Hh])our\b|(?<=\b[Bb]-[Bb])(?:oys?|irls?|all)\b|(?<=\b[CcDd]-[CcDd])ups?\b)/giu, (m, a, b) => (a === a.toUpperCase() ? b.toUpperCase() : b))   // also "W-w-wait"
     .replace(/\b([b-df-hj-np-tv-z]{2})(?:-\1)*-(\1)/gi, (m, a, b) => (a[0] === a[0].toUpperCase() ? b[0].toUpperCase() + b[1] : b))   // "Wh-what", "Th-thanks"
     // arrows in stat changes: "15 → 17"
