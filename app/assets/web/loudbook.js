@@ -848,10 +848,22 @@ function tidy(t) {
     .replace(/\b(Silver|SILVER|Copper|COPPER)(:\s*)(\d[\d,]*)\s?([sc])\b(?![\w'’])/g, (m, a, b, n, u) => (u === a[0].toLowerCase() ? a + b + n + ' ' + a.toLowerCase() : m))   // "Silver: 20s" (was "twenty seconds")
     .replace(/\b(D \d+)\s*\+\s*([A-Z]{3})\b/g, (m, d, st) => (STATS[st] ? d + ' plus ' + STATS[st] : m))   // "2d8 + INT" (the voice skipped the plus)
     // durations: "5m 30s", "2h 30m", "Cooldown: 30s", "1.5s" (not "in his 30s", "the 80s", "two 6s")
+    // gamer "CD" (cooldown): "still on CD", "a 30s CD" (was "C-D"); a music CD ("put on a CD", "released on CD") stays
+    .replace(/\b((?:still|already|now|all|went|goes|go|going|back|off|skills?|spells?|abilit(?:y|ies)|ults?|ultimate)\s+on\s+)CD(?![-\w])/g, '$1cooldown')
+    .replace(/(\d\s?(?:s|secs?|seconds?|mins?|minutes?|h|hrs?|hours?|turns?|rounds?)\s)CDs?\b(?![-\w])/g, (m, pre) => pre + (m.endsWith('s') ? 'cooldowns' : 'cooldown'))
+    .replace(/\bBlink-182\b/g, 'Blink one-eighty-two')   // the band (was "Blink one hundred and eighty-two")
     .replace(/\b(\d+)\s?h\s(\d+)\s?m\b(?!\/)/g, (m, h, n) => h + (h === '1' ? ' hour ' : ' hours ') + n + (n === '1' ? ' minute' : ' minutes'))
     .replace(/\b(\d+)\s?m\s(\d+(?:\.\d+)?)\s?s\b(?!\/)/g, (m, a, b) => a + (a === '1' ? ' minute ' : ' minutes ') + b + (b === '1' ? ' second' : ' seconds'))
     .replace(/(?<!\b(?:his|her|their|my|your|our|the|The|early|mid|late|high|low|upper|lower|of|all|two|three|four|five|six|seven|eight|nine|ten|double|triple|some|few)\s)(?<![\d.,'’-])\b(\d{1,3}(?:\.\d+)?)s\b(?![\w'’])/g,
-      (m, n) => n + (n === '1' ? ' second' : ' seconds'))
+      (m, n, at, all) => {
+        const after = all.slice(at + m.length);
+        if (!/(?:^|\s)[Aa]n?\s$/.test(all.slice(0, at)) || !/^\s+(?!(?:of|and|or|to|in|on|at|by|for|from|later|ago|left|long|more|less|each|away|he|she|it|they|we|you|was|is|had)\b)\p{Ll}/u.test(after))
+          return n + (n === '1' ? ' second' : ' seconds');
+        // "a 90s song", "a 70s vibe": a decade (was "ninety seconds song"), unless a stretch of time follows ("a 30s timer")
+        if (/^[2-9]0$/.test(n) && !/^\s+(?:[\w-]+\s+)?(?:timers?|delays?|clips?|pauses?|cooldowns?|countdowns?|waits?|breaks?|rests?|windows?|bursts?|gaps?|intervals?|silences?|sprints?|holds?|planks?|exposures?|ads?|adverts?|commercials?|spots?|trailers?|videos?|teasers?|segments?|snippets?|recordings?|audio|loops?|rounds?|turns?|durations?|limits?|buffers?|cast|channel|charge|stun|freeze|lockout|respawn|invulnerability|grace|head\s+start|lead|time(?:out)?)\b/i.test(after))
+          return GROUPS[+n];
+        return n + '-second';   // "a 30s timer" -> thirty-second timer
+      })
     // 10 sq ft, 5 sq. mi. -> square feet / miles (the voice said "S Q")
     .replace(/\b(\d+(?:\.\d+)?)\s?sq\.?\s?(ft|mi|km|m|yd|in)\b(\.(?=\s*[,;:)]|\s+\p{Ll}))?/gu, (m, n, u) =>
       n + ' square ' + { ft: ['foot', 'feet'], mi: ['mile', 'miles'], km: ['kilometer', 'kilometers'], m: ['meter', 'meters'], yd: ['yard', 'yards'], in: ['inch', 'inches'] }[u][n === '1' ? 0 : 1])
@@ -878,7 +890,8 @@ function tidy(t) {
         ? m : pre + n + (n === '1' ? ' hour' : ' hours'))   // "3h later", "slept 8h" -> hours (was "three aitch"); Room 3h stays
     // "a 10 m x 20 m room", "a 5 x 3 cm card" -> a ten by twenty meter room (was "a ten-meter x twenty meters room")
     .replace(/(\b(?:[Aa]n?|[Tt]he|[Hh]is|[Hh]er|[Tt]heir|[Mm]y|[Yy]our|[Oo]ur|[Ii]ts)\s)(\d+(?:\.\d+)?)\s?(?:(km|cm|mm|m|ft|yds?|mi)\s?)?(?:[x×]|by)\s?(\d+(?:\.\d+)?)\s?(km|cm|mm|m|ft|yds?|mi)\b(?=\s+(?!(?:away|long|tall|wide|high|deep|thick|of|from|to|and|or|per|in|on|at|by|for|across|apart|area|space)\b)\p{Ll})/gu,
-      (m, pre, a, u1, b, u) => u1 && u1 !== u ? m : pre + a + ' by ' + b + ' ' + ({ yds: 'yard' }[u] || UNITS[u][0]))
+      (m, pre, a, u1, b, u) => u1 && u1 !== u ? pre + a + '-' + ({ yds: 'yard' }[u1] || UNITS[u1][0]) + ' by ' + b + '-' + ({ yds: 'yard' }[u] || UNITS[u][0])   // a 2 m x 3 ft rug -> a two-meter by three-foot rug
+        : pre + a + ' by ' + b + ' ' + ({ yds: 'yard' }[u] || UNITS[u][0]))
     .replace(/(^|[^$\w,])((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|wpm|ft|yds|yd|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|ms|m\/s|m|g|L|KB|MB|GB|TB|PB|kHz|MHz|GHz|Hz|Mbps|Gbps|kWh|kW|MW|kV|mAh|ly|V|W)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
       (m, pre, n, u, at, all) => {
         // "a 10 km run", "the 5 kg bag" -> ten-kilometer run (the adjective form takes the singular)
