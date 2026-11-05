@@ -844,14 +844,14 @@ function tidy(t) {
     .replace(/(^|[^$\w.#])(\d+(?:\.\d+)?)h(?![\w\/-])(?=\s*(?:[.,;:!?)]|$)|\s+(?:later|ago|left|before|after|straight|a day|a week|each|per|of|and|or|to|in|on|at|from|until|till|by|with|without|since|now|more|less|than|max|total|long|away|remaining|later)\b)/g,
       (m, pre, n, at, all) => /\b(?:[Rr]oom|[Aa]pt|[Ff]loor|[Ss]eat|[Rr]ow|[Gg]ate|[Uu]nit|[Bb]lock|[Ss]uite|[Cc]abin|[Bb]ay|[Pp]latform|[Cc]ell|[Ss]ector|[Gg]rid|[Ss]quare|[Bb]ox|[Ll]ocker|[Bb]ed|[Ww]ard|[Cc]ar|[Hh]all|[Ww]ing|[Zz]one|[Ll]ot|[Pp]od|[Dd]orm|[Ll]ab|[Tt]ower|[Bb]uilding|[Vv]ersion|[Vv]ol|[Cc]h|[Pp]art|[Pp]age|[Ff]ig|[Ee]x|[Pp]roblem|[Qq]uestion|[Ss]ection)\s$/.test(all.slice(0, at) + pre)
         ? m : pre + n + (n === '1' ? ' hour' : ' hours'))   // "3h later", "slept 8h" -> hours (was "three aitch"); Room 3h stays
-    .replace(/(^|[^$\w])(\d+(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|wpm|ft|yds|yd|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|m\/s|m|g|L|KB|MB|GB|TB|PB|kHz|MHz|GHz|Hz|Mbps|Gbps|kWh|kW|MW|kV|mAh|ly|V|W)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
+    .replace(/(^|[^$\w,])((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|wpm|ft|yds|yd|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|m\/s|m|g|L|KB|MB|GB|TB|PB|kHz|MHz|GHz|Hz|Mbps|Gbps|kWh|kW|MW|kV|mAh|ly|V|W)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
       (m, pre, n, u, at, all) => {
         // "a 10 km run", "the 5 kg bag" -> ten-kilometer run (the adjective form takes the singular)
         const next = /^\s+(\p{Ll}+)/u.exec(all.slice(at + m.length));
         if (u === 'g' && ((next && /^(?:each|apiece)$/.test(next[1])) || /\b(?:for|costs?|paid|sold|bought|at|worth|earned|price:?|fee:?|reward:?|gold:|coins:|money:|funds:|balance:|wallet:|bounty:|loot:)\s(?:\d{1,3},)*$/i.test(all.slice(0, at) + pre)))
           return pre + n + ' gold';   // "@ 5g each", "sold for 50g" (LitRPG gold, not grams)
         // "60 W", "1,000 V shock" -> watts, volts (not "5 W" as in west, "Room 2 V"): only before a full stop or an electrical word
-        if ((u === 'V' || u === 'W') && (!/^\s*(?:[.,;!?)]|$|(?:bulbs?|lights?|lasers?|chargers?|batter(?:y|ies)|outlets?|sockets?|shocks?|currents?|power|output|motors?|amps?|amplifiers?|speakers?|LEDs?|AC|DC)\b)/.test(all.slice(at + m.length)) ||
+        if ((u === 'V' || u === 'W') && (!/^\s*(?:[.,;!?)]|$|(?:bulbs?|lights?|lamps?|lasers?|chargers?|batter(?:y|ies)|outlets?|sockets?|shocks?|currents?|power|output|motors?|amps?|amplifiers?|speakers?|heaters?|kettles?|microwaves?|panels?|generators?|engines?|LEDs?|AC|DC)\b)/.test(all.slice(at + m.length)) ||
             (/^\s*[.,;!?)]|^\s*$/.test(all.slice(at + m.length)) && !/\b(?:watts?|volts?|power|bulb|lamp|light|laser|output|rated|drew|draws|uses|used|charger|battery|voltage|wattage|outlet|socket|shock|current|motor|engine|grid|plant|generator|reactor|cells?|wire|line)\b/i.test(all.slice(Math.max(0, at - 40), at))))) return m;
         if (u === 'g' && /\b(?:pull(?:ed|ing|s)?|pulling)\s$/i.test(all.slice(0, at) + pre)) return pre + n + (n === '1' ? ' gee' : ' gees');   // g-force: "pulled 9 g" ("nine grams")
         if (u === 'L' && /\b(?:[Ll]evel|[Ff]loor|[Rr]oom|[Aa]pt|[Ss]eat|[Rr]ow|[Gg]ate|[Uu]nit|[Bb]lock|[Ss]ize)\s$/.test(all.slice(0, at) + pre)) return m;   // Room 2L, size 3L

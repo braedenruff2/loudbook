@@ -119,6 +119,8 @@ final class Chapter {
         + "row(?=[ \\t]+(?:with|about|over|between)\\b|[ \\t]*[,.!?;:\u2014\u2026\"\u201d\u2019)]|$)");
     private static final java.util.regex.Pattern OP = java.util.regex.Pattern.compile("(?<![\\p{L}\\d-])OP(?![\\p{L}\\d-])");
     private static final java.util.regex.Pattern MC = java.util.regex.Pattern.compile("(?<![\\p{L}\\d-])MC(?![\\p{L}\\d-])");
+    private static final java.util.regex.Pattern NIKE = java.util.regex.Pattern.compile("(?<![\\p{L}\\d-])Nike(?=s?(?![\\p{L}\\d-]))");
+    private static final java.util.regex.Pattern NIAMH = java.util.regex.Pattern.compile("(?<![\\p{L}\\d-])Niamh(?![\\p{L}\\d-])");
     private static final java.util.regex.Pattern POV = java.util.regex.Pattern.compile("(?<![\\p{L}\\d-])POV(?![\\p{L}\\d-])");
     private static final java.util.regex.Pattern SOW = java.util.regex.Pattern.compile(
         "(?<=\\b(?:[Aa]|[Tt]he|[Oo]ld|[Ff]at|[Gg]reat|[Tt]hat|[Tt]his|[Hh]is|[Hh]er|[Tt]heir|[Mm]other|[Ww]ild|[Bb]reeding|[Pp]regnant|[Mm]uddy|[Bb]ig|[Hh]uge)[ \\t])sow(s?)\\b(?![-]|[ \\t]+(?:the|seeds?|them|it|a|an|discord|doubt|chaos|fear|dissent|confusion|terror|panic)\\b)");
@@ -366,6 +368,9 @@ final class Chapter {
         if (t.contains("OP")) t = OP.matcher(t).replaceAll("O-P");
         if (t.contains("MC")) t = MC.matcher(t).replaceAll("M-C");
         if (t.contains("POV")) t = POV.matcher(t).replaceAll("P-O-V");
+        // names it says the English way (lab 2026-11-05): Nike (the goddess, the shoes) "nyke", Niamh "nai-um"
+        if (t.contains("Nike")) t = NIKE.matcher(t).replaceAll("Nikey");
+        if (t.contains("Niamh")) t = NIAMH.matcher(t).replaceAll("Neeve");
         // a dash between words ("Wait—no—stop", "the man--tall--walked", "He - well"): Kokoro pauses only at a spaced em dash,
         // and ran the rest together ("Wait no stop"; the highlight's timing expects a pause there, see SpeechTiming.breaks)
         if (t.indexOf('\u2014') >= 0 || t.indexOf('\u2013') >= 0 || t.contains("-")) {
