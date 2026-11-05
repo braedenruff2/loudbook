@@ -798,6 +798,27 @@ function tidy(t) {
     .replace(/(?<!\b[A-Za-z]{2,}:\s?)\b50[-–]50\b(?![-–\d])/g, 'fifty-fifty')   // a 50-50 chance (was "fifty to fifty")
     .replace(/\b(\d+(?:st|nd|rd|th))\/(?=\d+(?:st|nd|rd|th)\b)/g, '$1 or ')   // the 1st/2nd floor   // not "MP: 50/50\"
     .replace(/\b(\d+)['′]\s?(\d+)(?:"|''|”|″)/g, '$1 foot $2')   // also 6′2″ (prime marks)           // 6'2"
+    // inch marks: a 12" pizza, 55" wide (were left as quote marks: the number read alone, and the second voice took the rest of
+    // the paragraph for speech). Only after a/the/was... or before wide/long/x..., and when the other quote marks pair up
+    // without it: not one closing speech that ends in a number ("Give me 5" he said, “I need 12”)
+    .replace(/(?<![\d.,'′])(\d{1,3}(?:\.\d+)?)\s?(["”″])(?=[\s.,;:!?)]|$)/g, (m, n, q, at, all) => {
+      const before = all.slice(0, at), after = all.slice(at + m.length);
+      if (q !== '″') {
+        if (!/\b(?:a|an|the|was|is|were|are|about|nearly|almost|over|under|by|x|of|his|her|their|its|my|your|our)\s+$/i.test(before)
+          && !/^\s+(?:wide|tall|long|high|deep|thick|across|apart|x|by|in\s+(?:diameter|length|width|height|size))\b/.test(after)) return m;
+        // (a mark or the end after it, or "he said": the speech ends there, unless it's 2" x 4")
+        if ((/^\s*(?:[.,;:!?)]|$)/.test(after) || /^\s*(?:he|she|they|I|we|you|it|said|says|asked|replied|answered|shouted|yelled|whispered|muttered|called|cried)\b/.test(after)) && !/\b(?:x|by)\s+$/.test(before)) return m;
+        if (q === '"') {
+          const others = (all.match(/"/g) || []).length - (all.match(/(?<![\d.,'′])\d{1,3}(?:\.\d+)?\s?"(?=[\s.,;:!?)]|$)/g) || []).length;
+          if (others % 2 && ((before.match(/"/g) || []).length + (after.match(/"/g) || []).length) % 2) return m;
+        } else if (before.lastIndexOf('“') > before.lastIndexOf('”')) {
+          const c = after.indexOf('”'), o = after.indexOf('“');
+          if (c < 0 || (o >= 0 && o < c)) return m;   // (closes the speech: no other close before the next opening)
+        }
+      }
+      if (/^\s+(?!(?:wide|tall|long|high|deep|thick|across|apart|away|from|by|of|in|and|or|to|x|on|at|with|for)\b)\p{Ll}/u.test(after)) return n + '-inch';
+      return n + (n === '1' ? ' inch' : ' inches');
+    }).replace(/(\d inch(?:es)?) x (?=\d)/g, '$1 by ')   // 2" x 4" -> two inches by four inches
     .replace(/\b(\d+)\s?(am|pm|AM|PM|a\.m\.|p\.m\.)(?![\w])/g, (m, n, ap, at, all) =>
       // "at 3 a.m." ending a sentence keeps its full stop (the dots used to be dropped with it)
       n + ' ' + ap.replace(/\./g, '').toUpperCase() + (ap.endsWith('.') && /^["'”’)\]]*(\s*$|\s+(?!(?:EST|EDT|PST|PDT|CST|CDT|MST|MDT|GMT|UTC|BST|CET)\b)\p{Lu})/u.test(all.slice(at + m.length)) ? '.' : ''))
@@ -1000,6 +1021,7 @@ function tidy(t) {
     .replace(/\b(\d{1,3}(?:,\d{3})+|\d+)(?:[.,](\d\d?))?\s?€/g, (m, n, c) => n + (n === '1' ? ' euro' : ' euros') + (c && +c ? ' ' + +c.padEnd(2, '0') : ''))   // 20€, 4,99 €, 3,5 € (euros fifty)
     .replace(/\b(\d+),(\d\d?)\s?(?:[Ee]uros?|EUR)\b/g, (m, n, c) => n + (n === '1' ? ' euro' : ' euros') + (+c ? ' ' + +c.padEnd(2, '0') : ''))   // 3,5 Euro (was "three, five Euro")
     .replace(/\b([AT])\/N\b/g, (m, k) => (k === 'A' ? "Author's note" : "Translator's note"))   // A/N, T/N
+    .replace(/\b(?:TL|Tl)[\s-]?([Nn])ote(s?)\b|\bTLN\b(?=\s*:)/g, (m, n, pl) => "Translator's " + (n || 'n') + 'ote' + (pl || '')).replace(/^(\s*)B(\d{1,2})(?:\s+|,\s*)(?=(?:Ch(?:apter)?|C)\.?\s*\d)/, '$1Book $2, ')   // "TL note" ("T-L note"), "B2 Chapter 3" ("B-two") at a title's start
     .replace(/\b(Mon|Tue|Tues|Wed|Thu|Thur|Thurs|Fri|Sat|Sun)\s?[-–]\s?(Mon|Tue|Tues|Wed|Thu|Thur|Thurs|Fri|Sat|Sun)\b/g,
       (m, a, b) => DAYS[a] + ' to ' + DAYS[b])                         // Mon-Fri
     // ranks and grades: "Rank: S+", "an A+ student", "Grade: B-" (the voice dropped the sign)
