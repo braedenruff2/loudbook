@@ -38,11 +38,15 @@ final class ChapterFetcher {
     private final List<Done> waiting = new ArrayList<>();
     private volatile int attempt;                    // bumped per load: late answers from an old page are ignored
     private String lastPage;                         // the address the last chapter read here said it was at
+    private final java.util.ArrayDeque<String> asked = new java.util.ArrayDeque<>();   // the last pages asked for (and found at)
     // chapters loaded already, by the address they were asked for (the next few are kept, also on
     // the phone's storage, so reading carries on without a signal)
     private final java.util.LinkedHashMap<String, Chapter> done = new java.util.LinkedHashMap<String, Chapter>(16, 0.75f, true) {
         @Override protected boolean removeEldestEntry(java.util.Map.Entry<String, Chapter> e) { return size() > 8; }
     };
+
+    private final java.util.HashMap<String, Long> loadedAt = new java.util.HashMap<>();
+    static final long NEWEST_KEEP_MS = 10 * 60_000;
 
     ChapterFetcher(Context ctx) { this.ctx = ctx.getApplicationContext(); }
 
@@ -69,6 +73,10 @@ final class ChapterFetcher {
     Chapter ready(String url) {
         if (url == null) return null;
         Chapter c = done.get(url);
+        // the newest chapter (no next link) kept in memory: after a while, fetched again (there may be a next one by now; it
+        // used to be kept for good, so "play" said caught up, or read it again, after a new chapter came out), as on disk
+        Long at = loadedAt.get(url);
+        if (c != null && c.nextUrl == null && (at == null || System.currentTimeMillis() - at > NEWEST_KEEP_MS)) { done.remove(url); c = null; }
         if (c == null && (c = fromDisk(url)) != null) done.put(url, c);
         return c;
     }
@@ -102,13 +110,17 @@ final class ChapterFetcher {
         } catch (Exception e) { Log.w(TAG, "keep chapter", e); }
     }
 
+    private boolean destroyed;
+
     void destroy() {
+        destroyed = true;                             // (a load asked for after this mustn't make a new browser nobody closes)
         fail("stopped");
         if (web != null) { try { web.destroy(); } catch (Exception ignored) { } web = null; }
     }
 
     private void start(String url) {
         final int my = ++attempt;
+        if (destroyed) { loading = null; finish(null, "stopped"); return; }
         try {
             if (web == null) make();
         } catch (Throwable t) {
@@ -118,6 +130,7 @@ final class ChapterFetcher {
             return;
         }
         Log.i("LoudbookTest", "fetching " + url);
+        remember(url);
         web.loadUrl(url);
         main.postDelayed(() -> { if (my == attempt && loading != null) finish(null, "the page took too long"); }, TIMEOUT_MS);
         // pages that fill in their text late, or a site check that reloads the page: look again now and then
@@ -164,11 +177,13 @@ final class ChapterFetcher {
         String url = loading;
         loading = null;
         attempt++;
-        if (ch != null && url != null) { done.put(url, ch); toDisk(url, ch); lastPage = ch.url; }
+        if (ch != null && url != null) { done.put(url, ch); loadedAt.put(url, System.currentTimeMillis()); if (loadedAt.size() > 64) loadedAt.keySet().retainAll(done.keySet()); toDisk(url, ch); lastPage = ch.url; remember(ch.url); }
         if (web != null) web.loadUrl("about:blank");     // stop the page's scripts and ads
         Log.i("LoudbookTest", "fetched " + url + ": " + (ch != null ? ch.size() + " sentences, next " + ch.nextUrl : error));
         for (Done d : ds) { try { d.on(ch, error); } catch (Throwable t) { Log.w(TAG, "fetcher callback", t); } }
     }
+
+    private void remember(String u) { if (u == null || u.isEmpty()) return; asked.remove(u); asked.addLast(u); while (asked.size() > 8) asked.removeFirst(); }
 
     private void fail(String why) { if (loading != null) finish(null, why); }
 
@@ -182,7 +197,7 @@ final class ChapterFetcher {
                 if (loading == null || at != attempt) return;
                 try {
                     Chapter c = new Chapter(new JSONObject(json));
-                    if (Chapter.fromPageBefore(c.url, lastPage, loading)) { Log.i("LoudbookTest", "fetcher: an answer from the page before ignored"); return; }
+                    if (Chapter.fromPageBefore(c.url, lastPage, loading) || Chapter.fromAskedBefore(c.url, asked, loading)) { Log.i("LoudbookTest", "fetcher: an answer from the page before ignored"); return; }
                     if (c.size() > 1) finish(c, null);
                 } catch (Exception e) { Log.w(TAG, "fetched chapter", e); }
             });

@@ -188,7 +188,13 @@ public class ReaderService extends Service {
         return START_NOT_STICKY;
     }
 
+    private volatile boolean destroyed;
+
     @Override public void onDestroy() {
+        destroyed = true;
+        // (posted work, e.g. preloading the chapter after next 3 s on, used to make a new background browser after this,
+        // which nothing ever closed; and the fetcher's "stopped" answers opened chapters in the dying service)
+        main.removeCallbacksAndMessages(null);
         try { unregisterReceiver(noisyReceiver); } catch (Exception ignored) { }
         commands.stop();
         cmdThread.shutdownNow();
@@ -1901,6 +1907,7 @@ public class ReaderService extends Service {
         status("Opening where you left off\u2026", false);
         main.post(() -> fetcher().get(last, (c, err) -> {
             resuming = false;
+            if (destroyed) return;
             if (c == null) { status("Couldn't open your last chapter (" + err + "). Open it in Loudbook.", true); return; }
             if (chapter != null) return;                                   // something else was opened meanwhile
             if (c.size() > 0 && savedPos(last) >= c.size()) {                // that chapter was read to the end
@@ -1921,7 +1928,7 @@ public class ReaderService extends Service {
         status("On to the next chapter\u2026", false);
         fetcher().get(done.nextUrl, (n, err) -> {
             resuming = false;
-            if (chapter != null) return;
+            if (chapter != null || destroyed) return;                       // (destroyed: the "stopped" answer as it closes)
             if (n == null || n.size() == 0) {                                // can't load it: stay on the last one
                 setChapter(done, done.size() - 1, false);
                 if (listener != null) listener.onOpened(done);

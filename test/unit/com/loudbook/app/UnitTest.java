@@ -121,6 +121,12 @@ public class UnitTest {
         check("late answer from the page before", Chapter.fromPageBefore("https://x.com/ch/1", "https://x.com/ch/1", "https://x.com/ch/2"), true);
         check("... its own answer", Chapter.fromPageBefore("https://x.com/ch/2", "https://x.com/ch/1", "https://x.com/ch/2"), false);
         check("... a page that sent us on", Chapter.fromPageBefore("https://x.com/ch/2/slug", "https://x.com/ch/1", "https://x.com/ch/2"), false);
+        // a load cut short (never the last page read) whose page answered while the next one loaded (taken as the next chapter)
+        java.util.List<String> asked = Arrays.asList("https://x.com/ch/1", "https://x.com/ch/5", "https://x.com/ch/2");
+        check("... from a load cut short", Chapter.fromAskedBefore("https://x.com/ch/5", asked, "https://x.com/ch/2"), true);
+        check("... from a load cut short, first load ever", Chapter.fromAskedBefore("https://x.com/ch/5#top", Arrays.asList("https://x.com/ch/5"), "https://x.com/ch/2"), true);
+        check("... its own answer (asked again)", Chapter.fromAskedBefore("https://x.com/ch/2/", asked, "https://x.com/ch/2"), false);
+        check("... a page that sent us on, not asked before", Chapter.fromAskedBefore("https://x.com/ch/2/slug", asked, "https://x.com/ch/2"), false);
         check("... the same page again (a new-chapter check)", Chapter.fromPageBefore("https://x.com/ch/1", "https://x.com/ch/1", "https://x.com/ch/1"), false);
         check("... nothing read before", Chapter.fromPageBefore("https://x.com/ch/1", null, "https://x.com/ch/2"), false);
         check("row (the quarrel) for the phone voice", Chapter.forKokoro("They had a blazing row. She had a row with him. They had another row about money. A terrible row of houses. He sat in the front row. They row the boat. A row of chairs. He rowed home."), "They had a blazing rau. She had a rau with him. They had another rau about money. A terrible row of houses. He sat in the front row. They row the boat. A row of chairs. He rowed home.");

@@ -505,6 +505,16 @@ final class Chapter {
         return pageUrl.equals(lastPage) && !pageUrl.equals(loading);
     }
 
+    /**
+     * The same, for every page asked for lately (earlier): a load that was cut short (replaced by a new one before it finished)
+     * never became lastPage, but its page could still answer while the next one loaded, and was kept as the next chapter.
+     */
+    static boolean fromAskedBefore(String pageUrl, java.util.Collection<String> earlier, String loading) {
+        if (pageUrl == null || pageUrl.isEmpty() || loading == null || samePage(pageUrl, loading)) return false;
+        for (String e : earlier) if (samePage(pageUrl, e)) return true;
+        return false;
+    }
+
     /** Rough minutes left at a given speed (about 15 characters a second at 1x). */
     int minutesLeft(int pos, float speed) {
         long chars = 0;

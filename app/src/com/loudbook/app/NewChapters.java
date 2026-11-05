@@ -110,7 +110,8 @@ public class NewChapters extends JobService {
             .setContentTitle("New chapter: " + fiction)
             .setContentText("Tap to open it in Loudbook.")
             .setContentIntent(pi).setAutoCancel(true).build();
-        try { nm.notify(("new:" + fiction).hashCode(), note); } catch (Exception e) { Log.w(TAG, "notify", e); }
+        // (one alert per story; stories with no name each get their own, they used to replace each other's)
+        try { nm.notify(("new:" + (fiction == null || fiction.trim().isEmpty() ? url : fiction)).hashCode(), note); } catch (Exception e) { Log.w(TAG, "notify", e); }
     }
 
     @Override public boolean onStopJob(JobParameters params) {
