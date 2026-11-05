@@ -237,6 +237,16 @@ public class UnitTest {
         check("single quotes: speech starting 'Round", Dialogue.singles("\u2018Round up the cattle,\u2019 he said."), true);
         check("single quotes: speech starting 'Round, split", str(Dialogue.split("\u2018Round up the cattle,\u2019 he said.", false, true)), "[q:Round up the cattle,][n:he said.]");
         check("single quotes: \u2018em with no close is an apostrophe", Dialogue.singles("We\u2019ll get \u2018em tomorrow."), false);
+        {
+            // a plural's apostrophe inside single-quoted speech that runs over two sentences: the speech goes on
+            java.util.List<Chapter.Chunk> cs = new java.util.ArrayList<>();
+            String a1 = "\u2018We fed the boys\u2019 dog.", a2 = "It was hungry,\u2019 she said.";
+            cs.add(new Chapter.Chunk(0, a1, a1)); cs.add(new Chapter.Chunk(0, a2, a2));
+            Chapter dc = new Chapter("u", "", "t", "", cs);
+            check("single quotes over two sentences: boys\u2019 doesn't close", str(Dialogue.split(a1, Dialogue.openAt(dc, 0), Dialogue.singles(dc, 0), Dialogue.after(dc, 0))), "[q:We fed the boys\u2019 dog.]");
+            check("single quotes over two sentences: still open in the next", Dialogue.openAt(dc, 1), true);
+            check("single quotes over two sentences: then the tag", str(Dialogue.split(a2, Dialogue.openAt(dc, 1), Dialogue.singles(dc, 1), Dialogue.after(dc, 1))), "[q:It was hungry,][n:she said.]");
+        }
         // British-style single quotes (only in a paragraph with no double quotes; apostrophes are not quotes)
         check("single quotes: a paragraph that uses them", Dialogue.singles("\u2018It\u2019s the boys\u2019 dog,\u2019 she said."), true);
         check("single quotes: apostrophes alone aren't", Dialogue.singles("It\u2019s the boys\u2019 dog, and \u2019em too in the \u201890s."), false);

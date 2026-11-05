@@ -17,8 +17,28 @@ final class Dialogue {
         int k = i;
         while (k > 0 && ch.chunks.get(k - 1).block == block) k--;
         boolean open = false, single = singles(ch, i);
+        if (single) {
+            // (single quotes: where they close depends on what comes later in the paragraph, so they're worked out over all
+            // of it: ‘We fed the boys’ dog. It was hungry,’ she said. The boys’ didn't close the speech)
+            StringBuilder b = new StringBuilder();
+            for (int j = k; j < i; j++) b.append(ch.chunks.get(j).say).append(' ');
+            int at = b.length();
+            b.append(after(ch, i - 1));
+            byte[] m = singleMarks(b.toString(), false);
+            for (int c = 0; c < at; c++) if (m[c] != 0) open = m[c] > 0;
+            return open;
+        }
         for (int j = k; j < i; j++) open = run(ch.chunks.get(j).say, open, single);
         return open;
+    }
+    /** The rest of sentence i's paragraph after it (its later sentences), "" if none: for where single quotes close. */
+    static String after(Chapter ch, int i) {
+        if (i < 0 || i >= ch.size()) return "";
+        int block = ch.chunks.get(i).block;
+        if (block < 0) return "";
+        StringBuilder b = new StringBuilder();
+        for (int j = i + 1; j < ch.size() && ch.chunks.get(j).block == block; j++) b.append(ch.chunks.get(j).say).append(' ');
+        return b.toString();
     }
 
     /**
@@ -126,13 +146,15 @@ final class Dialogue {
     /** The text in pieces: {text, "q"} for quoted speech, {text, "n"} for narration. */
     static List<String[]> split(String t, boolean open) { return split(t, open, false); }
     /** single: the paragraph quotes in single quotes (see singles). */
-    static List<String[]> split(String t, boolean open, boolean single) {
+    static List<String[]> split(String t, boolean open, boolean single) { return split(t, open, single, ""); }
+    /** after: the rest of the paragraph (where a single quote closes can depend on it). */
+    static List<String[]> split(String t, boolean open, boolean single, String after) {
         byte[] marks = null;
         List<String[]> out = new ArrayList<>();
         StringBuilder cur = new StringBuilder();
         for (int c = 0; c < t.length(); c++) {
             char ch = t.charAt(c);
-            if (single && marks == null) marks = singleMarks(t, open);
+            if (single && marks == null) marks = after == null || after.isEmpty() ? singleMarks(t, open) : java.util.Arrays.copyOf(singleMarks(t + " " + after, open), t.length());
             boolean opens = single ? marks[c] > 0 : ch == '“' || (ch == '"' && !open && !inchMark(t, c));
             boolean closes = single ? marks[c] < 0 : ch == '”' || (ch == '"' && open);
             if (opens && !open) { add(out, cur, false); open = true; continue; }

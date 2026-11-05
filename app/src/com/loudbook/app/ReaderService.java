@@ -569,13 +569,14 @@ public class ReaderService extends Service {
     /** A sentence, with the parts in quotes said in the dialogue voice when that's on. */
     private Voice.Clip makeVoiced(Chapter ch, int i, String text, int want, float sp) throws Exception {
         if (!twoVoices()) return makeHere(text, want, sp);
-        return makeParts(text, Dialogue.openAt(ch, i), Dialogue.singles(ch, i), want, sp);
+        return makeParts(text, Dialogue.openAt(ch, i), Dialogue.singles(ch, i), Dialogue.after(ch, i), want, sp);
     }
     /** The second voice is on (not with a recorded PC voice). */
     private boolean twoVoices() { return prefs.getBoolean("dualVoice", false) && prefs.getString("pcVoice", "").isEmpty(); }
     /** A sentence with its quoted parts in the dialogue voice: open = a quote is open from before it; singles = 'single quotes'. */
-    private Voice.Clip makeParts(String text, boolean open, boolean singles, int want, float sp) throws Exception {
-        java.util.List<String[]> parts = Dialogue.split(text, open, singles);
+    private Voice.Clip makeParts(String text, boolean open, boolean singles, int want, float sp) throws Exception { return makeParts(text, open, singles, "", want, sp); }
+    private Voice.Clip makeParts(String text, boolean open, boolean singles, String after, int want, float sp) throws Exception {
+        java.util.List<String[]> parts = Dialogue.split(text, open, singles, after);
         int other = dialogueVoice(want);
         if (parts.size() == 1) return makeHere(text, "q".equals(parts.get(0)[1]) ? other : want, sp);
         StringBuilder kinds = new StringBuilder();                // (q: a character's words, n: the reader's; kindle-test checks them)
