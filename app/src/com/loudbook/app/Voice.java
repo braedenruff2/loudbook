@@ -188,7 +188,9 @@ final class Voice {
         // nothing to say (a scene break, a row of symbols): a short silence, without asking anyone
         if (!text.codePoints().anyMatch(Character::isLetterOrDigit)) return new Clip(new float[2400], 24000, speed, 0);
         PcLink l = pcLink();
-        if (l != null && (pcOk || System.currentTimeMillis() >= pcRetryAt)) {
+        // (the PC reads at most 2000 letters of a request and drops the rest without saying so: a longer run-on sentence is
+        // read by the phone's voice, all of it)
+        if (l != null && text.length() <= 2000 && (pcOk || System.currentTimeMillis() >= pcRetryAt)) {
             try {
                 String engine = prefs(app).getString("pcEngine", "natural");
                 String rec = prefs(app).getString("pcVoice", "");          // a voice recorded on the PC
