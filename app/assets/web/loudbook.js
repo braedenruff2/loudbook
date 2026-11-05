@@ -724,7 +724,7 @@ function tidy(t) {
     .replace(/\b([Bb]etween\s+[$£€]?\d[\d:.,]*(?:\s?[ap]\.?m\.?)?)\s?[-–]\s?(?=[$£€]?\d)/g, '$1 and ')   // between 1:00-2:30 (was "between one o'clock to two thirty")
     .replace(/([$£€])(\d[\d,.]*[kKmMbB]?)\s?[-–]\s?(?=\1\d)/g, '$1$2 to ')   // $10-$20 (was "ten dollars-twenty dollars")
     .replace(/(?<![\w-])(49|76)ers\b/g, (m, n) => (n === '49' ? 'Forty-Niners' : 'Seventy-Sixers'))   // the 49ers (was read as digits)
-    .replace(/\b(?:Lv|Lvl|LVL|LV|lvl|lv)\.?\s*(?=\d|(?:MAX|Max|max)\b)/g, 'Level ')   // also Lv. MAX
+    .replace(/\b(?:Lv|Lvl|LVL|LV|lvl|lv)\.?\s*(?=\d|(?:MAX|Max|max)\b)/g, (m) => (m[0] === 'l' ? 'level ' : 'Level '))   // also Lv. MAX; "I'm lvl 5" -> level (was "I'm Level five")
     .replace(/\bMAX\b/g, 'max')   // "Level MAX", "MAX HP": the voice spelled it M-A-X
     .replace(/(\w)\s@\s(?=[\d$£€])/g, '$1 at ')   // 12 potions @ 5g each
     .replace(/\b(HP|MP|SP|XP|EXP|EP|AP)\/(HP|MP|SP|XP|EXP|EP|AP)\b/g, '$1 and $2')   // HP/MP (not "slash")
