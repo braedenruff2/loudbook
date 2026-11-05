@@ -264,7 +264,32 @@ final class PcLink {
     }
     static String str(String json, String key) {
         Matcher m = Pattern.compile("\"" + Pattern.quote(key) + "\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"").matcher(json);
-        return m.find() ? m.group(1).replace("\\\"", "\"").replace("\\\\", "\\") : null;
+        return m.find() ? unescape(m.group(1)) : null;
+    }
+    /** A JSON string's escapes: the PC's Python writes every letter outside plain ASCII (a voice called Zoë, a curly apostrophe) as a backslash-u code. */
+    static String unescape(String s) {
+        if (s.indexOf('\\') < 0) return s;
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (ch != '\\' || i + 1 >= s.length()) { sb.append(ch); continue; }
+            char e = s.charAt(++i);
+            switch (e) {
+                case 'n': sb.append('\n'); break;
+                case 't': sb.append('\t'); break;
+                case 'r': sb.append('\r'); break;
+                case 'b': sb.append('\b'); break;
+                case 'f': sb.append('\f'); break;
+                case 'u':
+                    if (i + 4 < s.length()) {
+                        try { sb.append((char) Integer.parseInt(s.substring(i + 1, i + 5), 16)); i += 4; break; }
+                        catch (NumberFormatException ignored) { }
+                    }
+                    sb.append(e); break;
+                default: sb.append(e);                            // \" \\ \/
+            }
+        }
+        return sb.toString();
     }
     static String num(String json, String key) {
         Matcher m = Pattern.compile("\"" + Pattern.quote(key) + "\"\\s*:\\s*(-?[0-9.]+)").matcher(json);

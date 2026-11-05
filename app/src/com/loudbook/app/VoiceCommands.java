@@ -40,6 +40,8 @@ final class VoiceCommands {
     private KeywordSpotter kws;
     private SpeakerEmbeddingExtractor spk;
     private volatile Thread listener;
+    /** The last listener started, kept after stop() so the next one waits for it to let go of the microphone. */
+    private Thread lastListener;
     /** The fingerprint of Loudbook's own reading voice, so a word it reads aloud is never taken as a command. */
     private volatile float[] readerVoice;
     private int readerVoiceId = -1;
@@ -292,8 +294,15 @@ final class VoiceCommands {
         final float[] prof = profile(c);
         if (prof == null || !loaded()) return;
         listening = true;
-        Thread t = new Thread(() -> listen(c, prof, h), "loudbook-commands");
+        // stop() waits 1.5 s at most: an old listener still running would take the microphone (the new one then failed
+        // "busy") and, on its way out, set listening off under the new one, so commands quietly stopped for good
+        final Thread before = lastListener;
+        Thread t = new Thread(() -> {
+            if (before != null) { try { before.join(4000); } catch (InterruptedException ignored) { } }
+            if (listener == Thread.currentThread()) listen(c, prof, h);
+        }, "loudbook-commands");
         listener = t;
+        lastListener = t;
         t.start();
     }
 
@@ -318,7 +327,7 @@ final class VoiceCommands {
             int ringPos = 0;
             long cooldownUntil = 0;
             float peak = 0.01f;
-            while (listening) {
+            while (listening && listener == Thread.currentThread()) {
                 int n = r.read(buf, 0, buf.length);
                 if (n <= 0) { Thread.sleep(20); continue; }
                 float[] f = new float[n];
@@ -375,7 +384,7 @@ final class VoiceCommands {
         } catch (Throwable t) {
             Log.w(TAG, "voice commands stopped", t);
         } finally {
-            listening = false;
+            if (listener == Thread.currentThread()) { listening = false; listener = null; }
             if (s != null) s.release();
             if (r != null) { try { r.stop(); } catch (Exception ignored) { } r.release(); }
         }

@@ -31,9 +31,12 @@ public class PcTest { public static void main(String[] a) throws Exception {
       for (int i = 0; i < 4; i++) b.write(one);
       byte[] wav = VoiceRecording.toWav(b.toByteArray(), 24000);
       System.out.println("recording: " + (wav == null ? "REJECTED" : wav.length + " bytes"));
-      String id = l.addVoice("Test reader", wav);
+      // a name outside plain ASCII: the PC's JSON sends it as \\u codes (the phone showed them as typed until 2026-11-05)
+      String name = "Zo\u00eb\u2019s reader";
+      String id = l.addVoice(name, wav);
       System.out.println("added voice " + id);
-      for (PcLink.Recorded r : l.voices(5000)) System.out.println("voice on PC: " + r.id + " " + r.name);
+      for (PcLink.Recorded r : l.voices(5000))
+        System.out.println("voice on PC: " + r.id + (r.id.equals(id) ? (r.name.equals(name) ? " name kept" : " NAME CHANGED (" + r.name.length() + " letters)") : ""));
       PcLink.Audio au = l.speak("This sentence should come out in the recorded voice.", 3, 1f, "natural", id, 300000);
       System.out.println("speak recorded: " + au.pcm.length + " samples @" + au.rate + " work " + au.workMs + "ms, engine " + au.engine);
       l.deleteVoice(id);
