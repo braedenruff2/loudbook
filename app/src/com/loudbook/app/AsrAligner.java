@@ -102,14 +102,9 @@ final class AsrAligner {
             }
         }
 
+        private final Resampler rs = new Resampler();
         void feed(float[] x) {
-            double ratio = (double) rate / RATE;
-            int m = (int) (x.length / ratio);
-            float[] y = new float[m];
-            for (int i = 0; i < m; i++) {
-                double p = i * ratio; int j = (int) p; double f = p - j;
-                y[i] = (float) (x[Math.min(j, x.length - 1)] * (1 - f) + x[Math.min(j + 1, x.length - 1)] * f);
-            }
+            float[] y = rs.feed(x, rate, RATE);
             synchronized (AsrAligner.this) {
                 if (offset < 0) {
                     float[] h = java.util.Arrays.copyOf(head, head.length + y.length);
@@ -190,6 +185,37 @@ final class AsrAligner {
 
     /** A word as compared: capitals only; curly apostrophes as straight ones ("don’t" was DONT, never matching the heard
      *  DON'T, so dialogue lost its anchors) and accents dropped ("café" was CAF). */
+    /**
+     * Streamed audio to the recogniser's rate, piece by piece, carrying the place between pieces. (Each piece used to start
+     * again from its first sample and drop the fraction left at its end: up to two thirds of a sample per piece, so with many
+     * small pieces the words heard came out earlier and earlier, about half a second by the end of a long chapter.)
+     */
+    static final class Resampler {
+        private double next;          // where the next output sample falls, in input samples from the start
+        private long base;            // the input index of this piece's first sample
+        private float last;           // the piece before's last sample
+        float[] feed(float[] x, int from, int to) {
+            if (x.length == 0) return new float[0];
+            double ratio = (double) from / to;
+            long end = base + x.length;
+            float[] y = new float[(int) ((end - next) / ratio) + 2];
+            int n = 0;
+            while (true) {
+                long j = (long) Math.floor(next);
+                if (j + 1 >= end) break;
+                float a = j < base ? last : x[(int) (j - base)];
+                float b = x[(int) (j + 1 - base)];
+                double f = next - j;
+                if (n == y.length) y = java.util.Arrays.copyOf(y, n * 2 + 1);
+                y[n++] = (float) (a * (1 - f) + b * f);
+                next += ratio;
+            }
+            last = x[x.length - 1];
+            base = end;
+            return n == y.length ? y : java.util.Arrays.copyOf(y, n);
+        }
+    }
+
     static String norm(String w) {
         String x = w.replace('\u2019', '\'').replace('\u2018', '\'').replace('\u02bc', '\'');
         x = java.text.Normalizer.normalize(x, java.text.Normalizer.Form.NFD);

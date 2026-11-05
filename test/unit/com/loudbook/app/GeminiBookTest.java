@@ -53,6 +53,21 @@ public class GeminiBookTest {
         double[] st3 = AsrAligner.sentenceStarts(heard("THE WAR BEGAN IN THE SPRING NINETEEN EIGHTY FOUR WAS A HARD YEAR FOR ALL OF US NOBODY SLEPT MUCH THAT WINTER"), s3);
         check("a sentence starting with a number starts at the number said (was at \"was\", 1 s in)", Math.abs(st3[1] - 0.35 * 6) < 0.01);
         check("caf\u00e9 and CAFE are the same word", AsrAligner.norm("caf\u00e9").equals("CAFE"));
+        // streamed audio resampled piece by piece (24 kHz -> 16 kHz) comes out the same as all at once: nothing lost per piece
+        float[] wave = new float[24000 * 20];
+        for (int i = 0; i < wave.length; i++) wave[i] = (float) Math.sin(i * 0.01);
+        AsrAligner.Resampler whole = new AsrAligner.Resampler(), parts = new AsrAligner.Resampler();
+        float[] one = whole.feed(wave, 24000, 16000);
+        java.util.Random rnd = new java.util.Random(3);
+        int got = 0; double worst = 0;
+        for (int at = 0; at < wave.length; ) {
+            int len = Math.min(wave.length - at, 1 + rnd.nextInt(700));
+            float[] y = parts.feed(java.util.Arrays.copyOfRange(wave, at, at + len), 24000, 16000);
+            for (int i = 0; i < y.length && got + i < one.length; i++) worst = Math.max(worst, Math.abs(y[i] - one[got + i]));
+            got += y.length; at += len;
+        }
+        check("resampled in small pieces: as many samples as all at once (" + got + " vs " + one.length + ")", Math.abs(got - one.length) <= 1 && Math.abs(one.length - 320000) <= 1);
+        check("...and the same samples", worst < 1e-5);
         if (fails > 0) { System.out.println(fails + " FAILED"); System.exit(1); }
         System.out.println("ALL OK");
     }
