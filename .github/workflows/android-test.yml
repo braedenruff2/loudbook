@@ -48,6 +48,7 @@ jobs:
             adb shell am start -n com.loudbook.app/.MainActivity --es selftest commands,teach
             sleep 180
             adb logcat -d > logcat.txt
+            adb logcat -d -b events 2>/dev/null | grep -E "am_kill|am_proc_died|am_low_memory|am_crash|am_anr" | grep -i "loudbook\|am_low_memory" > events.txt || true
             adb shell pidof com.loudbook.app > alive.txt || echo "not running" > alive.txt
       - name: Run on the emulator again (the first try failed)
         id: emu2
@@ -66,6 +67,7 @@ jobs:
             adb shell am start -n com.loudbook.app/.MainActivity --es selftest commands,teach
             sleep 180
             adb logcat -d > logcat.txt
+            adb logcat -d -b events 2>/dev/null | grep -E "am_kill|am_proc_died|am_low_memory|am_crash|am_anr" | grep -i "loudbook\|am_low_memory" > events.txt || true
             adb shell pidof com.loudbook.app > alive.txt || echo "not running" > alive.txt
       - name: Results
         if: always()
@@ -77,6 +79,8 @@ jobs:
             echo "commit ${GITHUB_SHA::7}, run ${{ github.run_id }}, emulator step: ${{ steps.emu.outcome }}, retry: ${{ steps.emu2.outcome }}"; echo
             echo "app process after the test: $(cat alive.txt 2>/dev/null)"; echo
             echo "voice commands self-test: $(grep -oE 'DONE commands|FAILED commands.*|download try [0-9]+ failed.*' logcat.txt 2>/dev/null | tr '\n' ';' | cut -c1-400)"; echo
+            # (why Android ended the app, if it did: killed for memory, died, crashed; 152a0ed's app died with no Java crash)
+            echo "process events: $(cut -c1-200 events.txt 2>/dev/null | tr '\n' ';' | cut -c1-600)"; echo
             echo '```'
             grep -E "LoudbookTest|Loudbook|AndroidRuntime|FATAL| F DEBUG| F libc|sherpa-onnx|tombstone" logcat.txt 2>/dev/null | grep -v "SearchServiceCore\|ResourcesManager\|Choreographer" | tail -250
             echo '```'
@@ -84,6 +88,8 @@ jobs:
           gh release view android-test >/dev/null 2>&1 || gh release create android-test --latest=false --title "Android emulator test" --notes "Output of .github/workflows/android-test.yml"
           gh release upload android-test results.md --clobber
           [ -f logcat.txt ] && gzip -kf logcat.txt && gh release upload android-test logcat.txt.gz --clobber || true
+          # a failed run's log is also kept under its own name (the next run replaces logcat.txt.gz)
+          if [ -f logcat.txt ] && ! grep -q "DONE commands" logcat.txt; then cp logcat.txt.gz "logcat-${GITHUB_SHA::7}.txt.gz" && gh release upload android-test "logcat-${GITHUB_SHA::7}.txt.gz" --clobber || true; fi
       - name: Loudbook didn't crash
         if: always()
         run: |
