@@ -1722,6 +1722,9 @@ public class ReaderService extends Service {
                     srcOf.put(next, gem && !byPhone ? "Gemini, " + (bk != null ? bk.describe(next) : "") : gem ? "the phone's voice (Gemini not ready)" : "the phone's voice");
                     Log.i("LoudbookTest", "clip " + next + ": " + Math.round(c.seconds() * 100) / 100.0 + " s" + (!gem ? "" : byPhone ? ", phone's voice" : ", gemini"));
                     if (next == pos) main.post(() -> status("", false));
+                    // another sample rate (the PC's voice failing over to the phone's): let the old track play out first. It
+                    // was released with up to half a second unheard, and its marks (frame numbers) froze the highlight
+                    if (track != null && track.getSampleRate() != c.rate) { if (!drain(myGen, ch, marks)) return; heard(ch, marks, myGen); marks.clear(); }
                     AudioTrack t = ensureTrack(c.rate);
                     current = c;
                     try {

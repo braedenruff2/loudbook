@@ -78,6 +78,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     private String pageJs;
     private Chapter pageChapter;           // the chapter on screen (may differ from the one playing)
     private String awaitingTurn = null;    // we're opening this URL because the chapter ended
+    private final java.util.ArrayDeque<String> seenPages = new java.util.ArrayDeque<>();   // chapters read on this screen lately
+    private void seen(String u) { if (u == null) return; seenPages.remove(u); seenPages.addLast(u); while (seenPages.size() > 8) seenPages.removeFirst(); }
     private boolean resumeAfterTurn = true;
     private float lastTouchX, lastTouchY;
 
@@ -533,6 +535,13 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             Log.i("LoudbookTest", "page: an answer from the chapter just read ignored while the next one opens");
             return;
         }
+        // (the same for any chapter shown here lately: previous then next quickly, or a re-run on another page, answered late
+        // and was played as the next chapter)
+        if (awaitingTurn != null && Chapter.fromAskedBefore(ch.url, seenPages, awaitingTurn)) {
+            Log.i("LoudbookTest", "page: an answer from a page shown before ignored while the next one opens");
+            return;
+        }
+        seen(ch.url);
         pageChapter = ch;
         if (awaitingTurn != null) {
             // the page we opened because the last chapter ended
