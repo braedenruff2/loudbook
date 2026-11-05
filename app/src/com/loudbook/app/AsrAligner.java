@@ -285,6 +285,12 @@ final class AsrAligner {
             int i = pairs.get(p)[0], m = pairs.get(p)[1];
             for (int d = 0; d < 3; d++) if (match[i + d] < 0) { match[i + d] = m + d; sure[i + d] = true; }
         }
+        // (two runs of three in the chain can overlap so that one heard word is taken twice, or two come out in reverse order:
+        // only matches going forwards in both are kept. The ordering check below then dropped a sentence that was heard right)
+        for (int i = 0, last = -1; i < T; i++) {
+            if (match[i] < 0) continue;
+            if (match[i] <= last) { match[i] = -1; sure[i] = false; } else last = match[i];
+        }
         // between two sure stretches: the words in order (only short gaps, so a common word can't wander)
         int a = -1;
         for (int i = 0; i <= T; i++) {
