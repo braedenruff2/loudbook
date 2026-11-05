@@ -1015,6 +1015,7 @@ function tidy(t) {
     // more myth and anime words: "kitsune" ("kit-sewn"), "cockatrice" ("cock-ay-tris"), "Cthulhu", "ki" ("kai"), "jutsu" ("jut-soo")
     .replace(/\b([Kk])itsune(s?)\b/g, '$1itsoonay$2').replace(/\b([Cc])ockatrice(s?)\b/g, '$1ockatryce$2').replace(/\bCthulhu\b/g, 'Kuh-thoo-loo').replace(/\b([Yy])okai\b/g, '$1oh-kai')
     .replace(/\b([Aa])rchon(s?)\b/g, '$1rkon$2').replace(/\b([Vv])oulge(s?)\b/g, '$1oolj$2')   // "arch-on", "vowlj" (lab 2026-11-01)
+    .replace(/\b([Tt])iefling(s?)\b/g, '$1eefling$2').replace(/\b([Gg])umiho(s?)\b/g, '$1oo-mee-ho$2').replace(/\b([Ii])chor\b/g, (m, i) => (i === 'I' ? 'E' : 'e') + 'ye-kor')   // "tie-fling", "gyoo-mih-ho", "ick-er" (lab 2026-11-05)
     .replace(/\b([Kk])i\b/g, '$1ee').replace(/\b([Nn]in|[Tt]ai|[Gg]en|[Kk]en)?([Jj])utsu\b/g, (m, pre, j) => (pre ? pre + '-' : '') + j + 'oot-soo')
     .replace(/\b([Yy])oukai\b/g, '$1oh-kai').replace(/\b([Qq])ilin(s?)\b/g, (m, q, s) => (q === 'Q' ? 'C' : 'c') + 'hee-lin' + s).replace(/\b([Ss])huriken(s?)\b/g, '$1hoo-ree-ken$2').replace(/\b([Kk])unai\b/g, '$1oo-nai')
     .replace(/\b([Ss])hinigami(s?)\b/g, '$1hee-nee-gah-mee$2').replace(/\bMj[oö]ll?nir\b/g, 'Mee-yol-neer').replace(/\b([Oo])uroboros\b/g, (m, o) => (o === 'O' ? 'Y' : 'y') + 'oor-rob-or-ross')   // "yoo-kai", "chee-lin" (was "kill-in"), "shyoor-eye-ken", "kun-eye", "shy-nih-gami", "M-jolnir", "ow-er-ob-er-ohz"
