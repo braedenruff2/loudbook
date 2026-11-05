@@ -112,6 +112,9 @@ final class Chapter {
         "\\b((?:[Hh]ad|[Hh]ave|[Hh]as|[Hh]aving|[Gg]ot[ \\t]+into|[Gg]et[ \\t]+into|[Gg]etting[ \\t]+into|[Cc]aused|[Cc]ause|[Ss]tarted|[Pp]icked|[Kk]icked[ \\t]+up)[ \\t]+(?:a|another|such[ \\t]+a)[ \\t]+"
         + "(?:(?:terrible|blazing|huge|big|massive|little|small|bit[ \\t]+of[ \\t]+a|furious|almighty|dreadful|awful|nasty|proper|real|frightful|tremendous|violent|bitter|heated|fierce|flaming|stupid|silly|family)[ \\t]+)?)"
         + "row(?=[ \\t]+(?:with|about|over|between)\\b|[ \\t]*[,.!?;:\u2014\u2026\"\u201d\u2019)]|$)");
+    private static final java.util.regex.Pattern OP = java.util.regex.Pattern.compile("(?<![\\p{L}\\d-])OP(?![\\p{L}\\d-])");
+    private static final java.util.regex.Pattern MC = java.util.regex.Pattern.compile("(?<![\\p{L}\\d-])MC(?![\\p{L}\\d-])");
+    private static final java.util.regex.Pattern POV = java.util.regex.Pattern.compile("(?<![\\p{L}\\d-])POV(?![\\p{L}\\d-])");
     private static final java.util.regex.Pattern SOW = java.util.regex.Pattern.compile(
         "(?<=\\b(?:[Aa]|[Tt]he|[Oo]ld|[Ff]at|[Gg]reat|[Tt]hat|[Tt]his|[Hh]is|[Hh]er|[Tt]heir|[Mm]other|[Ww]ild|[Bb]reeding|[Pp]regnant|[Mm]uddy|[Bb]ig|[Hh]uge)[ \\t])sow(s?)\\b(?![-]|[ \\t]+(?:the|seeds?|them|it|a|an|discord|doubt|chaos|fear|dissent|confusion|terror|panic)\\b)");
     // "Don't desert me" / "to desert the army" ("dez-ert", the sand) -> dessert; "the minute details" / "a minute amount" ("minnit",
@@ -345,6 +348,11 @@ final class Chapter {
         if (t.contains("m-hmm")) t = t.replace("Mm-hmm", "Um-hmm").replace("mm-hmm", "um-hmm");
         // "AOE" it says as a word ("ay-ah") at a sentence start or after an adjective ("Huge AOE and DPS"); spelled, it's letters
         if (t.contains("AOE")) t = t.replaceAll("\\bAOE(?=s?\\b)", "A-O-E");
+        // "OP" (overpowered) it says "op" at a sentence end or after "so" ("He's OP.", "So OP!"), and "MC" as "mick" in a sentence
+        // with OP in it ("MC is OP."); "POV" as "pov" after "so" (lab 2026-11-05). Spelled (not the plurals, "OPs" is fine), they're letters everywhere
+        if (t.contains("OP")) t = OP.matcher(t).replaceAll("O-P");
+        if (t.contains("MC")) t = MC.matcher(t).replaceAll("M-C");
+        if (t.contains("POV")) t = POV.matcher(t).replaceAll("P-O-V");
         // a dash between words ("Wait—no—stop", "the man--tall--walked", "He - well"): Kokoro pauses only at a spaced em dash,
         // and ran the rest together ("Wait no stop"; the highlight's timing expects a pause there, see SpeechTiming.breaks)
         if (t.indexOf('\u2014') >= 0 || t.indexOf('\u2013') >= 0 || t.contains("-")) {
