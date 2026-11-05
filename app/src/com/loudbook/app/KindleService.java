@@ -903,10 +903,14 @@ public class KindleService extends AccessibilityService {
         lastEdges = p.edges;
         expectNext = p.nextStart;
         shown = null; spansFor = -1;          // (the last page's places are no good now: no highlight until this page's are known)
+        // (this page from now: a layout of a page accepted before, still being worked out, mustn't land after this one's
+        // and put the highlight on the wrong page; two turns close together, a turn and a turn back)
+        shownPage = p;
         // where this page's lines are, for the highlight (exact character boxes take a moment: off the main thread)
         new Thread(() -> {
             KindleLayout k = p.layout(true);
-            shown = k; shownPage = p; spansFor = -1;
+            if (shownPage != p) return;
+            shown = k; spansFor = -1;
             saveLayout(k, "first");
             if (k.exactLines < p.lines.size()) main.post(() -> fromScreen(p));
         }, "lb-kindle-layout").start();
