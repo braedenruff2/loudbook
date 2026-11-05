@@ -1051,7 +1051,8 @@ function tidy(t) {
     .replace(/\b(min|max)\.(?=\s+[~+]?\d)/g, (m, w) => w === 'min' ? 'minimum' : 'maximum')         // "min. 5 people", "max. 10"
     .replace(/\bPh\.D\./g, (m, at, all) => 'PhD' + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))
     // U.S., J.R.R., Ph.D.: letters with no dots (each dot was a full stop: "J R R. | Tolkien", "P H dot D dot")
-    .replace(/(?<![\p{L}.])(?:\p{Lu}\.){2,4}(?![\p{L}])/gu, (m, at, all) => m.replace(/\./g, '') + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))
+    // (the last dot stays where it also ends the sentence: "the U.K. The CEO...", 'in the U.S." She', not "the U.S. Army")
+    .replace(/(?<![\p{L}.])(?:\p{Lu}\.){2,4}(?![\p{L}])/gu, (m, at, all) => m.replace(/\./g, '') + (/^(?:\s*$|["”’')\]]|\s+(?:The|He|She|It|They|We|I|You|But|And|So|Then|Now|There|This|That|These|Those|His|Her|Its|Their|Our|My|What|Why|How|When|Where|Who|If|In|On|At|After|Before|Still|Yet|Even|Maybe|Perhaps|No|Yes|A|An)\b(?![.'’-]))/.test(all.slice(at + m.length)) ? '.' : ''))
     .replace(/\b((?:\p{Lu}\.\s){2,3})(?=\p{Lu}\p{Ll})/gu, (m) => m.replace(/\./g, ''))   // J. K. Rowling
     // gamer words the voice gets wrong: "AoE" ("ow-ee"), "DoT" ("doo-tee"), "IRL" ("url"), "idk"
     .replace(/\bAoEs?\b/g, (m) => 'AOE' + m.slice(3)).replace(/\bDoT(s?)\b/g, 'dot$1')
