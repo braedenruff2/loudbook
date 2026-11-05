@@ -342,6 +342,9 @@ public class KindleService extends AccessibilityService {
                     if (Math.abs(dx) + Math.abs(dy) > 12 * dm.density) { moved[0] = true; main.removeCallbacks(longPress); }
                     if (moved[0]) { bubbleLp.x = (int) (down[2] + dx); bubbleLp.y = (int) (down[3] + dy); wm.updateViewLayout(bubble, bubbleLp); }
                     return true;
+                case MotionEvent.ACTION_CANCEL:                         // (the touch was taken away: no hold, no tap)
+                    main.removeCallbacks(longPress);
+                    return true;
                 case MotionEvent.ACTION_UP:
                     main.removeCallbacks(longPress);
                     if (longPressed[0]) return true;
@@ -416,7 +419,8 @@ public class KindleService extends AccessibilityService {
                 PixelFormat.TRANSLUCENT);
             try { wm.addView(hl, lp); } catch (Exception e) { Log.w(TAG, "highlight", e); hl = null; return; }
             // the button stays above the highlight
-            if (bubble != null) { try { wm.removeView(bubble); wm.addView(bubble, bubbleLp); } catch (Exception ignored) { } }
+            // (not while a finger is on it: re-adding cancels the touch. If adding it back fails, it's made again next time)
+            if (bubble != null && !bubble.isPressed()) { try { wm.removeView(bubble); wm.addView(bubble, bubbleLp); } catch (Exception e) { Log.w(TAG, "kindle button", e); try { wm.removeView(bubble); } catch (Exception ignored) { } bubble = null; } }
         }
         hl.set(sentence, word);
     }
@@ -509,10 +513,12 @@ public class KindleService extends AccessibilityService {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT);
         try { wm.addView(f, lp); picker = f; Log.i("LoudbookTest", "kindle: choose where to start"); } catch (Exception e) { Log.w(TAG, "picker", e); }
-        main.postDelayed(this::hidePicker, 15_000);                  // (tapped nothing: put it away)
+        main.removeCallbacks(hidePickerLater);
+        main.postDelayed(hidePickerLater, 15_000);                   // (tapped nothing: put it away; one timer, so it can't close a later one early)
         main.removeCallbacks(tick); main.postDelayed(tick, 500);       // (and keep an eye on whether Kindle is still there)
     }
-    private void hidePicker() { if (picker != null) { try { wm.removeView(picker); } catch (Exception ignored) { } picker = null; } }
+    private final Runnable hidePickerLater = this::hidePicker;
+    private void hidePicker() { main.removeCallbacks(hidePickerLater); if (picker != null) { try { wm.removeView(picker); } catch (Exception ignored) { } picker = null; } }
 
     /** Starts reading from the sentence at a point on the page. */
     private void startFrom(float x, float y) {
@@ -759,7 +765,14 @@ public class KindleService extends AccessibilityService {
     }
 
     /** If Kindle closed the book (it does when screen-reader mode switches), opens it again (Kindle's "Most recent book"). */
+    private static final java.util.concurrent.atomic.AtomicBoolean reopening = new java.util.concurrent.atomic.AtomicBoolean();
     private void reopenBook() {
+        // (one at a time: turning screen-reader touch on, Kindle's scrolling notice and the text search each started one, and
+        // their taps cancelled each other's, or landed on the book just opened)
+        if (!reopening.compareAndSet(false, true)) return;
+        try { reopenBookNow(); } finally { reopening.set(false); }
+    }
+    private void reopenBookNow() {
         long end = System.currentTimeMillis() + 5000;
         while (System.currentTimeMillis() < end) {
             pause(250);
@@ -1317,6 +1330,18 @@ public class KindleService extends AccessibilityService {
     Page nextPage(String beforeSig) {
         AccessibilityNodeInfo root = kindleRoot();
         if (root == null) return new Page();
+        // the book closed (Kindle's home screen, or still reopening after screen-reader touch switched): open it first. The
+        // turn's scroll, swipes and edge tap used to go to the library (the tap could open another book)
+        if (findClass(root, "KRFView", 0) == null && findDesc(root, "Most recent book", 0) != null) {
+            Log.i("LoudbookTest", "kindle turn: the book is closed, opening it first");
+            reopenBook();
+            pause(1500);
+            root = kindleRoot();
+            if (root == null || findClass(root, "KRFView", 0) == null) { Log.i("LoudbookTest", "kindle turn: the book didn't open, no turn sent"); return new Page(); }
+            Page now = readPage();
+            String want = expectNext;                                     // (it opened on the next page already)
+            if (!now.paragraphs.isEmpty() && !now.signature.equals(beforeSig) && want != null && startsWith(now, want)) { clearFocus(); accept(now); return now; }
+        }
         for (int attempt = 0; attempt < 4; attempt++) {
             // what a screen reader does (Kindle in screen-reader mode turns only so, or with two fingers),
             // then a two-finger swipe, then what a finger does
