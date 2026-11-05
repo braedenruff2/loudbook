@@ -168,6 +168,12 @@ public class UnitTest {
         List<Chapter.Chunk> p2 = kt.chunks(Arrays.asList("the page break, then stops."), true);
         check("page 1", p1.size() + ":" + p1.get(0).text, "1:The first page ends here.");
         check("page 2 joins the cut sentence", p2.get(0).text, "And this one runs over the page break, then stops.");
+        // resuming on a page Kindle laid out again: the sentence paused in is found on it
+        KindleLayout kf = new KindleLayout(Arrays.asList("give me leave to observe that I", "consider the clerical office as equal. Pardon me for", "neglecting to profit by your advice."),
+            new java.util.ArrayList<>(), new java.util.ArrayList<>());
+        check("a sentence's place on the page", kf.find("Pardon me for neglecting to profit by your advice."), KindleLayout.normOf("give me leave to observe that I consider the clerical office as equal. ").length());
+        check("...a long one by its first letters", kf.find("Pardon me for neglecting to profit by your kind advice, which on every other subject shall be my guide.") > 0, true);
+        check("...and not there", kf.find("Mr. Darcy was eyeing him."), -1);
         // reading starts on a page where no sentence ends (a heading alone): it's read, and not again before the next page
         KindleText ks = new KindleText("");
         List<Chapter.Chunk> s1 = ks.startChunks(Arrays.asList("CHAPTER FIVE"));

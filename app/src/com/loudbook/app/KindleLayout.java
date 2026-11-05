@@ -41,6 +41,15 @@ final class KindleLayout {
 
     int length() { return norm.length(); }
 
+    /** Where a sentence starts on the page (in its letters, as letterAt counts them), or -1: all of it, or its first 30 letters. */
+    int find(String sentence) {
+        String n = normOf(sentence);
+        if (n.isEmpty()) return -1;
+        int f = norm.indexOf(n);
+        if (f < 0 && n.length() > 30) f = norm.indexOf(n.substring(0, 30));
+        return f;
+    }
+
     /**
      * Where each sentence of the page is ({start, end} in the page's letters; null if it can't be
      * found). The first may have begun on the page before, so only its end is looked for.

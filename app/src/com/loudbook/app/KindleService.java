@@ -600,10 +600,20 @@ public class KindleService extends AccessibilityService {
                     for (int k = 0; k < 40 && p.paragraphs.isEmpty(); k++) { pause(250); p = readPage(); }
                 } catch (Throwable t) { Log.w(TAG, "kindle resume", t); p = new Page(); }
                 boolean moved = was != null && !p.paragraphs.isEmpty() && !p.paragraphs.equals(was.paragraphs);
-                final Page fp = p;
+                // (Kindle often lays the page out again while paused (it reopens the book when screen-reader touch switches), a
+                // little before or after where it was: if the sentence paused in is on it, go on from there. Reading went back to
+                // the top of the screen, a minute or two heard again (lab c1105n))
+                int from = 0;
+                if (moved) {
+                    try {
+                        Chapter c = svc.chapter(); int i = svc.pos();
+                        if (c != null && i >= 0 && i < c.size()) { int f = p.layout(false).find(c.chunks.get(i).text); if (f > 0) from = f; }
+                    } catch (Throwable t) { Log.w(TAG, "kindle resume place", t); }
+                }
+                final Page fp = p; final int fromLetter = from;
                 main.post(() -> {
                     busy = false;
-                    if (moved) { Log.i("LoudbookTest", "kindle: a different page since the pause: reading it"); begin(fp, new boolean[]{needExplore, false}, 0); }
+                    if (moved) { Log.i("LoudbookTest", "kindle: a different page since the pause: reading it" + (fromLetter > 0 ? ", from the sentence paused in (letter " + fromLetter + ")" : "")); begin(fp, new boolean[]{needExplore, false}, fromLetter); }
                     else svc.play();
                     watch();
                 });
