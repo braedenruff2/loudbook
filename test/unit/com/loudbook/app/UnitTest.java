@@ -71,6 +71,8 @@ public class UnitTest {
             "Wined the clock. \u201cWined it up,\u201d she said. Wind the colour of ash blew. Wined up the toy.");
         check("OP, MC, POV spelled for the phone voice", Chapter.forKokoro("The MC was OP. So OP! OPs, MCs, the OP's post. Her POV. STOP. OPEN. MCMXC. OP-level."),
             "The M-C was O-P. So O-P! OPs, MCs, the O-P's post. Her P-O-V. STOP. OPEN. MCMXC. OP-level.");
+        check("verbs after doth/dost/shalt for the phone voice", Chapter.forKokoro("She doth protest too much. Thou shalt not record it. Thou dost object. Wilt thou present it? Canst thou not record it?"),
+            "She doth pruh-test too much. Thou shalt not re-cord it. Thou dost ub-ject. Wilt thou pree-zent it? Canst thou not re-cord it?");
         check("a row (quarrel) for the phone voice", Chapter.forKokoro("They had a row. We got into a blazing row about money. \u201cWe had a row,\u201d she said. He had a row of seats. We had a row to ourselves. Three in a row. They had a row boat."),
             "They had a rau. We got into a blazing rau about money. \u201cWe had a rau,\u201d she said. He had a row of seats. We had a row to ourselves. Three in a row. They had a row boat.");
         check("verbs for the phone voice: dove after a noun", Chapter.forKokoro("The hawk dove into the water. The boy dove beneath the waves. The dove into the cage? A white dove through the window. The dove in the tree. The stone dove onto the path."),

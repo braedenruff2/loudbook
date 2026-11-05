@@ -59,6 +59,11 @@ final class Chapter {
         "(?<=\\b(?:(?:[Yy]ou|[Tt]hey|I|[Hh]e|[Ss]he|[Ww]e)['\u2019]d|[Ll]et['\u2019]s|(?:[Ll]et|[Hh]elp|[Hh]elped|[Mm]ake|[Mm]ade|[Ww]atch|[Ss]ee)[ \\t](?:me|him|her|us|them|you)"
         + "|(?:[Dd]id|[Dd]oes|[Dd]o)[ \\t](?:he|she|they|you|I|we|it)|[Ww]hy[ \\t]not|(?:[Hh]ad|[Ww]ould|['\u2019]d)[ \\t](?:better|rather)|[Gg]o|[Cc]ome[ \\t]and|[Pp]lease|[A-Z][a-z]{2,15}ly,|(?:[Nn]ow|[Pp]lease|[Qq]uick|[Hh]urry|[Oo]kay|OK|[Nn]ext|[Ff]irst|[Tt]hen),)[ \\t])"
         + "(use|abuse|separate|record|present|polish|tear|permit|insult|increase|decrease|estimate|moderate|conduct|project|object|protest|suspect|convict|console|contract|torment|escort|transport|export|insert|desert|contest)" + OBJ);
+    // after an old-style helper verb it's always the verb, object or not ("She doth protest too much", "Thou shalt not record it",
+    // "Thou dost object": the voice said the nouns, lab 2026-11-05)
+    private static final java.util.regex.Pattern OLD_VERB = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:[Dd]oth|[Dd]ost|[Dd]idst|[Cc]anst|[Cc]ouldst|[Ww]ouldst|[Ss]houldst|[Ww]ilt|[Ss]halt|[Mm]ayst|[Mm]ightst)(?:[ \\t](?:not|thou|ye|you|he|she|it|we|they|I))?(?:[ \\t](?:not|thou|ye|you|he|she|it|we|they|I))?[ \\t])"
+        + "(use|abuse|separate|record|present|polish|tear|permit|insult|increase|decrease|estimate|moderate|conduct|project|object|protest|suspect|convict|console|contract|torment|escort|transport|export|insert|desert|contest)\\b(?![-'\u2019])");
     // and after a plural subject ("the guards escort the prisoner", "mages use their mana", "many suspect him") or "and"
     // ("stood up and record the scene"): present-tense web fiction (lab 2026-11-01)
     private static final java.util.regex.Pattern PL_VERB = java.util.regex.Pattern.compile(
@@ -243,6 +248,14 @@ final class Chapter {
             m.appendTail(b);
             t = b.toString();
             m = PRE_VERB.matcher(t);
+            b = new StringBuffer();
+            while (m.find()) {
+                String r = START_SAID.get(Character.toUpperCase(m.group(1).charAt(0)) + m.group(1).substring(1));
+                m.appendReplacement(b, java.util.regex.Matcher.quoteReplacement(Character.toLowerCase(r.charAt(0)) + r.substring(1)));
+            }
+            m.appendTail(b);
+            t = b.toString();
+            m = OLD_VERB.matcher(t);
             b = new StringBuffer();
             while (m.find()) {
                 String r = START_SAID.get(Character.toUpperCase(m.group(1).charAt(0)) + m.group(1).substring(1));
