@@ -1089,6 +1089,10 @@ function tidy(t) {
     .replace(/(^|[\s"“'‘(])([HhNn])n+(?=[\s"”'’.,!?…)]|$)/g, (m, pre, h) => pre + (h === h.toUpperCase() ? 'Hmm' : 'hmm'))
     .replace(/\b([Gg])ya+h*(?=[\s"”'’.,!?…)]|$)/g, (m, g) => g + 'hee-yah')
     .replace(/\bXiao(?=[a-z]{2,}\b)(?!mi\b)/g, 'Sheeyow-')   // Xiaofan, Xiaochun ("zai-ah-fan"); Xiaomi is fine
+    // Chinese surnames He ("huh") and Ye ("yeh") that the voice read as "he" / "ye": after a title (Mr. He, Doctor Ye, Elder He) or
+    // before a Chinese given name (Ye Fan, Ye Xiu, He Yu); not "Ye Gods", "Ye Olde", "He Who...", "Sister, He..."
+    .replace(/\b((?:Mr\.?|Mrs\.?|Ms\.?|Miss|Dr\.?|Mister|Missus|Doctor|Professor|Prof\.?|Director|Officer|Teacher|Elder|Senior|Junior|Uncle|Aunt|Auntie|Granny|Grandpa|Madam|Madame|Young Master|Young Miss|Old|Little|Big Brother|Big Sister|Patriarch|Matriarch|Sect Leader|Captain|General|Commander|Manager|President|Chairman|Boss|Sir) )(He|Ye)\b(?![-'’]\p{L})|\b(He|Ye)(?= (?:Fan|Chen|Xiu|Xuan|Xiao|Qing|Zhen|Zhi|Xin|Yun|Feng|Ming|Hao|Jun|Tian|Ling|Yu|Zi|Mei|Jing|Rui|Wen|Huan|Qian|Xue|Yan|Bai|Hui|Lei|Ying|Yong|Zhao|Jie|Ning|Qi|Shu|Yao|Mo|Xi|Zhu|Zheng|Hong|Liang|Jian|Lian|Wei|Jiu|Shen|Ye|Yi|Xing|Xun|Yuan|Rong|Shan)\b(?![-'’]))/gu,
+      (m, title, a, b) => (title || '') + ({ He: 'Huh', Ye: 'Yeh' }[a || b]))
     .replace(/(\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|few|several|dozen|many))(\s+)li\b/g, '$1$2lee')   // a hundred li (distance, "lie")
     .replace(/\b(Xiao|Qiao|Xian|Qian|Xiang|Qiang|Xia|Xing|Xin|Xue|Xie|Xuan|Xun|Xu|Xi|Qing|Qin|Qiu|Quan)\b/g, (m) => ({ Xiang: 'Shee-ahng', Qiang: 'Chee-ahng', Xue: 'Shoo-weh', Xie: 'Shee-eh', Xuan: 'Shoo-ahn', Xun: 'Shoon', Quan: 'Choo-wen', Xiao: 'Sheeyow', Qiao: 'Cheeyow', Xian: 'Shee-en', Qian: 'Chee-en', Xia: 'Shee-ah', Xing: 'Shing', Xin: 'Shin', Xu: 'Shoo', Xi: 'Shee', Qing: 'Ching', Qin: 'Chin', Qiu: 'Chee-oo' })[m])
     // more Chinese names Kokoro says the English way: Wang "wang-g", Zhang "zhang" (as in "bang"), Liu "lih-yoo", Guo "g-yoo-oh",
