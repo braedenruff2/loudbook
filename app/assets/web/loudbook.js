@@ -788,7 +788,8 @@ function tidy(t) {
       const before = all.slice(0, at), after = all.slice(at + m.length);
       if (/(?:\d[,–—-]?|[:\/–—-])\s?$|[^.!?\s]\.\s?$|\b(?:Chapter|Ch|Book|Part|Vol|Volume|Level|Lv|Lvl|Floor|Room|No|Episode|Act|Scene|Season|Page|Day|Year|Week|Grade|Class|Rank|Tier|Stage|World)\.?\s+$/i.test(before) && !/\b(?:on|by|until|till|since|from|before|after|born|dated)\s+$/i.test(before)) return m;
       const year = /^\s+(?:1[5-9]|20)\d\d\b(?!\.\d)/.test(after);
-      if (!year && !/^(?:\s*[,;:!?)]|\s*$|\s+[\p{Lu}"“])/u.test(after) && !(dot && /^\s*$/.test(after)) && !/\b(?:on|by|until|till|since|from|before|after|born|dated)\s+$/i.test(before)) return m;
+      if (!year && !/^(?:\s*[,;:!?)]|\s*$|\s+[\p{Lu}"“])/u.test(after) && !(dot && /^\s*$/.test(after)) && !/\b(?:on|by|until|till|since|from|before|after|born|dated)\s+$/i.test(before)
+        && !(/\b[Tt]he\s+$/.test(before) && !dot && /^\s+(?:meeting|deadline|deal|election|vote|attack|raid|battle|massacre|riot|riots|ceasefire|treaty|summit|launch|release|update|patch|event|festival|concert|party|wedding|funeral|ceremony|parade|match|game|race|final|opening|session|hearing|trial|verdict|ruling|report|statement|announcement|letter|memo|email|entry|issue|edition|episode|chapter|post|broadcast|speech|address|incident|crash|fire|flood|storm|earthquake|bombing|uprising|landing|offensive|rally|protest|strike|exam|test|interview|appointment|flight|sailing|departure|arrival|start|date|cutoff|cut-off|window|order|decree|edict)\b/.test(after))) return m;
       const n = +d, th = ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10 && (n < 11 || n > 13) ? n % 10 : 0] || 'th');
       return (/\b[Tt]he\s+$/.test(before) ? '' : /^\s*["“‘'(]?\s*$|[.!?]["”’']?\s+["“‘(]?$/.test(before) ? 'The ' : 'the ') + n + th + ' of ' + (MONTHS[mo] || mo) + (dot && !year && (MONTH_NAMES.includes(mo) || /^\s*$|^\s+\p{Lu}/u.test(after)) ? '.' : '');
     })
@@ -875,6 +876,9 @@ function tidy(t) {
     .replace(/(^|[^$\w.#])(\d+(?:\.\d+)?)h(?![\w\/-])(?=\s*(?:[.,;:!?)]|$)|\s+(?:later|ago|left|before|after|straight|a day|a week|each|per|of|and|or|to|in|on|at|from|until|till|by|with|without|since|now|more|less|than|max|total|long|away|remaining|later)\b)/g,
       (m, pre, n, at, all) => /\b(?:[Rr]oom|[Aa]pt|[Ff]loor|[Ss]eat|[Rr]ow|[Gg]ate|[Uu]nit|[Bb]lock|[Ss]uite|[Cc]abin|[Bb]ay|[Pp]latform|[Cc]ell|[Ss]ector|[Gg]rid|[Ss]quare|[Bb]ox|[Ll]ocker|[Bb]ed|[Ww]ard|[Cc]ar|[Hh]all|[Ww]ing|[Zz]one|[Ll]ot|[Pp]od|[Dd]orm|[Ll]ab|[Tt]ower|[Bb]uilding|[Vv]ersion|[Vv]ol|[Cc]h|[Pp]art|[Pp]age|[Ff]ig|[Ee]x|[Pp]roblem|[Qq]uestion|[Ss]ection)\s$/.test(all.slice(0, at) + pre)
         ? m : pre + n + (n === '1' ? ' hour' : ' hours'))   // "3h later", "slept 8h" -> hours (was "three aitch"); Room 3h stays
+    // "a 10 m x 20 m room", "a 5 x 3 cm card" -> a ten by twenty meter room (was "a ten-meter x twenty meters room")
+    .replace(/(\b(?:[Aa]n?|[Tt]he|[Hh]is|[Hh]er|[Tt]heir|[Mm]y|[Yy]our|[Oo]ur|[Ii]ts)\s)(\d+(?:\.\d+)?)\s?(?:(km|cm|mm|m|ft|yds?|mi)\s?)?(?:[x×]|by)\s?(\d+(?:\.\d+)?)\s?(km|cm|mm|m|ft|yds?|mi)\b(?=\s+(?!(?:away|long|tall|wide|high|deep|thick|of|from|to|and|or|per|in|on|at|by|for|across|apart|area|space)\b)\p{Ll})/gu,
+      (m, pre, a, u1, b, u) => u1 && u1 !== u ? m : pre + a + ' by ' + b + ' ' + ({ yds: 'yard' }[u] || UNITS[u][0]))
     .replace(/(^|[^$\w,])((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|wpm|ft|yds|yd|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|ms|m\/s|m|g|L|KB|MB|GB|TB|PB|kHz|MHz|GHz|Hz|Mbps|Gbps|kWh|kW|MW|kV|mAh|ly|V|W)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
       (m, pre, n, u, at, all) => {
         // "a 10 km run", "the 5 kg bag" -> ten-kilometer run (the adjective form takes the singular)
@@ -895,6 +899,7 @@ function tidy(t) {
           return pre + n + ' ' + UNITS.mm[0];
         return pre + n + ' ' + UNITS[u][n === '1' ? 0 : 1];
       })
+    .replace(/(\d[ -](?:kilometers?|centimeters?|millimeters?|meters?|feet|foot|yards?|miles?)) [x×] (?=\d)/g, '$1 by ')   // 5 cm x 3 cm -> five centimeters by three centimeters (was "x")
     // "1½ hours", "¾ of it" (the voice dropped the ½ or said "one½")
     .replace(/(?<![\d.,])(\d{1,3})?([½¼¾⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])/g, (m, w, f) => {
       const [a, b] = { '½': [1, 2], '¼': [1, 4], '¾': [3, 4], '⅓': [1, 3], '⅔': [2, 3], '⅕': [1, 5], '⅖': [2, 5], '⅗': [3, 5], '⅘': [4, 5],
