@@ -306,6 +306,11 @@ public class UnitTest {
                 check("timing: at 'six' (after the comma), 19 of 39", Math.round(bt.fracAt(ws2[5] + 10) * 39), 19);
             }
             check("timing by the said text: no change when said as written", SpeechTiming.said2text("a b", "a b") == null, true);
+            {   // fuzzing (2026-11-05): with the said text mapped onto the written words, fracAt came out 1.0000001 at the end
+                SpeechTiming sr = SpeechTiming.of("e.g. Wait-what?", "the ... ?!", new float[100], 24000);
+                float mx = 0; for (long f = 0; f < 200; f++) mx = Math.max(mx, sr.fracAt(f));
+                check("timing: never past 1 (float rounding in the said-text map)", mx <= 1f, true);
+            }
             // letters counted as the page script counts them ([\p{L}\p{N}]): "²" is one, a letter outside the basic plane two
             // (JavaScript's length); before, Java skipped both and the web word mark drifted a letter or two after them
             check("timing: the comma after \"x²\" is at 13 of 21 letters", Math.round(SpeechTiming.breaks("He had x\u00b2 apples, then left.").get(0)[0] * 21 * 100), 1300L);

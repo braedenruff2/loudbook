@@ -26,7 +26,7 @@ final class SpeechTiming {
     }
 
     /** The fraction of the text's letters said by a frame of the clip (0..1). */
-    float fracAt(long frame) { return toText(saidAt(frame)); }
+    float fracAt(long frame) { return Math.max(0f, Math.min(1f, toText(saidAt(frame)))); }   // (float rounding in the said-text map gave 1.0000001)
 
     private float toText(float w) {
         float[][] m = said2text;
