@@ -126,6 +126,8 @@ final class Chapter {
     private static final java.util.regex.Pattern MC = java.util.regex.Pattern.compile("(?<![\\p{L}\\d-])MC(?![\\p{L}\\d-])");
     private static final java.util.regex.Pattern NIKE = java.util.regex.Pattern.compile("(?<![\\p{L}\\d-])Nike(?=s?(?![\\p{L}\\d-]))");
     private static final java.util.regex.Pattern NIAMH = java.util.regex.Pattern.compile("(?<![\\p{L}\\d-])Niamh(?![\\p{L}\\d-])");
+    /** "Wait-what?", "Huh-what" (Kokoro ran them together into one word, "waitwhat"): a comma between. */
+    private static final java.util.regex.Pattern WAIT_WHAT = java.util.regex.Pattern.compile("\\b(Wait|wait|Huh|huh|Eh|eh|Hey|hey|What|what)-((?i:what|huh|wait|eh))\\b(?![-\\p{L}])");
     private static final java.util.regex.Pattern KUN = java.util.regex.Pattern.compile("(?<=\\p{L}-)kun(?![\\p{L}\\d-])");
     private static final java.util.regex.Pattern CHAN = java.util.regex.Pattern.compile("(?<=\\p{L}-)chan(?![\\p{L}\\d-])");
     private static final java.util.regex.Pattern AJUMMA = java.util.regex.Pattern.compile("(?<![\\p{L}-])([Aa])h?jumma(s?)(?![\\p{L}-])");
@@ -381,6 +383,8 @@ final class Chapter {
         // names it says the English way (lab 2026-11-05): Nike (the goddess, the shoes) "nyke", Niamh "nai-um"
         if (t.contains("Nike")) t = NIKE.matcher(t).replaceAll("Nikey");
         if (t.contains("Niamh")) t = NIAMH.matcher(t).replaceAll("Neeve");
+        if (t.contains("Thucydides")) t = t.replace("Thucydides", "Thoosiddideez");   // ("thuh-sid-dides", lab 2026-11-05)
+        if (t.indexOf('-') >= 0) t = WAIT_WHAT.matcher(t).replaceAll("$1, $2");
         // Japanese name endings: "Tanaka-kun" ("kun" as in "pun"), "Yuki-chan" ("chan" as in "can"); Korean "ajumma" ("adj-umma")
         if (t.contains("-kun")) t = KUN.matcher(t).replaceAll("koon");
         if (t.contains("-chan")) t = CHAN.matcher(t).replaceAll("chahn");
