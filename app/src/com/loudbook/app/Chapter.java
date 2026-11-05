@@ -124,6 +124,7 @@ final class Chapter {
     private static final java.util.regex.Pattern KUN = java.util.regex.Pattern.compile("(?<=\\p{L}-)kun(?![\\p{L}\\d-])");
     private static final java.util.regex.Pattern CHAN = java.util.regex.Pattern.compile("(?<=\\p{L}-)chan(?![\\p{L}\\d-])");
     private static final java.util.regex.Pattern AJUMMA = java.util.regex.Pattern.compile("(?<![\\p{L}-])([Aa])h?jumma(s?)(?![\\p{L}-])");
+    private static final java.util.regex.Pattern GACHA = java.util.regex.Pattern.compile("(?<![\\p{L}-])([Gg])acha(?=s?(?![\\p{L}]))");
     private static final java.util.regex.Pattern POV = java.util.regex.Pattern.compile("(?<![\\p{L}\\d-])POV(?![\\p{L}\\d-])");
     private static final java.util.regex.Pattern SOW = java.util.regex.Pattern.compile(
         "(?<=\\b(?:[Aa]|[Tt]he|[Oo]ld|[Ff]at|[Gg]reat|[Tt]hat|[Tt]his|[Hh]is|[Hh]er|[Tt]heir|[Mm]other|[Ww]ild|[Bb]reeding|[Pp]regnant|[Mm]uddy|[Bb]ig|[Hh]uge)[ \\t])sow(s?)\\b(?![-]|[ \\t]+(?:the|seeds?|them|it|a|an|discord|doubt|chaos|fear|dissent|confusion|terror|panic)\\b)");
@@ -377,6 +378,7 @@ final class Chapter {
         // Japanese name endings: "Tanaka-kun" ("kun" as in "pun"), "Yuki-chan" ("chan" as in "can"); Korean "ajumma" ("adj-umma")
         if (t.contains("-kun")) t = KUN.matcher(t).replaceAll("koon");
         if (t.contains("-chan")) t = CHAN.matcher(t).replaceAll("chahn");
+        if (t.contains("acha")) t = GACHA.matcher(t).replaceAll("$1ahcha");   // gacha games ("gatch-a", lab 2026-11-05)
         if (t.contains("jumma")) { java.util.regex.Matcher m = AJUMMA.matcher(t); StringBuffer b = new StringBuffer(); while (m.find()) m.appendReplacement(b, m.group(1) + (m.group(2).isEmpty() ? "h-joom-ma" : "h-joom-mahs")); m.appendTail(b); t = b.toString(); }
         // a dash between words ("Wait—no—stop", "the man--tall--walked", "He - well"): Kokoro pauses only at a spaced em dash,
         // and ran the rest together ("Wait no stop"; the highlight's timing expects a pause there, see SpeechTiming.breaks)
