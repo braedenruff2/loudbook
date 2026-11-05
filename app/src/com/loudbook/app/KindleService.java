@@ -1367,6 +1367,9 @@ public class KindleService extends AccessibilityService {
         return new Page();
     }
 
+    /** Turns back one page (a turn landed after reading started again on the page before it): the page now shown, or null. */
+    Page turnBack(String beforeSig) { Page p = backPage(beforeSig); if (p != null) { clearFocus(); accept(p); } return p; }
+
     /** Turns back one page (after a turn that went two): the page now shown, or null if it didn't turn. */
     private Page backPage(String beforeSig) {
         AccessibilityNodeInfo root = kindleRoot();

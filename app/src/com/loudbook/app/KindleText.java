@@ -40,6 +40,20 @@ final class KindleText {
     }
     private static final Pattern END = Pattern.compile("[.!?…][\"'”’)\\]]{0,2}\\s*$");
 
+    /**
+     * The sentences of the page reading starts on (this KindleText must be new). If no sentence ends on it (a heading alone,
+     * one long unfinished sentence), it's read whole, as a last page, and nothing carries over: the held-back text used to be
+     * read again in front of the next page ("CHAPTER FIVE It was a dark night.").
+     */
+    List<Chapter.Chunk> startChunks(List<String> paragraphs) {
+        List<Chapter.Chunk> raw = chunks(paragraphs, false);
+        if (!raw.isEmpty()) return raw;
+        carry = ""; skip = null; carryBlock = -1; block = 0; bridgeHead = 0;          // (as new, with the same fixes)
+        raw = chunks(paragraphs, true);
+        carry = ""; skip = null; carryBlock = -1;
+        return raw;
+    }
+
     /** Sentences from a page's paragraphs. last: no more pages, so nothing is held back. */
     List<Chapter.Chunk> chunks(List<String> paragraphs, boolean last) {
         List<String> paras = new ArrayList<>();

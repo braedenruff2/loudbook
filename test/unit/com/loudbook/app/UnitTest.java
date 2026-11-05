@@ -162,6 +162,17 @@ public class UnitTest {
         List<Chapter.Chunk> p2 = kt.chunks(Arrays.asList("the page break, then stops."), true);
         check("page 1", p1.size() + ":" + p1.get(0).text, "1:The first page ends here.");
         check("page 2 joins the cut sentence", p2.get(0).text, "And this one runs over the page break, then stops.");
+        // reading starts on a page where no sentence ends (a heading alone): it's read, and not again before the next page
+        KindleText ks = new KindleText("");
+        List<Chapter.Chunk> s1 = ks.startChunks(Arrays.asList("CHAPTER FIVE"));
+        check("start page with a heading alone is read", s1.size() + ":" + (s1.isEmpty() ? "" : s1.get(0).text), "1:CHAPTER FIVE");
+        Chapter.Chunk sb = ks.bridge("It was a dark night. The rain fell.");
+        check("...and doesn't come again over the page break", sb == null ? "none" : sb.text, "none");
+        List<Chapter.Chunk> s2 = ks.chunks(Arrays.asList("It was a dark night. The rain fell."), false);
+        check("...nor on the next page", s2.isEmpty() ? "" : s2.get(0).text.startsWith("It was a dark night.") + "", "true");
+        KindleText ks2 = new KindleText("");
+        List<Chapter.Chunk> s3 = ks2.startChunks(Arrays.asList("A page ends. And then one runs over"));
+        check("an ordinary start page still holds back the cut sentence", s3.size() + ":" + s3.get(0).text, "1:A page ends.");
         // a page's first long sentence starts with a short piece, so the voice starts sooner after a turn
         check("quick start at a comma", KindleText.quickStart("She liked the quiet, and she liked that nobody else since the war had walked that road at dawn."),
             "[She liked the quiet,, and she liked that nobody else since the war had walked that road at dawn.]");

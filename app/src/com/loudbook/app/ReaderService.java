@@ -649,6 +649,9 @@ public class ReaderService extends Service {
     private volatile int splitIdx = -1;
     private volatile float splitFrac;
     private volatile boolean splitTurned;
+    /** splitIdx and splitTurned change together under this: the player marking the old split as turned just as the kindle
+     *  thread set up the new page's split used to mark the new page as turned too (it then never turned: "End of chapter"). */
+    private final Object splitLock = new Object();
     private float addBridge(java.util.List<Chapter.Chunk> list, Chapter.Chunk bridge, KindleText kt) {
         if (bridge == null) return -1;
         java.util.List<Chapter.Chunk> said = spoken(java.util.Collections.singletonList(bridge));
@@ -667,15 +670,14 @@ public class ReaderService extends Service {
         kt = new KindleText(prefs.getString("fixes", ""));
         final android.content.Context app = getApplicationContext();
         KindleText.dictionary = w -> Voice.hasWord(app, w);
-        java.util.List<Chapter.Chunk> raw = kt.chunks(p.paragraphs, false);
-        if (raw.isEmpty()) raw = new KindleText(prefs.getString("fixes", "")).chunks(p.paragraphs, true);
+        java.util.List<Chapter.Chunk> raw = kt.startChunks(p.paragraphs);
         logKindle("start", p.paragraphs, raw);
         kindleSig = p.signature;
         kindleParas = p.paragraphs;
         kindleNext = p.nextStart;
         { Future<Voice.Clip> ah = aheadClip; aheadClip = null; aheadKey = null; pageAheadAsked = null; if (ah != null) ah.cancel(false); }
         kindleEnded = false; kindleBusy = false; kindleHidden = false;
-        splitIdx = -1; splitTurned = false;
+        synchronized (splitLock) { splitIdx = -1; splitTurned = false; }
         final java.util.List<Chapter.Chunk> page = raw;
         final KindleText kts = kt;
         kindleThread.submit(() -> {
@@ -722,7 +724,7 @@ public class ReaderService extends Service {
                 Chapter ch = new Chapter("kindle:" + System.currentTimeMillis(), "kindle", p.title.isEmpty() ? "Kindle" : p.title, "Kindle", first);
                 Log.i("LoudbookTest", "kindle start: " + p.paragraphs.size() + " paragraphs, " + first.size() + " sentences, from sentence " + startAt + ", title " + p.title);
                 kindleFrom = 0; kindleTo = first.size();
-                splitTurned = false; splitIdx = frac >= 0 ? first.size() - 1 : -1; splitFrac = frac;
+                synchronized (splitLock) { splitTurned = false; splitIdx = frac >= 0 ? first.size() - 1 : -1; splitFrac = frac; }
                 kindleCh = ch;
                 setChapter(ch, startAt, true);
             });
@@ -868,6 +870,13 @@ public class ReaderService extends Service {
                     // that new reading's page, not this one's next; it used to go into the new reading's state (its page
                     // signature, sentence carried over the break, "end of the book")
                     Log.i("LoudbookTest", "kindle: a new reading started during the page turn; this turn's page is dropped");
+                    // ...but Kindle did turn: if the new reading is of the page before (he tapped while it was turning), turn
+                    // back to it, or the new reading read a page that wasn't on screen and its first turn skipped one
+                    String newSig = kindleSig;
+                    if (k != null && !p.paragraphs.isEmpty() && newSig != null && !newSig.equals(p.signature) && newSig.equals(kindleSig)) {
+                        KindleService.Page b = k.turnBack(p.signature);
+                        Log.i("LoudbookTest", "kindle: turned back to the new reading's page: " + (b == null ? "didn't turn" : newSig.equals(b.signature) ? "yes" : "a different page"));
+                    }
                     return null;
                 }
                 if (p.paragraphs.isEmpty() && k != null && !k.kindleVisible()) {
@@ -920,10 +929,10 @@ public class ReaderService extends Service {
                         for (int q = from; q < Math.min(ch.size(), from + 3); q++) clipFor(q);
                     }
                     kindleFrom = pageFrom; kindleTo = ch.size();
-                    splitTurned = false; splitIdx = frac >= 0 ? ch.size() - 1 : -1; splitFrac = frac;
+                    synchronized (splitLock) { splitTurned = false; splitIdx = frac >= 0 ? ch.size() - 1 : -1; splitFrac = frac; }
                     Log.i("LoudbookTest", "kindle page turned: +" + more.size() + " sentences");
                 }
-            } catch (Throwable t) { Log.w(TAG, "kindle page", t); kindleEnded = true; }
+            } catch (Throwable t) { Log.w(TAG, "kindle page", t); if (kts == kt) kindleEnded = true; }   // (not the new reading's end)
             // (not after a new start: its own page turn may be the one running now)
             finally { if (kts == kt) { kindleQueued = true; kindleBusy = false; } }
             return null;
@@ -1570,13 +1579,17 @@ public class ReaderService extends Service {
                     return;
                 }
                 if (chapter != ch) return;
-                if (kt != null && "kindle".equals(ch.site) && next >= ch.size() && !kindleEnded && splitIdx == ch.size() - 1) {
+                // (splitIdx >= 0: an empty page (size 0) matched splitIdx -1 and waited 60 s for a turn that couldn't come)
+                if (kt != null && "kindle".equals(ch.site) && next >= ch.size() && !kindleEnded && splitIdx >= 0 && splitIdx == ch.size() - 1) {
                     // Kindle: the page ends inside a sentence, and that sentence is queued whole: the
                     // page turns when the voice gets to the next page's words (splitCheck)
                     long until = System.currentTimeMillis() + 60_000;
-                    while (gen == myGen && !splitTurned && splitIdx == ch.size() - 1 && System.currentTimeMillis() < until) { heard(ch, marks, myGen); sleep(20); }
+                    // (time paused doesn't count: paused on this sentence, the page used to turn by itself after 60 s)
+                    while (gen == myGen && !splitTurned && splitIdx == ch.size() - 1 && System.currentTimeMillis() < until) { if (paused) until += 20; heard(ch, marks, myGen); sleep(20); }
                     if (gen != myGen) return;
-                    if (!splitTurned && splitIdx == ch.size() - 1) { splitTurned = true; kindleMore(ch); }   // (never got there: turn anyway)
+                    boolean turnNow;
+                    synchronized (splitLock) { turnNow = !splitTurned && splitIdx >= 0 && splitIdx == ch.size() - 1; if (turnNow) splitTurned = true; }
+                    if (turnNow) kindleMore(ch);   // (never got there: turn anyway)
                     until = System.currentTimeMillis() + 10_000;
                     while (gen == myGen && next >= ch.size() && (kindleBusy || !kindleQueued) && System.currentTimeMillis() < until) { heard(ch, marks, myGen); sleep(40); }
                     if (!kindleBack(myGen, ch, marks)) return;
@@ -1791,7 +1804,7 @@ public class ReaderService extends Service {
         float secs = heardLen / (float) Math.max(1, t.getSampleRate());
         float lead = secs > 0 ? Math.min(0.15f, 0.25f / secs) : 0f;              // (the turn takes a moment to show)
         if (f < splitFrac - lead) return;
-        splitTurned = true;
+        synchronized (splitLock) { if (splitTurned || splitIdx != si) return; splitTurned = true; }
         Log.i("LoudbookTest", "kindle: the voice is at the next page's words (" + Math.round(f * 100) + "% of sentence " + si + "), turning");
         kindleMore(ch);
     }
