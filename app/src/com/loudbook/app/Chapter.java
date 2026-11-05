@@ -84,6 +84,11 @@ final class Chapter {
         "\\b(?:((?:[Tt]ook|[Tt]ake|[Tt]akes|[Tt]aking|[Gg]ave|[Gg]ive|[Gg]ives|[Gg]iving|[Ss]wept)[ \\t]+(?:a|an|another)[ \\t]+)|((?:deep|slight|low|polite|respectful|curt|quick|formal|shallow|courtly|mocking|theatrical|elaborate|sweeping|graceful|perfunctory|brief|final|exaggerated|stiff)[ \\t]+))bow(s?)\\b"
         + "|(?<=\\b(?:I|[Yy]ou|[Ww]e|[Tt]hey|to|will|would|must|should|shall|not|and|then|all|[Ee]veryone|[Pp]lease|[Hh]e|[Ss]he|[Ii]t)[ \\t])bow(s?)(?=[ \\t]+(?:to|before|down|low|deeply|slightly|respectfully|politely|(?:his|her|their|your|my|our|its)[ \\t]+heads?)\\b)"
         + "|(?:^|(?<=[.!?\"\u201c] ))Bow(?=[ \\t]+(?:to|before|down|low|deeply|(?:his|her|their|your|my|our|its)[ \\t]+heads?)\\b)");
+    // a ship's bow ("the bow of the ship", "the boat's bow", "from bow to stern"): the voice said the archer's "boh" (lab 2026-11-05)
+    private static final java.util.regex.Pattern SHIP_BOW = java.util.regex.Pattern.compile(
+        "(?<=\\b(?:ship|boat|vessel|yacht|galley|canoe|ark|barge|ferry|schooner|galleon|longship|skiff|frigate|steamer|raft|airship|sloop|brig|cutter|trawler|dinghy|kayak|junk|cruiser|destroyer|freighter|tanker|tug|craft)['\u2019]s[ \\t])bow(s?)\\b(?![-'\u2019])"
+        + "|(?<=\\b(?:[Tt]he|[Ii]ts|[Hh]er)[ \\t])bow(s?)(?=[ \\t]+of[ \\t]+(?:the|a|an|her|his|their|our|its|that|this|my|your)[ \\t]+(?:\\p{L}+[ \\t]+)?(?:ship|boat|vessel|yacht|galley|canoe|ark|barge|ferry|schooner|galleon|longship|skiff|frigate|steamer|raft|airship|sloop|brig|cutter|trawler|dinghy|kayak|junk|cruiser|destroyer|freighter|tanker|tug|craft)s?\\b)"
+        + "|(?<=\\b(?:[Ff]rom|[Bb]etween)[ \\t])bow(?=[ \\t]+(?:to|and)[ \\t]+stern\\b)");
     // "She read the note" / "The sign read" is past ("red"; the voice said "reed": "he/she/it read" can't be the present, that's "reads").
     // "did he read", "let her read" stay. "She dove into the lake" ("duv", the bird) -> dohv. Lead the metal ("a lead pipe",
     // "made of lead", "heavy as lead"; the voice said "leed") -> led. Checked in the Kokoro lab, 2026-11-01.
@@ -345,6 +350,7 @@ final class Chapter {
         if (t.contains("wind")) t = WIND.matcher(t).replaceAll("wined");
         if (t.contains("Wind")) t = WIND_START.matcher(t).replaceAll("Wined");
         if (t.contains("wound")) t = WOUND.matcher(t).replaceAll("wownd");
+        if (t.contains("bow")) t = SHIP_BOW.matcher(t).replaceAll("bough$1$2");
         if (t.contains("ow")) {
             java.util.regex.Matcher m = BOW.matcher(t);
             StringBuffer b = new StringBuffer();
