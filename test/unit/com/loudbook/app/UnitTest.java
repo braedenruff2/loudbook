@@ -203,6 +203,11 @@ public class UnitTest {
         check("single quotes and tag", str(Dialogue.split("\u2018It\u2019s the boys\u2019 dog,\u2019 she said. \u2018Run!\u2019", false, true)),
             "[q:It\u2019s the boys\u2019 dog,][n:she said.][q:Run!]");
         check("single quotes: a quote from before", str(Dialogue.split("And we ran.\u2019 She laughed at \u2019em.", true, true)), "[q:And we ran.][n:She laughed at \u2019em.]");
+        check("single quotes: speech starting with an elision (two marks)", Dialogue.singles("\u2018\u2018Twas brillig,\u2019 she said."), true);
+        check("single quotes: speech starting with an elision, split", str(Dialogue.split("\u2018\u2019Tis true,\u2019 he said. \u2018Go.\u2019", false, true)),
+            "[q:\u2019Tis true,][n:he said.][q:Go.]");
+        check("single quotes: an elision alone still isn't speech", Dialogue.singles("\u2018Twas the night before, and \u2019tis cold."), false);
+        check("double quotes: speech starting with an elision", str(Dialogue.split("\u201c\u2019Tis true,\u201d he said.", false)), "[q:\u2019Tis true,][n:he said.]");
         check("single quotes: straight ones", str(Dialogue.split("'Don't go,' he said.", false, true)), "[q:Don't go,][n:he said.]");
         check("single quotes: a word quoted mid-sentence", str(Dialogue.split("She was quick in saying \u2018Yes\u2019 to all this; and then a coach came.", false, true)),
             "[n:She was quick in saying][q:Yes][n:to all this; and then a coach came.]");

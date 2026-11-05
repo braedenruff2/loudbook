@@ -82,9 +82,15 @@ final class Dialogue {
         char ch = t.charAt(c);
         if (ch != '‘' && ch != '\'') return false;
         if (c > 0 && "( \t\n[—–".indexOf(t.charAt(c - 1)) < 0) return false;
+        // the quote's first word an elision with its own apostrophe: ‘‘Twas brillig,’ she said. / ‘’Tis true,’ he said.
+        if (c + 2 < t.length() && "‘’'".indexOf(t.charAt(c + 1)) >= 0 && elision(t, c + 2)) return true;
         if (c + 1 >= t.length() || !Character.isLetter(t.charAt(c + 1)) && "…—".indexOf(t.charAt(c + 1)) < 0) return false;
-        String rest = t.substring(c + 1, Math.min(t.length(), c + 7)).toLowerCase(java.util.Locale.ROOT);
-        return !rest.matches("^(em|tis|twas|twere|cause|cos|til|till|n|nuff|bout|round|ello|ere)\\b.*");
+        return !elision(t, c + 1);
+    }
+    /** Does a word cut short at the front start at c ('em, 'tis, 'twas, 'cause: its apostrophe just before c)? */
+    private static boolean elision(String t, int c) {
+        String rest = t.substring(c, Math.min(t.length(), c + 6)).toLowerCase(java.util.Locale.ROOT);
+        return rest.matches("^(em|tis|twas|twere|cause|cos|til|till|n|nuff|bout|round|ello|ere)\\b.*");
     }
     /** A single quote closing speech: after the quote's last punctuation (,’ .’ !’), or before punctuation; not "the boys’ dog". */
     private static boolean closesSingle(String t, int c) {
