@@ -782,6 +782,16 @@ function tidy(t) {
     .replace(/\b(Stage|World)\s+(\d{1,2})-(\d{1,2})\b(?![-\d%])/g, '$1 $2 $3')   // Stage 3-2 / World 1-4 (a level's name, not a range)
     .replace(/\b(\d{1,3}(?:,\d{3})+)(st|nd|rd|th)\b/g, (m, n, t) => n.replace(/,/g, '') + t)   // the 10,000th visitor (was "ten,zeroth")
     .replace(/(?<![\d,.])((?:1\d|20)\d0|['’]\d0)['’]s\b/g, '$1s')   // the 1990's, the '90's -> nineties (was "ninety's")
+    // day first: "on 25 December 2024", "born 2 Feb 1990", "by 1 Jan the snow came" -> the 25th of December (was "twenty-five December");
+    // only with a year, a mark or the end after it, or on/by/since... before it ("25 Dec ornaments", "Chapter 3 May" stay)
+    .replace(/\b(3[01]|[12]\d|0?[1-9])\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\b(\.?)/gu, (m, d, mo, dot, at, all) => {
+      const before = all.slice(0, at), after = all.slice(at + m.length);
+      if (/(?:\d[,–—-]?|[:\/–—-])\s?$|[^.!?\s]\.\s?$|\b(?:Chapter|Ch|Book|Part|Vol|Volume|Level|Lv|Lvl|Floor|Room|No|Episode|Act|Scene|Season|Page|Day|Year|Week|Grade|Class|Rank|Tier|Stage|World)\.?\s+$/i.test(before) && !/\b(?:on|by|until|till|since|from|before|after|born|dated)\s+$/i.test(before)) return m;
+      const year = /^\s+(?:1[5-9]|20)\d\d\b(?!\.\d)/.test(after);
+      if (!year && !/^(?:\s*[,;:!?)]|\s*$|\s+[\p{Lu}"“])/u.test(after) && !(dot && /^\s*$/.test(after)) && !/\b(?:on|by|until|till|since|from|before|after|born|dated)\s+$/i.test(before)) return m;
+      const n = +d, th = ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10 && (n < 11 || n > 13) ? n % 10 : 0] || 'th');
+      return (/\b[Tt]he\s+$/.test(before) ? '' : /^\s*["“‘'(]?\s*$|[.!?]["”’']?\s+["“‘(]?$/.test(before) ? 'The ' : 'the ') + n + th + ' of ' + (MONTHS[mo] || mo) + (dot && !year && (MONTH_NAMES.includes(mo) || /^\s*$|^\s+\p{Lu}/u.test(after)) ? '.' : '');
+    })
     .replace(/\b(\d{1,2}(?:st|nd|rd|th)\s+(?:of\s+)?)(Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)(?:\.(?=\s+\p{Ll}|,))?(?=[\s.,;]|$)/gu, (m, d, mo) => d + (MONTHS[mo] || 'September'))   // 1st Jan 2020
     .replace(/\bS(\d{1,2})\s?E(\d{1,3})\b/g, (m, a, b) => 'Season ' + +a + ', Episode ' + +b)   // S2E3
     .replace(/(?<!\b[A-Za-z]{2,}:\s?|\b(?:[A-Z]{2,4}|Mana|Health|Stamina|Energy|Ammo|Charges?|Slots?|Uses)\s)\b50\s?\/\s?50\b/g, 'fifty-fifty')   // not "MP 50/50" (a stat)

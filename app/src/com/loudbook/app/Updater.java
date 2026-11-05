@@ -102,6 +102,7 @@ final class Updater {
             sp.setSize(f.length());
             if (Build.VERSION.SDK_INT >= 31) sp.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
             int id = pi.createSession(sp);
+            boolean sent = false;
             try (PackageInstaller.Session s = pi.openSession(id)) {
                 try (InputStream in = new FileInputStream(f); OutputStream out = s.openWrite("Loudbook.apk", 0, f.length())) {
                     byte[] buf = new byte[1 << 16]; int n;
@@ -111,6 +112,11 @@ final class Updater {
                 Intent done = new Intent(c, Result.class);
                 int flags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0);
                 s.commit(PendingIntent.getBroadcast(c, id, done, flags).getIntentSender());
+                sent = true;
+            } finally {
+                // (a session left open when the copy fails, e.g. the cache file was cleared meanwhile, holds a copy of
+                // the APK in Android's staging area until Android drops it, and each later try made another)
+                if (!sent) try { pi.abandonSession(id); } catch (Throwable ignored) { }
             }
             prefs(c).edit().putString("error", "").apply();
             return true;

@@ -1,3 +1,4 @@
+Dates written day first ("on 25 December 2024", "Whitby, 30 August", "born 2 Feb 1990") are read "the twenty-fifth of December" (was "twenty-five December").
 The phone voice says "Nobody read it" and "Wind the clock" right, "They had a row" as a quarrel, "Mm-mm" as a no, Chinese names Li, Liao, Hou, Cui and Xiong right, and spells "OP", "MC" and "POV" as letters. Second voice: speech that starts with 'Tis or 'Twas in single-quoted stories is read in the character's voice.
 Also read right now: chat words "fr", "ur", "bc"; "Tanaka-kun", "Yuki-chan"; Nike, tiefling, ichor; "She doth protest"; "a 1,000 V shock"; "300 ms"; "Fufufu", chaebol, manhua.
 Kindle: after a page turn, a long sentence that follows a short first one no longer leaves a pause while it's made. Times like "the 4.50 from Paddington" and "12.00 noon" are read as times.
