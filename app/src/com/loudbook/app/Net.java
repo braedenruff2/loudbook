@@ -34,9 +34,15 @@ final class Net {
         HttpURLConnection c = open(url, have);
         long fullSize = 0;
         int code = c.getResponseCode();
-        if (code == 416 && expected > 0 && have == expected) { c.disconnect(); }
+        // (416: the part asked to carry on from is already the whole file; the server says the size, "bytes */N", when
+        // it isn't known ahead. It used to fail every try then: voice-command files are downloaded with no size given)
+        if (code == 416 && have > 0 && (expected > 0 ? have == expected : have == rangeTotal(c))) { c.disconnect(); }
         else {
-            if (code != 200 && code != 206) { c.disconnect(); throw new java.io.IOException("download failed (" + code + ")"); }
+            if (code != 200 && code != 206) {
+                c.disconnect();
+                if (code == 416) part.delete();   // (a part that doesn't fit the file online: the next try starts over, not 416 forever)
+                throw new java.io.IOException("download failed (" + code + ")");
+            }
             boolean append = code == 206;
             if (!append) have = 0;
             long len = c.getContentLengthLong();
@@ -55,6 +61,14 @@ final class Net {
         if (expected <= 0 && fullSize > 0 && part.length() != fullSize) throw new java.io.IOException("download incomplete, will retry");
         if (dest.exists()) dest.delete();
         if (!part.renameTo(dest)) throw new java.io.IOException("couldn't save " + dest.getName());
+    }
+
+    /** The whole size in a Content-Range header (the 10 of "bytes 0-9/10", or of a star then "/10" with a 416), or -1. */
+    static long rangeTotal(HttpURLConnection c) {
+        String r = c.getHeaderField("Content-Range");
+        if (r == null) return -1;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("/\\s*(\\d+)\\s*$").matcher(r);
+        return m.find() ? Long.parseLong(m.group(1)) : -1;
     }
 
     /** The size of a file online (after redirects), or -1 if unknown. */
