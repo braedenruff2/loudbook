@@ -630,7 +630,7 @@ const DAYS = { Mon: 'Monday', Tue: 'Tuesday', Tues: 'Tuesday', Wed: 'Wednesday',
 const UNITS = { km: ['kilometer', 'kilometers'], cm: ['centimeter', 'centimeters'], mm: ['millimeter', 'millimeters'],
   m: ['meter', 'meters'], kg: ['kilogram', 'kilograms'], g: ['gram', 'grams'], lb: ['pound', 'pounds'], lbs: ['pound', 'pounds'],
   ft: ['foot', 'feet'], yd: ['yard', 'yards'], yds: ['yard', 'yards'], mph: ['mile per hour', 'miles per hour'], 'km/h': ['kilometer per hour', 'kilometers per hour'], 'm/s': ['meter per second', 'meters per second'],
-  kph: ['kilometer per hour', 'kilometers per hour'], wpm: ['word per minute', 'words per minute'], mi: ['mile', 'miles'], min: ['minute', 'minutes'], mins: ['minute', 'minutes'], sec: ['second', 'seconds'], secs: ['second', 'seconds'], hr: ['hour', 'hours'], hrs: ['hour', 'hours'], oz: ['ounce', 'ounces'],
+  kph: ['kilometer per hour', 'kilometers per hour'], wpm: ['word per minute', 'words per minute'], mi: ['mile', 'miles'], ms: ['millisecond', 'milliseconds'], min: ['minute', 'minutes'], mins: ['minute', 'minutes'], sec: ['second', 'seconds'], secs: ['second', 'seconds'], hr: ['hour', 'hours'], hrs: ['hour', 'hours'], oz: ['ounce', 'ounces'],
   kmh: ['kilometer per hour', 'kilometers per hour'], pts: ['point', 'points'], L: ['liter', 'liters'], ml: ['milliliter', 'milliliters'], mL: ['milliliter', 'milliliters'],
   KB: ['kilobyte', 'kilobytes'], MB: ['megabyte', 'megabytes'], GB: ['gigabyte', 'gigabytes'], TB: ['terabyte', 'terabytes'], PB: ['petabyte', 'petabytes'],
   Hz: ['hertz', 'hertz'], kHz: ['kilohertz', 'kilohertz'], MHz: ['megahertz', 'megahertz'], GHz: ['gigahertz', 'gigahertz'],
@@ -844,7 +844,7 @@ function tidy(t) {
     .replace(/(^|[^$\w.#])(\d+(?:\.\d+)?)h(?![\w\/-])(?=\s*(?:[.,;:!?)]|$)|\s+(?:later|ago|left|before|after|straight|a day|a week|each|per|of|and|or|to|in|on|at|from|until|till|by|with|without|since|now|more|less|than|max|total|long|away|remaining|later)\b)/g,
       (m, pre, n, at, all) => /\b(?:[Rr]oom|[Aa]pt|[Ff]loor|[Ss]eat|[Rr]ow|[Gg]ate|[Uu]nit|[Bb]lock|[Ss]uite|[Cc]abin|[Bb]ay|[Pp]latform|[Cc]ell|[Ss]ector|[Gg]rid|[Ss]quare|[Bb]ox|[Ll]ocker|[Bb]ed|[Ww]ard|[Cc]ar|[Hh]all|[Ww]ing|[Zz]one|[Ll]ot|[Pp]od|[Dd]orm|[Ll]ab|[Tt]ower|[Bb]uilding|[Vv]ersion|[Vv]ol|[Cc]h|[Pp]art|[Pp]age|[Ff]ig|[Ee]x|[Pp]roblem|[Qq]uestion|[Ss]ection)\s$/.test(all.slice(0, at) + pre)
         ? m : pre + n + (n === '1' ? ' hour' : ' hours'))   // "3h later", "slept 8h" -> hours (was "three aitch"); Room 3h stays
-    .replace(/(^|[^$\w,])((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|wpm|ft|yds|yd|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|m\/s|m|g|L|KB|MB|GB|TB|PB|kHz|MHz|GHz|Hz|Mbps|Gbps|kWh|kW|MW|kV|mAh|ly|V|W)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
+    .replace(/(^|[^$\w,])((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|wpm|ft|yds|yd|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|ms|m\/s|m|g|L|KB|MB|GB|TB|PB|kHz|MHz|GHz|Hz|Mbps|Gbps|kWh|kW|MW|kV|mAh|ly|V|W)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
       (m, pre, n, u, at, all) => {
         // "a 10 km run", "the 5 kg bag" -> ten-kilometer run (the adjective form takes the singular)
         const next = /^\s+(\p{Ll}+)/u.exec(all.slice(at + m.length));

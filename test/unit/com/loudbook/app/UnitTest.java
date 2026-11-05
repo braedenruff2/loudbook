@@ -75,6 +75,8 @@ public class UnitTest {
             "She doth pruh-test too much. Thou shalt not re-cord it. Thou dost ub-ject. Wilt thou pree-zent it? Canst thou not re-cord it?");
         check("Nike, Niamh for the phone voice", Chapter.forKokoro("Nike, goddess of victory. Her Nikes were new. Niamh smiled. Nikel, Nikea."),
             "Nikey, goddess of victory. Her Nikeys were new. Neeve smiled. Nikel, Nikea.");
+        check("-kun, -chan, ajumma for the phone voice", Chapter.forKokoro("Tanaka-kun and Yuki-chan. The ajumma and two Ahjummas. Chan-wook. A kun. Jackie Chan."),
+            "Tanaka-koon and Yuki-chahn. The ah-joom-ma and two Ah-joom-mahs. Chan-wook. A kun. Jackie Chan.");
         check("a row (quarrel) for the phone voice", Chapter.forKokoro("They had a row. We got into a blazing row about money. \u201cWe had a row,\u201d she said. He had a row of seats. We had a row to ourselves. Three in a row. They had a row boat."),
             "They had a rau. We got into a blazing rau about money. \u201cWe had a rau,\u201d she said. He had a row of seats. We had a row to ourselves. Three in a row. They had a row boat.");
         check("verbs for the phone voice: dove after a noun", Chapter.forKokoro("The hawk dove into the water. The boy dove beneath the waves. The dove into the cage? A white dove through the window. The dove in the tree. The stone dove onto the path."),
