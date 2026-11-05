@@ -400,7 +400,8 @@ final class GeminiBook {
                List<Span> more, boolean stream) throws IOException {
         Live before = streaming;
         try { return fetchNow(ch, from, to, key, model, voice, style, pace, paceOut, asr, more, stream); }
-        finally { Live l = streaming; if (l != null && l != before) l.done = true; }
+        // (only this request's own stream: a second request on the chapter streaming meanwhile isn't done when this one is)
+        finally { Live l = streaming; if (l != null && l != before && l.owner == Thread.currentThread()) l.done = true; }
     }
 
     /**
@@ -411,6 +412,7 @@ final class GeminiBook {
         final int from, to, part; final File f;
         volatile long bytes;            // of audio saved so far
         volatile boolean done;          // all in, and every sentence in it filed
+        final Thread owner = Thread.currentThread();      // the request's thread
         Live(int from, int to, int part, File f) { this.from = from; this.to = to; this.part = part; this.f = f; }
     }
     volatile Live streaming;
@@ -464,7 +466,9 @@ final class GeminiBook {
         boolean broke = false;
         try {
             pcm = CloudVoice.speakToFile(key, model, voice, style, text.toString(), f, 600_000, fo != null && stream, prog);
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e0) {
+            // (a RuntimeException from a garbled reply used to skip finish(): the listening thread and its recogniser ran on for good)
+            IOException e = e0 instanceof IOException ? (IOException) e0 : new IOException("Google's reply couldn't be read (" + e0 + ")", e0);
             if (fo != null) fo.finish();
             if (fo != null && fo.filed > 0) {
                 broke = true;
@@ -543,7 +547,8 @@ final class GeminiBook {
                 for (int k = 0; k <= count; k++) {
                     if (k < filed) { starts[k] = fo.starts.get(k); continue; }
                     if (k == filed && filed > 0) { starts[k] = fo.lastEnd; continue; }
-                    if (k == count) { starts[k] = count == lastHeard + 1 ? total : byWords[k] >= 0 ? byWords[k] : total; break; }
+                    // (count can be past byWords when the last sentences weren't made out but the recording is long enough for them)
+                    if (k == count) { starts[k] = count == lastHeard + 1 || k >= byWords.length || byWords[k] < 0 ? total : byWords[k]; break; }
                     starts[k] = k < byWords.length ? byWords[k] : -1;
                     if (k == 0 && starts[k] < 0) starts[k] = 0;
                 }
@@ -838,13 +843,15 @@ final class GeminiBook {
             java.util.regex.Matcher pm = java.util.regex.Pattern.compile("\\[\"([^\"]+)\",(\\d+),(\\d+),(\\d+)\\]").matcher(j.substring(0, cut));
             while (pm.find()) {
                 File f = new File(dir, pm.group(1));
-                if (!f.isFile()) { parts.clear(); return; }
+                // a recording gone (one that failed while another was saved, or the app closed mid-request): keep its
+                // place so the others keep their numbers, and leave out its sentences (it used to forget every recording)
+                if (!f.isFile()) { parts.add(new CloudVoice.Pcm(f, 0, 0, Integer.parseInt(pm.group(4)))); continue; }
                 parts.add(new CloudVoice.Pcm(f, Long.parseLong(pm.group(2)), Long.parseLong(pm.group(3)), Integer.parseInt(pm.group(4))));
             }
             java.util.regex.Matcher sm = java.util.regex.Pattern.compile("\\[(\\d+),(-?\\d+),(\\d+),(\\d+),(\\d+),(\\d)\\]").matcher(j.substring(cut));
             while (sm.find()) {
                 int part = Integer.parseInt(sm.group(3));
-                if (part >= parts.size()) continue;
+                if (part >= parts.size() || parts.get(part).bytes == 0) continue;
                 all.add(new Seg(Integer.parseInt(sm.group(1)), Integer.parseInt(sm.group(2)), part,
                     Long.parseLong(sm.group(4)), Long.parseLong(sm.group(5)), sm.group(6).equals("1")));
             }

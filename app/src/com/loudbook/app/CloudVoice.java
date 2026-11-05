@@ -283,7 +283,11 @@ final class CloudVoice {
                 }
                 if (esc) {
                     esc = false;
-                    if (cc == 'u') { char[] h = new char[4]; for (int i = 0; i < 4; i++) h[i] = (char) in.read(); cc = (char) Integer.parseInt(new String(h), 16); }
+                    if (cc == 'u') {
+                        char[] h = new char[4];
+                        for (int i = 0; i < 4; i++) { int x = in.read(); if (x < 0) throw new IOException("Google's reply ended part way"); h[i] = (char) x; }
+                        try { cc = (char) Integer.parseInt(new String(h), 16); } catch (NumberFormatException e) { cc = '?'; }
+                    }
                     else if (cc == 'n') cc = '\n'; else if (cc == 't') cc = '\t';
                 } else if (cc == '\\') { esc = true; continue; }
                 else if (cc == '"') {

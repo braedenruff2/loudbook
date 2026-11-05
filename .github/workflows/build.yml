@@ -33,6 +33,8 @@ jobs:
           java -cp unit-out com.loudbook.app.UnitTest
           javac -nowarn -d net-out app/src/com/loudbook/app/Net.java test/unit/com/loudbook/app/BuildInfo.java test/unit/com/loudbook/app/NetTest.java
           java -cp net-out com.loudbook.app.NetTest
+          javac -nowarn -d gb-out -cp "$ANDROID_JAR" -sourcepath app/src:test/unit test/unit/com/loudbook/app/GeminiBookTest.java
+          java -cp gb-out:"$ANDROID_JAR" com.loudbook.app.GeminiBookTest
       - name: Build the APK
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
