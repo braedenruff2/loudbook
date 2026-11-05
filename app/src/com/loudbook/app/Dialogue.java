@@ -85,7 +85,11 @@ final class Dialogue {
         // the quote's first word an elision with its own apostrophe: ‘‘Twas brillig,’ she said. / ‘’Tis true,’ he said.
         if (c + 2 < t.length() && "‘’'".indexOf(t.charAt(c + 1)) >= 0 && elision(t, c + 2)) return true;
         if (c + 1 >= t.length() || !Character.isLetter(t.charAt(c + 1)) && "…—".indexOf(t.charAt(c + 1)) < 0) return false;
-        return !elision(t, c + 1);
+        if (!elision(t, c + 1)) return true;
+        // (a left quote before "Round", "Cause", "Til"...: speech if it closes later on (‘Round up the cattle,’ he said.); a
+        // word processor turns 'em into ‘em too, so with no close it's that)
+        if (ch == '‘') for (int k = c + 2; k < t.length(); k++) if (closesSingle(t, k)) return true;
+        return false;
     }
     /** Does a word cut short at the front start at c ('em, 'tis, 'twas, 'cause: its apostrophe just before c)? */
     private static boolean elision(String t, int c) {
@@ -101,6 +105,10 @@ final class Dialogue {
             || Character.isWhitespace(t.charAt(c + 1)) && c > 0 && !Character.isLetter(t.charAt(c - 1));
     }
 
+    /** A straight double quote right after a number, not opening speech: an inch mark (6' 2", a 12" pizza). (One closing speech
+     *  can follow a number: "Room 5," she said.) */
+    private static boolean inchMark(String t, int c) { return c > 0 && Character.isDigit(t.charAt(c - 1)); }
+
     /** Whether a quote is still open at the end of this text. */
     static boolean run(String t, boolean open) { return run(t, open, false); }
     static boolean run(String t, boolean open, boolean single) {
@@ -110,7 +118,7 @@ final class Dialogue {
             if (single) { if (marks == null) marks = singleMarks(t, open); if (marks[c] != 0) open = marks[c] > 0; continue; }
             if (ch == '“') open = true;
             else if (ch == '”') open = false;
-            else if (ch == '"') open = !open;
+            else if (ch == '"' && !(open ? false : inchMark(t, c))) open = !open;
         }
         return open;
     }
@@ -125,7 +133,7 @@ final class Dialogue {
         for (int c = 0; c < t.length(); c++) {
             char ch = t.charAt(c);
             if (single && marks == null) marks = singleMarks(t, open);
-            boolean opens = single ? marks[c] > 0 : ch == '“' || (ch == '"' && !open);
+            boolean opens = single ? marks[c] > 0 : ch == '“' || (ch == '"' && !open && !inchMark(t, c));
             boolean closes = single ? marks[c] < 0 : ch == '”' || (ch == '"' && open);
             if (opens && !open) { add(out, cur, false); open = true; continue; }
             if (closes && open) { add(out, cur, true); open = false; continue; }

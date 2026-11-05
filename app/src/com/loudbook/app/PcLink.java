@@ -80,10 +80,13 @@ final class PcLink {
         byte[] req = ("{\"text\":" + quote(text) + ",\"sid\":" + sid + ",\"speed\":" + speed + ",\"engine\":" + quote(engine)
             + (voice != null && !voice.isEmpty() ? ",\"voice\":" + quote(voice) : "")
             + (kokoroText != null && !kokoroText.equals(text) ? ",\"kokoro_text\":" + quote(kokoroText) : "") + "}").getBytes(StandardCharsets.UTF_8);
-        post(c, req);
-        int code = c.getResponseCode();
+        int code;
+        // (a timeout or reset while sending or waiting: the connection is let go, not left for the garbage collector)
+        try { post(c, req); code = c.getResponseCode(); } catch (IOException | RuntimeException e) { c.disconnect(); throw e; }
         if (code != 200) { String e = errorText(c); c.disconnect(); throw new IOException("PC said " + code + (e.isEmpty() ? "" : ": " + e)); }
-        int rate = Integer.parseInt(c.getHeaderField("X-Sample-Rate"));
+        int rate;
+        try { rate = Integer.parseInt(c.getHeaderField("X-Sample-Rate")); }
+        catch (RuntimeException e) { c.disconnect(); throw new IOException("the PC's answer had no sample rate"); }
         String w = c.getHeaderField("X-Work-Ms");
         String made = c.getHeaderField("X-Made-At");
         String used = c.getHeaderField("X-Engine");
@@ -141,6 +144,7 @@ final class PcLink {
         post(c, ("{\"nc\":\"" + b64(nc) + "\"}").getBytes(StandardCharsets.UTF_8));
         String r = readText(c);
         String fpHex = str(r, "fp");
+        if (fpHex == null || str(r, "ns") == null || str(r, "mac") == null) throw new IOException("the PC's answer wasn't a pairing one. Is it Loudbook's PC server?");
         byte[] ns = unb64(str(r, "ns"));
         byte[] fp = hex(fpHex);
         if (seen[0] == null || !seen[0].equals(fpHex)) throw new IOException("the PC's certificate didn't match. Pairing stopped.");

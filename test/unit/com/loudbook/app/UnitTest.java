@@ -231,6 +231,12 @@ public class UnitTest {
         check("straight quotes", str(Dialogue.split("He said \"stop it\" and left.", false)), "[n:He said][q:stop it][n:and left.]");
         check("inside a quote from before", str(Dialogue.split("And then we ran.\u201d She laughed.", true)), "[q:And then we ran.][n:She laughed.]");
         check("no quotes", str(Dialogue.split("The road was long.", false)), "[n:The road was long.]");
+        check("an inch mark doesn't open speech", str(Dialogue.split("He was 6' 2\" tall and wide. Then he left.", false)), "[n:He was 6' 2\" tall and wide. Then he left.]");
+        check("an inch mark: no quote left open", Dialogue.run("A 12\" pizza.", false), false);
+        check("a quote closing after a number still closes", str(Dialogue.split("\"Room 5\" was empty.", false)), "[q:Room 5][n:was empty.]");
+        check("single quotes: speech starting 'Round", Dialogue.singles("\u2018Round up the cattle,\u2019 he said."), true);
+        check("single quotes: speech starting 'Round, split", str(Dialogue.split("\u2018Round up the cattle,\u2019 he said.", false, true)), "[q:Round up the cattle,][n:he said.]");
+        check("single quotes: \u2018em with no close is an apostrophe", Dialogue.singles("We\u2019ll get \u2018em tomorrow."), false);
         // British-style single quotes (only in a paragraph with no double quotes; apostrophes are not quotes)
         check("single quotes: a paragraph that uses them", Dialogue.singles("\u2018It\u2019s the boys\u2019 dog,\u2019 she said."), true);
         check("single quotes: apostrophes alone aren't", Dialogue.singles("It\u2019s the boys\u2019 dog, and \u2019em too in the \u201890s."), false);
