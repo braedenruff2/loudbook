@@ -1047,6 +1047,9 @@ function tidy(t) {
     .replace(/(\b(?:[Aa]n?|got|gets|get|earned|scored)\s)([A-F])-(?=[\s.,!?)\]]|$)|\b([SABCDEF]{1,3})-(?=\s+(?:rank|grade|tier|class|student|average|level)\b)/g, (m, a, g, h) => (a ? a + g : h) + '-minus')   // a C-, a B- rank
     .replace(/\bvs\.?(?=\s)/gi, 'versus').replace(/(?<![\w.'’-])(ok|Ok|OK)(?![\w'’-]|\.\w)/g, (m) => (m[0] === 'o' ? 'okay' : 'Okay'))   // "ok" (the voice could say "ock")
     .replace(/\bi\.e\.(?=[\s,])/gi, (m) => m[0] === 'I' ? 'That is' : 'that is')   // "I.e., nothing" at a sentence start
+    .replace(/\b([Ee])\.\s?g\.(?=[\s,:])/g, (m, e) => e === 'E' ? 'For example' : 'for example')   // "e.g. money" (letters and dots)
+    .replace(/\b([Ee])tc\.|(?<![\w&])&c\./g, (m, e, at, all) => (e === 'E' || (!e && atStart(all, at)) ? 'Et' : 'et') + ' cetera' + (/^\s*["”’')\]]*(?:\s+\p{Lu}|\s*$)/u.test(all.slice(at + m.length)) ? '.' : ''))   // "etc., all gone", "water, etc. We...", the old "&c."
+    .replace(/\b[Ee]xt\.?\s*(?=\d{2,5}\b)/g, 'extension ').replace(/\bRte\.?\s*(?=\d)/g, 'Route ')   // Ext. 204, Rte. 66
     .replace(/\b([Ii])ncl\.(?=\s)/g, '$1ncluding').replace(/\b([Ee])sp\.(?=\s)/g, '$1specially')   // "incl. 40 archers", "esp. the elves"
     .replace(/\b(min|max)\.(?=\s+[~+]?\d)/g, (m, w) => w === 'min' ? 'minimum' : 'maximum')         // "min. 5 people", "max. 10"
     .replace(/\bPh\.D\./g, (m, at, all) => 'PhD' + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))
