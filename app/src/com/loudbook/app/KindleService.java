@@ -608,7 +608,27 @@ public class KindleService extends AccessibilityService {
                 if (moved) {
                     try {
                         Chapter c = svc.chapter(); int i = svc.pos();
-                        if (c != null && i >= 0 && i < c.size()) { int f = p.layout(false).find(c.chunks.get(i).text); if (f > 0) from = f; }
+                        if (c != null && i >= 0 && i < c.size()) {
+                            String cur = c.chunks.get(i).text;
+                            int f = p.layout(false).find(cur);
+                            if (f > 0) from = f;
+                            // (Kindle sometimes opens the book again a page or two back (lab c1105s: two pages, two minutes heard
+                            // again): if this page is one already read, turn on to the one with the sentence paused in)
+                            else if (f < 0 && wentBack(p, c, i)) {
+                                Log.i("LoudbookTest", "kindle: the page since the pause is one already read: turning on to the sentence paused in");
+                                for (int k = 0; k < 4; k++) {
+                                    Page q = nextPage(p.signature);
+                                    if (q.paragraphs.isEmpty()) break;
+                                    p = q;
+                                    KindleLayout ql = p.layout(false);
+                                    int g = ql.find(cur);
+                                    String cn = KindleLayout.normOf(cur);
+                                    if (g >= 0) { from = g; break; }
+                                    // (the sentence began on the page before: this page starts with the rest of it)
+                                    if (cn.length() >= 20 && KindleLayout.normOf(String.join(" ", p.paragraphs)).contains(cn.substring(cn.length() - 20))) break;
+                                }
+                            }
+                        }
                     } catch (Throwable t) { Log.w(TAG, "kindle resume place", t); }
                 }
                 final Page fp = p; final int fromLetter = from;
@@ -634,6 +654,15 @@ public class KindleService extends AccessibilityService {
             });
           } catch (Throwable t) { failed(t); }
         }, "lb-kindle").start();
+    }
+    /** Whether a page is one already read in this reading: it starts with the words of a sentence before the one at i. */
+    static boolean wentBack(Page p, Chapter c, int i) {
+        String head = KindleLayout.normOf(String.join(" ", p.paragraphs));
+        if (head.length() < 40) return false;
+        head = head.substring(0, 40);
+        for (int j = Math.max(0, i - 60); j < i - 1; j++) if (KindleLayout.normOf(c.chunks.get(j).text).contains(head.substring(0, Math.min(25, head.length())))
+            && (KindleLayout.normOf(c.chunks.get(j).text + " " + c.chunks.get(j + 1).text + " " + c.chunks.get(Math.min(i, j + 2)).text).contains(head))) return true;
+        return false;
     }
     /** Reading the page went wrong (an error on a worker thread): the button works again and says so, instead of the app closing. */
     private void failed(Throwable t) {
