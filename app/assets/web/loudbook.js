@@ -1043,6 +1043,9 @@ function tidy(t) {
     .replace(/(^|[\s(\[])(<=|>=|<|>)(?=[+]?\d)(?!<3(?!\d))/g, (m, a, op) => a + { '<': 'less than ', '>': 'more than ', '<=': 'at most ', '>=': 'at least ' }[op])   // ">100 degrees" (the voice skipped the sign)
     .replace(/\b([Aa])pprox\.(?=\s)|\b([Aa])pprox\b(?=\s+[~\d])/g, (m, a, b) => (a || b) + 'pproximately')
     .replace(/(^|\s)w\/o(?=[\s,.!?]|$)/g, '$1without').replace(/(^|\s)([Ww])\/(?=\s)/g, (m, sp, w) => sp + (w === 'W' ? 'With' : 'with')).replace(/\bb\/c\b/g, 'because')
+    // "a £10 note", "his €50 shoes": ten-pound note, fifty-euro shoes (was "ten pounds note"); not after "her" ("paid her £5 today")
+    .replace(/(\b(?:[Aa]n?|[Tt]he|[Hh]is|[Mm]y|[Yy]our|[Tt]heir|[Oo]ur|[Ii]ts)\s)?([£€¥₹₩])(\d{1,3}(?:,\d{3})+|\d+)(?:\.00)?(?=\s+(bill|note|coin|tip|fee|fine|bet|bounty|reward|prize|gift card|check|cheque|budget|loan|bribe|ticket|item|meal|bottle|watch|suit)s?\b|\s+(?!(?:and|or|to|of|for|in|on|at|from|per|each|a|an|the|is|was|were|are|more|less|worth|plus|minus|million|billion|thousand|trillion|back|now|again|then|too|here|there|already|yet|today|instead|left|anyway|away|out|up|down|off|over|into|with|by|as|if|so|but|that|which|who|he|she|it|they|we|you|i|me|him|her|them|us|my|his|their|our|your|its|in|cash|apiece|total|altogether|later|first|last|next|short|richer|poorer|cheaper|dollars?|pounds?|euros?|yen|rupees?|won)\b)\p{Ll})/gu,
+      (m, a, c, n, noun) => (a || noun ? (a || '') + n + '-' + ({ '£': 'pound', '¥': 'yen', '₹': 'rupee', '₩': 'won' }[c] || 'euro') : m))
     .replace(/([£€¥₹₩])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d\d))?\b/g, (m, c, n, p) => {   // £1,000, ¥10,000, ₹500, ₩10,000
       const [one, many] = { '£': ['pound', 'pounds'], '¥': ['yen', 'yen'], '₹': ['rupee', 'rupees'], '₩': ['won', 'won'] }[c] || ['euro', 'euros'];
       return n + ' ' + (n === '1' ? one : many) + (p && +p ? ' ' + (+p) : '');
@@ -1174,7 +1177,7 @@ function tidy(t) {
     .replace(/(\d)ish\b/g, '$1-ish')                              // around 8ish
     // "a $20 bill", "a $100,000 prize": twenty-dollar bill (was "twenty dollars bill")
     .replace(/\$(\d{1,3}(?:,\d{3})+|\d+)(?:\.00)?(?=\s+(?:bill|note|coin|tip|fee|fine|bet|bounty|reward|prize|gift card|check|cheque|budget|loan|bribe|ticket|item|meal|bottle|watch|suit)s?\b)/g, '$1-dollar')
-    .replace(/(\b(?:[Aa]n?|[Tt]he)\s)\$(\d{1,3}(?:,\d{3})+|\d+)(?:\.00)?(?=\s+(?!(?:and|or|to|of|for|in|on|at|from|per|each|a|an|the|is|was|more|less|worth|plus|minus|million|billion|thousand|trillion)\b)\p{Ll})/gu, '$1$2-dollar')
+    .replace(/(\b(?:[Aa]n?|[Tt]he|[Hh]is|[Mm]y|[Yy]our|[Tt]heir|[Oo]ur|[Ii]ts)\s)\$(\d{1,3}(?:,\d{3})+|\d+)(?:\.00)?(?=\s+(?!(?:and|or|to|of|for|in|on|at|from|per|each|a|an|the|is|was|were|are|more|less|worth|plus|minus|million|billion|thousand|trillion|back|now|again|then|too|here|there|already|yet|today|instead|left|anyway|away|out|up|down|off|over|into|with|by|as|if|so|but|that|which|who|he|she|it|they|we|you|i|me|him|her|them|us|my|his|their|our|your|its|in|cash|apiece|total|altogether|later|first|last|next|short|richer|poorer|cheaper|dollars?|pounds?|euros?|yen|rupees?|won)\b)\p{Ll})/gu, '$1$2-dollar')   // his $300 shoes
     .replace(/\bWW(?:II|2)\b/g, 'World War Two').replace(/\bWW(?:I|1)\b/g, 'World War One')
     // born '98, the '90s (not an opening quote: "'10 more,' she said")
     .replace(/(\b\p{L}+\s)['’](\d\d)(s?)\b(?![\d'’%])(?![^'’\n]*['’](?:[\s,.!?;:]|$))/gu, (m, w, d, s) => w + (d === '00' ? '2000' : d) + s)   // class of '00 -> two thousand

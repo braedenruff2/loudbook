@@ -1724,6 +1724,10 @@ public class ReaderService extends Service {
                     if (next == pos) main.post(() -> status("", false));
                     // another sample rate (the PC's voice failing over to the phone's): let the old track play out first. It
                     // was released with up to half a second unheard, and its marks (frame numbers) froze the highlight
+                    // (a scene break's silence is made at Kokoro's rate: with another voice playing, it's made at that one's instead of
+                    // changing the track twice, which left a gap)
+                    if (track != null && track.getSampleRate() != c.rate && c.ms == 0 && Voice.silent(c))
+                        c = new Voice.Clip(new float[(int) ((long) c.samples.length * track.getSampleRate() / c.rate)], track.getSampleRate(), c.madeAt, 0);
                     if (track != null && track.getSampleRate() != c.rate) { if (!drain(myGen, ch, marks)) return; heard(ch, marks, myGen); marks.clear(); }
                     AudioTrack t = ensureTrack(c.rate);
                     current = c;
@@ -2224,7 +2228,7 @@ public class ReaderService extends Service {
 
     /** Listens while Loudbook is on screen, or while it's reading (or paused) in the background. */
     void updateListening() {
-        boolean want = commandsOn() && micAllowed() && VoiceCommands.downloaded(this) && VoiceCommands.profile(this) != null
+        boolean want = System.currentTimeMillis() >= micHeldUntil && commandsOn() && micAllowed() && VoiceCommands.downloaded(this) && VoiceCommands.profile(this) != null
             && (appVisible || (foreground && (micInForeground || Build.VERSION.SDK_INT < 30)));
         cmdThread.submit(() -> {
             try {
@@ -2239,7 +2243,13 @@ public class ReaderService extends Service {
         });
     }
     /** Stops listening for a while (voice setup uses the microphone). */
-    void holdListening(boolean hold) { if (hold) cmdThread.submit(commands::stop); else updateListening(); }
+    void holdListening(boolean hold) {
+        // (at most 3 minutes, in case the screen that held it closed without letting go)
+        micHeldUntil = hold ? System.currentTimeMillis() + 180_000 : 0;
+        if (hold) cmdThread.submit(commands::stop); else updateListening();
+    }
+    /** Voice setup or a recording has the mic until then: listening doesn't start again meanwhile (the screen turning off and on, reading starting). */
+    private volatile long micHeldUntil;
 
     private final VoiceCommands.Handler cmdHandler = new VoiceCommands.Handler() {
         @Override public void onCommand(String word, float score) {

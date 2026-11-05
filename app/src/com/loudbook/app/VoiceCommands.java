@@ -250,9 +250,21 @@ final class VoiceCommands {
             AudioFormat.ENCODING_PCM_16BIT, Math.max(min, RATE));       // ~0.5 s
         if (r.getState() != AudioRecord.STATE_INITIALIZED) { r.release(); throw new IllegalStateException("the microphone is busy"); }
         // cut down on Loudbook's own voice coming back in through the mic
-        try { if (AcousticEchoCanceler.isAvailable()) { AcousticEchoCanceler a = AcousticEchoCanceler.create(r.getAudioSessionId()); if (a != null) a.setEnabled(true); } } catch (Throwable ignored) { }
-        try { if (NoiseSuppressor.isAvailable()) { NoiseSuppressor n = NoiseSuppressor.create(r.getAudioSessionId()); if (n != null) n.setEnabled(true); } } catch (Throwable ignored) { }
+        java.util.List<android.media.audiofx.AudioEffect> fx = new java.util.ArrayList<>();
+        try { if (AcousticEchoCanceler.isAvailable()) { AcousticEchoCanceler a = AcousticEchoCanceler.create(r.getAudioSessionId()); if (a != null) { a.setEnabled(true); fx.add(a); } } } catch (Throwable ignored) { }
+        try { if (NoiseSuppressor.isAvailable()) { NoiseSuppressor n = NoiseSuppressor.create(r.getAudioSessionId()); if (n != null) { n.setEnabled(true); fx.add(n); } } } catch (Throwable ignored) { }
+        if (!fx.isEmpty()) synchronized (effects) { effects.put(r, fx); }
         return r;
+    }
+    /** The mic's echo canceller and noise suppressor: native effects there are only a few of, released with the mic (closeMic). */
+    private static final java.util.Map<AudioRecord, java.util.List<android.media.audiofx.AudioEffect>> effects = new java.util.HashMap<>();
+    static void closeMic(AudioRecord r) {
+        if (r == null) return;
+        java.util.List<android.media.audiofx.AudioEffect> fx;
+        synchronized (effects) { fx = effects.remove(r); }
+        if (fx != null) for (android.media.audiofx.AudioEffect e : fx) { try { e.release(); } catch (Throwable ignored) { } }
+        try { r.stop(); } catch (Exception ignored) { }
+        r.release();
     }
 
     /** Records for a while (setup). Blocking: call off the main thread. */
@@ -263,7 +275,7 @@ final class VoiceCommands {
             r.startRecording();
             int off = 0;
             while (off < buf.length) { int n = r.read(buf, off, Math.min(1600, buf.length - off)); if (n <= 0) break; off += n; }
-        } finally { try { r.stop(); } catch (Exception ignored) { } r.release(); }
+        } finally { closeMic(r); }
         float[] f = new float[buf.length];
         for (int i = 0; i < buf.length; i++) f[i] = buf[i] / 32768f;
         return f;
@@ -327,9 +339,31 @@ final class VoiceCommands {
             int ringPos = 0;
             long cooldownUntil = 0;
             float peak = 0.01f;
+            int micErrors = 0;
             while (listening && listener == Thread.currentThread()) {
+                if (r == null) {
+                    // (opening the mic again after it failed)
+                    try { r = openMic(); r.startRecording(); }
+                    catch (IllegalStateException busy) {
+                        Log.w(TAG, "microphone: " + busy.getMessage());
+                        AudioRecord bad = r; r = null; closeMic(bad);
+                        if (++micErrors > 10) throw busy;
+                        Thread.sleep(Math.min(5000, 300L * micErrors));
+                        continue;
+                    }
+                }
                 int n = r.read(buf, 0, buf.length);
-                if (n <= 0) { Thread.sleep(20); continue; }
+                if (n < 0) {
+                    // the mic went away (the audio system restarted, a call, another app took it): it never comes back by
+                    // itself, so open it again; give up (and say why in the log) if it keeps failing
+                    if (++micErrors > 10) throw new IllegalStateException("the microphone keeps failing (" + n + ")");
+                    Log.w(TAG, "microphone read failed (" + n + "): opening it again");
+                    AudioRecord old = r; r = null; closeMic(old);
+                    Thread.sleep(Math.min(5000, 300L * micErrors));
+                    continue;
+                }
+                if (n == 0) { Thread.sleep(20); continue; }
+                micErrors = 0;
                 float[] f = new float[n];
                 for (int i = 0; i < n; i++) { f[i] = buf[i] / 32768f; ring[ringPos] = f[i]; ringPos = (ringPos + 1) % ring.length; }
                 // a voice across the room is turned up for the word spotter (it hears quiet speech
@@ -386,7 +420,7 @@ final class VoiceCommands {
         } finally {
             if (listener == Thread.currentThread()) { listening = false; listener = null; }
             if (s != null) s.release();
-            if (r != null) { try { r.stop(); } catch (Exception ignored) { } r.release(); }
+            closeMic(r);
         }
     }
 }

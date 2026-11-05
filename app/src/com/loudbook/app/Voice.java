@@ -46,6 +46,8 @@ final class Voice {
         Clip(float[] s, int r, float speed, long ms) { samples = s; rate = r; madeAt = speed; this.ms = ms; }
         double seconds() { return samples.length / (double) rate; }
     }
+    /** Whether a clip is all silence (what speak gives for a scene break). */
+    static boolean silent(Clip c) { for (float x : c.samples) if (x != 0f) return false; return true; }
 
     /** The model and voices (354 MB) aren't in the app itself, so updates stay small: they're
      *  downloaded once, from this app's own GitHub release, the first time. */
@@ -269,15 +271,26 @@ final class Voice {
      */
     static boolean hasWord(Context ctx, String w) {
         synchronized (knownWords) { Boolean b = knownWords.get(w); if (b != null) return b; }
-        boolean found = false;
         String key = w + " ";
-        File f = new File(new File(ctx.getFilesDir(), DIR), "lexicon-us-en.txt");
-        try (InputStream in = f.exists() ? new java.io.FileInputStream(f) : ctx.getAssets().open(DIR + "/lexicon-us-en.txt");
-             java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8), 65536)) {
-            String line;
-            while ((line = r.readLine()) != null) if (line.startsWith(key)) { found = true; break; }
-        } catch (Exception e) { Log.w(TAG, "dictionary", e); return false; }
-        synchronized (knownWords) { if (knownWords.size() > 500) knownWords.clear(); knownWords.put(w, found); }
+        // (the copy in the app's files is rewritten by copyAssetDir when a new version first loads the voice, maybe at this
+        // very moment, and may be from an older version: the app's own copy is always whole. The file only if that fails.)
+        boolean found = false, whole = false;
+        int lines = 0;
+        String from = "app";
+        for (int attempt = 0; attempt < 2 && !whole; attempt++) {
+            File f = new File(new File(ctx.getFilesDir(), DIR), "lexicon-us-en.txt");
+            if (attempt == 1) { if (!f.exists()) break; from = "file"; }
+            found = false; lines = 0;
+            try (InputStream in = attempt == 0 ? ctx.getAssets().open(DIR + "/lexicon-us-en.txt") : new java.io.FileInputStream(f);
+                 java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8), 65536)) {
+                String line;
+                while ((line = r.readLine()) != null) { lines++; if (line.startsWith(key)) { found = true; break; } }
+                whole = true;
+            } catch (Exception e) { Log.w(TAG, "dictionary (" + (attempt == 0 ? "app" : "file") + ")", e); }
+        }
+        // (a word not found in a dictionary cut short, ~178,000 lines, isn't remembered as not a word)
+        if (whole && (found || lines > 100000)) synchronized (knownWords) { if (knownWords.size() > 500) knownWords.clear(); knownWords.put(w, found); }
+        Log.i("LoudbookTest", "dictionary \"" + w + "\": " + found + " (" + from + ", " + lines + " lines" + (whole ? "" : ", unreadable") + ")");
         return found;
     }
 
@@ -293,10 +306,13 @@ final class Voice {
         String[] kids = am.list(path);
         if (kids == null || kids.length == 0) {           // a file
             dest.getParentFile().mkdirs();
-            try (InputStream in = am.open(path); OutputStream out = new FileOutputStream(dest)) {
+            // (written beside it and then put in its place: anything reading the old copy meanwhile never sees half a file)
+            File tmp = new File(dest.getParentFile(), dest.getName() + ".part");
+            try (InputStream in = am.open(path); OutputStream out = new FileOutputStream(tmp)) {
                 byte[] buf = new byte[65536]; int n;
                 while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
             }
+            if (!tmp.renameTo(dest)) throw new java.io.IOException("can't replace " + dest);
             return;
         }
         dest.mkdirs();
