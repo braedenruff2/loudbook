@@ -69,6 +69,8 @@ public class UnitTest {
             "Nobody red it. Someone red the list aloud. Did anyone read it? Let no one read it. Have someone read it to you. I want someone to read it.");
         check("verbs for the phone voice: Wind at a sentence start", Chapter.forKokoro("Wind the clock. \u201cWind it up,\u201d she said. Wind the colour of ash blew. Wind up the toy."),
             "Wined the clock. \u201cWined it up,\u201d she said. Wind the colour of ash blew. Wined up the toy.");
+        check("a row (quarrel) for the phone voice", Chapter.forKokoro("They had a row. We got into a blazing row about money. \u201cWe had a row,\u201d she said. He had a row of seats. We had a row to ourselves. Three in a row. They had a row boat."),
+            "They had a rau. We got into a blazing rau about money. \u201cWe had a rau,\u201d she said. He had a row of seats. We had a row to ourselves. Three in a row. They had a row boat.");
         check("verbs for the phone voice: dove after a noun", Chapter.forKokoro("The hawk dove into the water. The boy dove beneath the waves. The dove into the cage? A white dove through the window. The dove in the tree. The stone dove onto the path."),
             "The hawk dohv into the water. The boy dohv beneath the waves. The dove into the cage? A white dove through the window. The dove in the tree. The stone dove onto the path.");
         check("verbs for the phone voice: dove", Chapter.forKokoro("She dove into the lake. Harry dove for the ball. The dove in the cage. A white dove flew."), "She dohv into the lake. Harry dohv for the ball. The dove in the cage. A white dove flew.");

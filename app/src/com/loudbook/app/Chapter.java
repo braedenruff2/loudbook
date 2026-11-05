@@ -105,6 +105,13 @@ final class Chapter {
     // "he moped around" ("mope-ed", the scooter) -> mohpt; "the sow grunted" ("so", the verb) -> sau (lab 2026-11-01)
     private static final java.util.regex.Pattern MOPED = java.util.regex.Pattern.compile(
         "(?<!\\b(?:The|This|That|A|An|His|Her|My|Your|Their|Our|Its|On|By)[ \\t])(?<=\\b(?:I|[Hh]e|[Ss]he|[Ww]e|[Tt]hey|[Yy]ou|[Ii]t|and|had|has|have|been|just|then|still|only|[A-Z][a-z]{1,20})[ \\t])moped\\b(?![-'’])");
+    // a quarrel: "They had a row", "got into a blazing row with him" (the voice said a line of seats, "roh"; lab 2026-11-05).
+    // Only after had/got into/caused... a (adjective) row, and before with/about/over or the sentence's punctuation ("had a row of
+    // seats", "a row to ourselves" stay).
+    private static final java.util.regex.Pattern ROW_FIGHT = java.util.regex.Pattern.compile(
+        "\\b((?:[Hh]ad|[Hh]ave|[Hh]as|[Hh]aving|[Gg]ot[ \\t]+into|[Gg]et[ \\t]+into|[Gg]etting[ \\t]+into|[Cc]aused|[Cc]ause|[Ss]tarted|[Pp]icked|[Kk]icked[ \\t]+up)[ \\t]+(?:a|another|such[ \\t]+a)[ \\t]+"
+        + "(?:(?:terrible|blazing|huge|big|massive|little|small|bit[ \\t]+of[ \\t]+a|furious|almighty|dreadful|awful|nasty|proper|real|frightful|tremendous|violent|bitter|heated|fierce|flaming|stupid|silly|family)[ \\t]+)?)"
+        + "row(?=[ \\t]+(?:with|about|over|between)\\b|[ \\t]*[,.!?;:\u2014\u2026\"\u201d\u2019)]|$)");
     private static final java.util.regex.Pattern SOW = java.util.regex.Pattern.compile(
         "(?<=\\b(?:[Aa]|[Tt]he|[Oo]ld|[Ff]at|[Gg]reat|[Tt]hat|[Tt]his|[Hh]is|[Hh]er|[Tt]heir|[Mm]other|[Ww]ild|[Bb]reeding|[Pp]regnant|[Mm]uddy|[Bb]ig|[Hh]uge)[ \\t])sow(s?)\\b(?![-]|[ \\t]+(?:the|seeds?|them|it|a|an|discord|doubt|chaos|fear|dissent|confusion|terror|panic)\\b)");
     // "Don't desert me" / "to desert the army" ("dez-ert", the sand) -> dessert; "the minute details" / "a minute amount" ("minnit",
@@ -311,6 +318,7 @@ final class Chapter {
             t = b.toString();
         }
         if (t.contains("moped")) t = MOPED.matcher(t).replaceAll("mohpt");
+        if (t.contains(" row")) t = ROW_FIGHT.matcher(t).replaceAll("$1rau");
         if (t.contains("sow")) t = SOW.matcher(t).replaceAll("sau$1").replaceAll("\\bsaus\\b", "sauz");
         if (t.contains("wind")) t = WIND.matcher(t).replaceAll("wined");
         if (t.contains("Wind")) t = WIND_START.matcher(t).replaceAll("Wined");
