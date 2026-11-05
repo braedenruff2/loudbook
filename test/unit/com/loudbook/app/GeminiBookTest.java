@@ -4,6 +4,7 @@ import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -14,6 +15,12 @@ import java.util.List;
 public class GeminiBookTest {
     static int fails = 0;
     static void check(String what, boolean ok) { System.out.println((ok ? "ok   " : "FAIL ") + what); if (!ok) fails++; }
+
+    static List<AsrAligner.Word> heard(String s) {
+        List<AsrAligner.Word> o = new ArrayList<>(); double t = 0;
+        for (String w : s.split(" ")) { o.add(new AsrAligner.Word(w, t)); t += 0.35; }
+        return o;
+    }
 
     public static void main(String[] a) throws Exception {
         File root = Files.createTempDirectory("gbt").toFile();
@@ -36,6 +43,16 @@ public class GeminiBookTest {
         check("a missing part's sentences aren't there", b.secondsOf(0) == 0 && b.secondsOf(1) == 0);
         check("the other part's sentences still are (they were all forgotten)", Math.abs(b.secondsOf(2) - 1.0) < 1e-6 && Math.abs(b.secondsOf(3) - 1.0) < 1e-6);
         check("the first one missing is sentence 0", b.nextMissing(0, 4) == 0 && b.nextMissing(2, 4) == 4);
+        // the recogniser's words matched to the text (AsrAligner, plain Java parts)
+        List<String> s = Arrays.asList("I don\u2019t know what you\u2019re saying.", "She\u2019d gone, hadn\u2019t she?", "It\u2019s late, isn\u2019t it?",
+            "We\u2019ll see what we\u2019ll see.", "They\u2019re here now.");
+        double[] st = AsrAligner.sentenceStarts(heard("I DON'T KNOW WHAT YOU'RE SAYING SHE'D GONE HADN'T SHE IT'S LATE ISN'T IT WE'LL SEE WHAT WE'LL SEE THEY'RE HERE NOW"), s);
+        int found = 0; for (double x : st) if (!Double.isNaN(x)) found++;
+        check("curly apostrophes match the heard words (none did: every sentence untimed)", found == 5);
+        List<String> s3 = Arrays.asList("The war began in the spring.", "1984 was a hard year for all of us.", "Nobody slept much that winter.");
+        double[] st3 = AsrAligner.sentenceStarts(heard("THE WAR BEGAN IN THE SPRING NINETEEN EIGHTY FOUR WAS A HARD YEAR FOR ALL OF US NOBODY SLEPT MUCH THAT WINTER"), s3);
+        check("a sentence starting with a number starts at the number said (was at \"was\", 1 s in)", Math.abs(st3[1] - 0.35 * 6) < 0.01);
+        check("caf\u00e9 and CAFE are the same word", AsrAligner.norm("caf\u00e9").equals("CAFE"));
         if (fails > 0) { System.out.println(fails + " FAILED"); System.exit(1); }
         System.out.println("ALL OK");
     }

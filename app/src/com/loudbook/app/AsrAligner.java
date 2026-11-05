@@ -188,7 +188,13 @@ final class AsrAligner {
         return out;
     }
 
-    static String norm(String w) { return w.toUpperCase(java.util.Locale.US).replaceAll("[^A-Z']", "").replaceAll("^'+|'+$", ""); }
+    /** A word as compared: capitals only; curly apostrophes as straight ones ("don’t" was DONT, never matching the heard
+     *  DON'T, so dialogue lost its anchors) and accents dropped ("café" was CAF). */
+    static String norm(String w) {
+        String x = w.replace('\u2019', '\'').replace('\u2018', '\'').replace('\u02bc', '\'');
+        x = java.text.Normalizer.normalize(x, java.text.Normalizer.Form.NFD);
+        return x.toUpperCase(java.util.Locale.US).replaceAll("[^A-Z']", "").replaceAll("^'+|'+$", "");
+    }
 
     /**
      * When each sentence starts (seconds), from the words heard; NaN where it couldn't be told.
@@ -201,7 +207,16 @@ final class AsrAligner {
         for (int k = 0; k < sentences.size(); k++)
             for (String w : sentences.get(k).split("[\\s\\u2014\\u2013-]+")) { String n = norm(w); if (!n.isEmpty()) { tw.add(n); ts.add(k); } }
         if (tw.size() < 8 || heard.size() < 8) return greedyStarts(heard, sentences);
-        return anchoredStarts(heard, tw, ts, sentences.size());
+        // sentences that start with a number ("1984 was..."): it isn't compared (said as words), so the first word matched is a
+        // few words in; the start goes back to the first heard word after the sentence before
+        boolean[] lead = new boolean[sentences.size()];
+        for (int k = 0; k < lead.length; k++) {
+            String t = sentences.get(k).trim();
+            int sp = t.indexOf(' ');
+            String w0 = sp < 0 ? t : t.substring(0, sp);
+            lead[k] = !w0.isEmpty() && norm(w0).isEmpty() && w0.matches(".*\\d.*");
+        }
+        return anchoredStarts(heard, tw, ts, sentences.size(), lead);
     }
 
     /**
@@ -213,7 +228,7 @@ final class AsrAligner {
      * matched the title's "the Mill" to the first sentence's, and from there on almost no sentence
      * could be timed until the recording was complete.)
      */
-    static double[] anchoredStarts(List<Word> heard, List<String> tw, List<Integer> ts, int nSent) {
+    static double[] anchoredStarts(List<Word> heard, List<String> tw, List<Integer> ts, int nSent, boolean[] lead) {
         int T = tw.size(), H = heard.size();
         String[] hw = new String[H];
         for (int i = 0; i < H; i++) hw[i] = norm(heard.get(i).w);
@@ -271,6 +286,9 @@ final class AsrAligner {
                 boolean backed = sure[i] || (i + 1 < T && match[i + 1] == match[i] + 1) || (i > 0 && match[i - 1] >= 0 && match[i - 1] == match[i] - 1);
                 if (!backed) continue;
                 start[k] = heard.get(match[i]).t - d * 0.3;
+                // (a number first: the heard words between the sentence before and this match are it, said as words)
+                if (lead != null && lead[k] && i > 0 && match[i - 1] >= 0 && match[i] - match[i - 1] > 1 && match[i] - match[i - 1] <= 8)
+                    start[k] = heard.get(match[i - 1] + 1).t;
                 break;
             }
         }
