@@ -907,6 +907,17 @@ function tidy(t) {
       return w ? w + ' and ' + fracWords(a, b, true) : a === 1 && b === 2 ? 'half' : fracWords(a, b, false); })
     // fractions said as fractions: "2 1/2 hours" -> two and a half hours, "1/4 cup" -> one quarter cup (not "one of four")
     .replace(/(?<![\d.,\/])\b(\d{1,3}) ([1-7])\/([2-8])\b(?![\d\/:.]\d|\/)/g, (m, w, a, b) => +a < +b ? w + ' and ' + fracWords(+a, +b, true) : m)
+    .replace(/(?<![\d.,\/]|[\d\/]-)\b(\d{1,3})-([1-7])\/([2-8])\b(?![\d\/:.-])(?=\s+\p{L})/gu, (m, w, a, b) => +a < +b ? w + ' and ' + fracWords(+a, +b, true) : m)   // "1-1/2 pint" (how 1½ is often typed) -> one and a half (was "one-half pint")
+    // "1/2 cup", "1/2 hour", "1/2 lb" -> half a cup, half an hour, half a pound (was "half cup", "half hour", "half pounds")
+    .replace(/(?<![\d.,\/-])\b1\/2\s+(cups?|teaspoons?|tablespoons?|tsp|tbsp|inch(?:es)?|miles?|pounds?|lbs?|ounces?|oz|hours?|hrs?|gallons?|quarts?|pints?|lit(?:er|re)s?|feet|foot|ft|yards?|kilos?|kilograms?|kg|grams?|acres?|sticks?|turns?|seconds?|minutes?|mins?|days?|weeks?|months?|years?|dozen)\b(?![\d\/])/g, (m, u, at, all) => {
+      const one = { inches: 'inch', feet: 'foot', ft: 'foot', lb: 'pound', lbs: 'pound', oz: 'ounce', hr: 'hour', hrs: 'hour', kg: 'kilogram', min: 'minute', mins: 'minute', tsp: 'teaspoon', tbsp: 'tablespoon', dozen: 'dozen' }[u] || u.replace(/s$/, '');
+      return capAt('half ' + (/^(?:[aeiou]|hour)/.test(one) ? 'an ' : 'a ') + one, all, at); })
+    // "3/4 hour", "1/4 mile", "1/3 pint" -> three quarters of an hour, a quarter of a mile (was "three quarters hour"; cups and spoons
+    // keep the recipe way, "one quarter cup")
+    .replace(/(?<![\d.,\/]|[\d\/]-)\b([1-7])\/([3-8])\s+(inch(?:es)?|miles?|pounds?|lbs?|ounces?|oz|hours?|hrs?|gallons?|quarts?|pints?|lit(?:er|re)s?|feet|foot|ft|yards?|kilos?|kilograms?|kg|grams?|acres?|seconds?|minutes?|mins?|days?|weeks?|months?|years?|dozen)\b(?![\d\/])/g, (m, a, b, u, at, all) => {
+      if (+a >= +b) return m;
+      const one = { inches: 'inch', feet: 'foot', ft: 'foot', lb: 'pound', lbs: 'pound', oz: 'ounce', hr: 'hour', hrs: 'hour', kg: 'kilogram', min: 'minute', mins: 'minute', dozen: 'dozen' }[u] || u.replace(/s$/, '');
+      return capAt(fracWords(+a, +b, true) + ' of ' + (/^(?:[aeiou]|hour)/.test(one) ? 'an ' : 'a ') + one, all, at); })
     .replace(/(?<![\d.,\/])\b([1-7])\/([2-8])\b(?![\d\/])(?=\s+(?:cups?|tsp|teaspoons?|tbsp|tablespoons?|inch(?:es)?|in\.|miles?|pounds?|lbs?|oz|ounces?|hours?|hrs?|gallons?|quarts?|pints?|lit(?:er|re)s?|feet|foot|ft|yards?|kilos?|kg|grams?|g|acres?|sticks?|teaspoonfuls?|turns?|seconds?|minutes?|mins?)\b)/g,
       (m, a, b) => +a < +b ? fracWords(+a, +b, false) : m)
     .replace(/(?<![\w.])(\d+(?:\.\d+)?|half|thirds?|quarters?|eighths?)\s?(tsp|tbsp)\b/g, (m, n, u, at, all) => n + ' ' + (u === 'tsp' ? 'teaspoon' : 'tablespoon') + (n === '1' || (/^(half|third|quarter|eighth)$/.test(n) && !/and an? $/.test(all.slice(Math.max(0, at - 6), at))) ? '' : 's'))   // 2 tsp
