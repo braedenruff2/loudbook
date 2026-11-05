@@ -1126,6 +1126,7 @@ function tidy(t) {
     .replace(/\b(\d+(?:st|nd|rd|th))\s+St\.(?!\w)/g, '$1 Street')                          // 42nd St.
     .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/(?<!\b(?:\d+\w*|[A-Z][a-z]+)\s)\bSt\s+(?=[A-Z][a-z])/g, 'Saint ').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, w, mid) => w + ' Street' + (mid !== undefined ? '' : '.'))   // "on Patrick St." keeps its full stop
     .replace(/\b(\p{Lu}\p{Ll}+\s+)(Rd|Ln)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, w, a, mid) => w + (a === 'Rd' ? 'Road' : 'Lane') + (mid !== undefined ? '' : '.'))   // Elm Rd., Oak Ln.
+    .replace(/\b(\p{Lu}\p{Ll}+\s+)(St|Rd|Ln|Ave)(?=\s*[,;:)!?]|\s+\p{Ll}|\s*$)/gu, (m, w, a) => w + { St: 'Street', Rd: 'Road', Ln: 'Lane', Ave: 'Avenue' }[a]).replace(/\b(Lt|Sgt|Capt|Col|Cpl|Pvt|Cmdr|Maj|Insp|Supt|Det)(?=\s+\p{Lu}\p{Ll})/gu, (m, t) => TITLES[t]).replace(/\bRt\.?\s+Hon\.?(?=\s)/g, 'Right Honourable')   // British style, no full stops: "Baker St with" ("sunt"), "Lt Dan" ("L-T"), "the Rt Hon member" (lab 2026-11-05)
     .replace(/\b([Pp])t\.?\s?(?=\d+\b(?![.,]\d))/g, '$1art ').replace(/^(\s*)(?:TBC|tbc)\.?(?=\s*$)/, '$1To be continued.')   // "Ch 45 pt 2", a lone "TBC"
     .replace(/\bHwy\.?\s*(?=\d)/g, 'Highway ').replace(/\bGr\.\s*(?=\d)/g, 'Grade ')
     .replace(/\b(Ave|Blvd)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, a, mid) => (a === 'Ave' ? 'Avenue' : 'Boulevard') + (mid !== undefined ? '' : '.'))          // 5th Ave.
