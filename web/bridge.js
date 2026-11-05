@@ -123,8 +123,12 @@
     if (r.roots.length && !r.blocks.length) r = S.extract(document, location.href, displayNone);
     blocks = r.blocks;
     if (r.textApi) {
+      const href0 = location.href;
       try {
         const res = await fetch(r.textApi, { credentials: 'include' });
+        // (the page moved on meanwhile, e.g. Wattpad's next part without a reload: this text is the part before, and it
+        // mustn't replace the new part's blocks; the run for the new part answers)
+        if (location.href !== href0) { r.stale = true; return r; }
         if (res.ok) {
           const site = S.profileFor(location.href);
           const api = S.blocksFromApiHtml(await res.text(), site && site.skip);
@@ -149,10 +153,12 @@
 
   // Run by the app after every page load. fixes: the pronunciation list; tidy: web-fiction clean-ups.
   async function run(fixes, tidy) {
+    const url = location.href;                       // (the page this answer is about, even if the address changes meanwhile)
     try {
       const r = await extract();
+      if (r.stale || location.href !== url) return;   // (the text of the page before, sent with the new address: kept as the new one)
       if (!blocks.length) {
-        LoudbookNative.onNoChapter(JSON.stringify({ url: location.href, site: r.site, isStorySite: !!S.profileFor(location.href) }));
+        LoudbookNative.onNoChapter(JSON.stringify({ url, site: r.site, isStorySite: !!S.profileFor(location.href) }));
         return;
       }
       const say = LBSay.makeSayer(LBSay.parseFixes(fixes || ''), { tidy: tidy !== false });
@@ -160,7 +166,7 @@
         .map(c => ({ block: c.block, text: c.text, say: speakNumbers(say(c.text)) }))
         .filter(c => /[\p{L}\p{N}]/u.test(c.say));            // scene breaks ("* * *") aren't read
       LoudbookNative.onChapter(JSON.stringify({
-        url: location.href, site: r.site, siteName: r.siteName, title: r.title, fiction: r.fiction,
+        url, site: r.site, siteName: r.siteName, title: r.title, fiction: r.fiction,
         nextUrl: r.nextUrl, prevUrl: r.prevUrl, chunks,
       }));
     } catch (e) {

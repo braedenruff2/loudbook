@@ -293,6 +293,19 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     @Override protected void onDestroy() {
         if (svc != null) svc.setListener(null);
         unbindService(conn);
+        // (reading goes on in the service: this screen's pages, timers and page answers mustn't, or they reach the service
+        // from a closed screen, and the browsers' pages and ads ran on)
+        svc = null;
+        main.removeCallbacksAndMessages(null);
+        for (WebView w : new WebView[]{web, pre}) {
+            if (w == null) continue;
+            try {
+                w.stopLoading(); w.removeJavascriptInterface("LoudbookNative");
+                if (w.getParent() instanceof android.view.ViewGroup) ((android.view.ViewGroup) w.getParent()).removeView(w);
+                w.destroy();
+            } catch (Exception ignored) { }
+        }
+        pre = null;
         super.onDestroy();
     }
 
@@ -313,6 +326,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 if (title == null || title.trim().isEmpty()) title = "Shared text";
                 if (svc != null) svc.readText(title, rest);
                 else { pendingTitle = title; pendingText = rest; }
+                // (a cold start from shared text: the browser shows the start page meanwhile, it was left blank)
+                if (web.getUrl() == null) web.loadUrl(homeUrl());
                 return true;
             }
         }
@@ -390,7 +405,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         // long-press a paragraph: read from there
         web.setOnTouchListener((v, e) -> { if (e.getAction() == MotionEvent.ACTION_DOWN) { lastTouchX = e.getX(); lastTouchY = e.getY(); } return false; });
         web.setOnLongClickListener(v -> {
-            if (pageChapter == null) return false;
+            final Chapter pc = pageChapter;              // (it can be cleared before the page answers: that was a crash)
+            if (pc == null) return false;
             float d = getResources().getDisplayMetrics().density;
             web.evaluateJavascript("window.LB ? (LB.blockInfo ? LB.blockInfo(" + (lastTouchX / d) + "," + (lastTouchY / d) + ") : JSON.stringify({i: LB.blockAt(" + (lastTouchX / d) + "," + (lastTouchY / d) + "), text: ''})) : '{\"i\":-1}'", r -> {
                 int block; String para;
@@ -400,11 +416,11 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 // the sentence is found by the paragraph's text in the chapter that's playing: its copy
                 // can come from another load of the page, numbered a little differently
                 Chapter playing = svc.chapter();
-                boolean same = playing != null && playing.url.equals(pageChapter.url);
-                Chapter c = same ? playing : pageChapter;
+                boolean same = playing != null && playing.url.equals(pc.url);
+                Chapter c = same ? playing : pc;
                 int i = c.firstOfParagraph(para, block);
                 if (i < 0) return;
-                if (!same) svc.setChapter(pageChapter, i, true);
+                if (!same) svc.setChapter(pc, i, true);
                 else { svc.seek(i); if (!svc.isPlaying()) play(); }
             });
             return true;
