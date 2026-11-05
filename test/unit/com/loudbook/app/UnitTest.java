@@ -65,6 +65,10 @@ public class UnitTest {
             "Please per-mit me. Please pree-zent your papers. Please ess-cort them out. The permit, please.");
         check("verbs for the phone voice: after \"Quickly,\"", Chapter.forKokoro("Quickly, record everything. Sadly, record sales fell. Silently, present the gift."),
             "Quickly, re-cord everything. Sadly, record sales fell. Silently, pree-zent the gift.");
+        check("verbs for the phone voice: read after nobody/someone", Chapter.forKokoro("Nobody read it. Someone read the list aloud. Did anyone read it? Let no one read it. Have someone read it to you. I want someone to read it."),
+            "Nobody red it. Someone red the list aloud. Did anyone read it? Let no one read it. Have someone read it to you. I want someone to read it.");
+        check("verbs for the phone voice: Wind at a sentence start", Chapter.forKokoro("Wind the clock. \u201cWind it up,\u201d she said. Wind the colour of ash blew. Wind up the toy."),
+            "Wined the clock. \u201cWined it up,\u201d she said. Wind the colour of ash blew. Wined up the toy.");
         check("verbs for the phone voice: dove after a noun", Chapter.forKokoro("The hawk dove into the water. The boy dove beneath the waves. The dove into the cage? A white dove through the window. The dove in the tree. The stone dove onto the path."),
             "The hawk dohv into the water. The boy dohv beneath the waves. The dove into the cage? A white dove through the window. The dove in the tree. The stone dove onto the path.");
         check("verbs for the phone voice: dove", Chapter.forKokoro("She dove into the lake. Harry dove for the ball. The dove in the cage. A white dove flew."), "She dohv into the lake. Harry dohv for the ball. The dove in the cage. A white dove flew.");

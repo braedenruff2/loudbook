@@ -69,6 +69,10 @@ final class Chapter {
         "(?<=\\b(?:and|then|[Pp]lease|[Jj]ust|[Nn]ow|[Ss]o|[Oo]r)[ \\t])use" + OBJ);
     private static final java.util.regex.Pattern WIND = java.util.regex.Pattern.compile(
         "(?<=\\b(?:to|will|would|could|should|can|must|might|[Pp]lease|did|didn't|don't|doesn't|won't|can't|I|you|we|they)[ \\t])wind(?=[ \\t]+(?:the|it|them|his|her|my|your|their|its|up|down|around|round|through|back)\\b)");
+    // "Wind the clock." "Wind it up." at a sentence start: the voice said the weather (lab 2026-11-05: wˈɪnd). Only before
+    // it/them/up or "the/his/... clock, rope, thread..." ("Wind the colour of ash" stays the weather).
+    private static final java.util.regex.Pattern WIND_START = java.util.regex.Pattern.compile(
+        "(?:^|(?<=[.!?\"\u201c\u2018(] ?))Wind(?=[ \\t]+(?:it|them|up|(?:the|your|his|her|my|our|their)[ \\t]+(?:clock|clocks|watch|rope|ropes|line|thread|yarn|wool|string|cord|cable|bandage|key|spring|crank|handle|winch|reel|film|tape|music[ \\t]box)\\b)\\b)");
     private static final java.util.regex.Pattern WOUND = java.util.regex.Pattern.compile(
         "(?<=\\b(?:I|[Hh]e|[Ss]he|[Ww]e|[Tt]hey|[Yy]ou|[Ii]t|had|have|has|having|was|were|been|tightly|loosely|carefully|slowly|then|[Tt]hen|path|road|river|trail|stream|line|queue|procession)[ \\t])wound(?=[ \\t]+(?:the|a|an|it|them|his|her|my|your|their|its|our|up|around|round|through|down|back|tight|tightly|together|itself|himself|herself|themselves|along|across|between|past|over)\\b)");
     private static final java.util.regex.Pattern BOW = java.util.regex.Pattern.compile(
@@ -82,6 +86,12 @@ final class Chapter {
         "(?<!\\b(?:[Dd]id|[Dd]oes|[Dd]o|[Cc]an|[Cc]ould|[Ww]ill|[Ww]ould|[Ss]hould|[Ss]hall|[Mm]ay|[Mm]ight|[Mm]ust|[Dd]idn't|[Dd]oesn't|[Ww]on't|[Cc]an't|[Cc]ouldn't|[Ww]ouldn't|[Ss]houldn't|[Ll]et|[Hh]elp|[Mm]ake|[Mm]ade|[Ww]atch|[Ww]atched|[Hh]ear|[Hh]eard|[Ss]ee|[Ss]aw)[ \\t])"
         + "\\b((?:[Hh]e|[Ss]he|[Ii]t|(?:[Tt]he|[Aa]|[Aa]n|[Ii]ts|[Hh]is|[Hh]er|[Tt]heir)[ \\t]+(?:sign|signs|note|letter|message|plaque|inscription|label|card|caption|headline|text|screen|banner|notice|display|words|writing|title|line|lines|placard|scroll|page|entry|telegram|email|e-mail|tag))"
         + "(?:[ \\t]+(?:also|then|just|never|only|quickly|slowly|silently|carefully|quietly|finally|again|once|first|already|eagerly|still|simply|merely|briefly|hastily|calmly))?[ \\t]+)([Rr])ead\\b(?![-'\u2019])");
+    // "Nobody read it", "Someone read the list aloud": past too (the present is "reads"; lab 2026-11-05: ɹˈiːd). Not after "have"
+    // ("have someone read it to you") or the words READ stays out after.
+    private static final java.util.regex.Pattern READ_ANY = java.util.regex.Pattern.compile(
+        "(?<!\\b(?:[Dd]id|[Dd]oes|[Dd]o|[Cc]an|[Cc]ould|[Ww]ill|[Ww]ould|[Ss]hould|[Ss]hall|[Mm]ay|[Mm]ight|[Mm]ust|[Dd]idn't|[Dd]oesn't|[Ww]on't|[Cc]an't|[Cc]ouldn't|[Ww]ouldn't|[Ss]houldn't|[Ll]et|[Hh]elp|[Mm]ake|[Mm]ade|[Ww]atch|[Ww]atched|[Hh]ear|[Hh]eard|[Ss]ee|[Ss]aw|[Hh]ave|[Hh]aving|[Gg]et|[Hh]ad)[ \\t])"
+        + "\\b((?:[Nn]obody|[Nn]o[ \\t]one|[Ee]veryone|[Ee]verybody|[Ss]omeone|[Ss]omebody|[Aa]nyone|[Aa]nybody)"
+        + "(?:[ \\t]+(?:also|then|just|never|only|quickly|slowly|silently|carefully|quietly|finally|again|once|first|already|eagerly|still|simply|merely|briefly|hastily|calmly|else))?[ \\t]+)([Rr])ead\\b(?![-'\u2019])");
     private static final java.util.regex.Pattern DOVE = java.util.regex.Pattern.compile(
         "(?<!\\b(?:The|This|That|A|An|One|Each|Every|My|His|Her|Their|Our|Your|Its|White|Grey|Gray|Mourning|Turtle|Rock|Little)[ \\t])(?<=\\b(?:[Hh]e|[Ss]he|[Ii]t|I|[Ww]e|[Tt]hey|[Yy]ou|then|and|instantly|immediately|quickly|[A-Z][a-z]{1,20})[ \\t])dove(?=[ \\t]+(?:into|in|under|for|off|through|after|at|behind|toward|towards|down|out|forward|headfirst|aside|over|across|between|beneath|below|onto|back|away|deep|deeper|straight|sideways|low)\\b)");
     // "The hawk dove into the water", "the boy dove beneath the waves": after "the/a/his... <noun>", only before words that
@@ -241,6 +251,7 @@ final class Chapter {
         }
         if (t.contains("ead")) {
             t = READ.matcher(t).replaceAll("$1$2ed");
+            t = READ_ANY.matcher(t).replaceAll("$1$2ed");
             t = LEAD.matcher(t).replaceAll("$1$2$3ed");
         }
         if (t.contains("dove")) t = DOVE_NOUN.matcher(DOVE.matcher(t).replaceAll("dohv")).replaceAll("dohv");
@@ -302,6 +313,7 @@ final class Chapter {
         if (t.contains("moped")) t = MOPED.matcher(t).replaceAll("mohpt");
         if (t.contains("sow")) t = SOW.matcher(t).replaceAll("sau$1").replaceAll("\\bsaus\\b", "sauz");
         if (t.contains("wind")) t = WIND.matcher(t).replaceAll("wined");
+        if (t.contains("Wind")) t = WIND_START.matcher(t).replaceAll("Wined");
         if (t.contains("wound")) t = WOUND.matcher(t).replaceAll("wownd");
         if (t.contains("ow")) {
             java.util.regex.Matcher m = BOW.matcher(t);
