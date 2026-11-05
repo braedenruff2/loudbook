@@ -399,7 +399,13 @@ public class ReaderService extends Service {
     void play() {
         if (chapter == null) { resumeLast(); return; }
         if (track != null) { try { track.setVolume(1f); } catch (Exception ignored) { } }       // (after a sleep-timer fade)
-        if (playing && paused) { paused = false; if (track != null) track.play(); state(); return; }
+        // (resume only if the player is still there: the sleep timer pauses and ends it, and play then gave the half second
+        // left in the speaker's buffer, then silence, still showing "playing")
+        if (playing && paused) {
+            Thread pl = player;
+            if (pl != null && pl.isAlive()) { paused = false; if (track != null) track.play(); state(); return; }
+            playing = false; paused = false;
+        }
         if (playing) return;
         playing = true; paused = false;
         // the notification first: Android 15 only gives the audio to an app on screen or one with
@@ -1578,6 +1584,7 @@ public class ReaderService extends Service {
             final Chapter ch = chapter;
             if (ch == null) return;
             int next = pos;
+            int failAt = -1, fails = 0, failRun = 0;      // a sentence that couldn't be made: tries, and how many in a row skipped
             while (gen == myGen) {
                 if (sleepAt > 0 && System.currentTimeMillis() >= sleepAt) {
                     sleepAt = 0;
@@ -1637,7 +1644,7 @@ public class ReaderService extends Service {
                 synchronized (clips) { clips.keySet().removeIf(k -> k < keepFrom); fills.keySet().removeIf(k -> k < keepFrom); }
                 if (f == null) return;
                 Voice.Clip c = null;
-                boolean gem = geminiReads(ch), byPhone = false;
+                boolean gem = geminiReads(ch), byPhone = false, retry = false, failed = false;
                 long waitFrom = System.currentTimeMillis();
                 Future<Voice.Clip> fill = null;
                 int liveNext = -1;
@@ -1649,7 +1656,18 @@ public class ReaderService extends Service {
                     if (lv != null && lv.bytes >= 72000) { liveNext = playLive(lb, lv, next, ch, myGen, marks); break; }   // (1.5 s in)
                     try { c = f.get(20, java.util.concurrent.TimeUnit.MILLISECONDS); break; }
                     catch (java.util.concurrent.TimeoutException te) { heard(ch, marks, myGen); }
-                    catch (Exception e) { if (gen != myGen) return; Log.w(TAG, "sentence failed", e); c = null; break; }
+                    catch (Exception e) {
+                        if (gen != myGen) return;
+                        Log.w(TAG, "sentence failed", e);
+                        // made again rather than skipped: a sentence cancelled while it was waited for (a pronunciation fix or
+                        // Gemini switched while paused drops every clip) was skipped without a word, and a failed one stayed
+                        // kept, so going back to it skipped it again
+                        synchronized (clips) { if (clips.get(next) == f) clips.remove(next); }
+                        if (failAt != next) { failAt = next; fails = 0; }
+                        fails++;
+                        retry = e instanceof java.util.concurrent.CancellationException ? fails < 20 : fails <= 1;
+                        failed = true; c = null; break;
+                    }
                     // Gemini hasn't got this sentence yet (a chapter just opened, or Google is slow) and
                     // nothing is left playing: the phone's voice reads until Gemini catches up, rather
                     // than silence. Gemini takes over at the first sentence it has ready.
@@ -1670,6 +1688,15 @@ public class ReaderService extends Service {
                     }
                 }
                 if (gen != myGen) return;
+                if (retry && c == null) { Log.i("LoudbookTest", "sentence " + next + " couldn't be made, trying again"); continue; }
+                if (failed && c == null && liveNext < 0) {
+                    final int skipped = next;
+                    if (++failRun >= 3) {                                   // the voice isn't working: stop, and say so (it went on in silence)
+                        main.post(() -> { if (gen == myGen) { stopPlayback(); status("The voice couldn't read three sentences in a row, so reading stopped. Try again, or another voice.", true); } });
+                        return;
+                    }
+                    main.post(() -> status("Couldn't read sentence " + (skipped + 1) + "; going on.", true));
+                } else if (c != null) failRun = 0;
                 if (liveNext >= 0) {
                     if (firstSoundFor != myGen) logFirstSound(myGen, true, false);
                     next = Math.max(next + 1, liveNext);
