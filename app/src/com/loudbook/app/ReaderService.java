@@ -870,12 +870,13 @@ public class ReaderService extends Service {
             try {
                 if (chapter != ch || kts != kt) return null;                     // (a new start since)
                 KindleService k = KindleService.me;
-                KindleService.Page p = k == null ? new KindleService.Page() : k.nextPage(kindleSig);
+                final String oldSig = kindleSig;                                   // (the page this turn leaves)
+                KindleService.Page p = k == null ? new KindleService.Page() : k.nextPage(oldSig);
                 if (p.paragraphs.isEmpty() && k != null && k.kindleVisible() && chapter == ch && kts == kt) {
                     // (one more go after a moment before taking it as the end of the book: Kindle may have been busy)
                     try { Thread.sleep(1500); } catch (InterruptedException ignored) { }
                     Log.i("LoudbookTest", "kindle: the page didn't turn, trying again");
-                    p = k.nextPage(kindleSig);
+                    p = k.nextPage(oldSig);
                 }
                 if (kts != kt) {
                     // reading started again (another page or book) while this page was being turned: what was found here is
@@ -885,7 +886,8 @@ public class ReaderService extends Service {
                     // ...but Kindle did turn: if the new reading is of the page before (he tapped while it was turning), turn
                     // back to it, or the new reading read a page that wasn't on screen and its first turn skipped one
                     String newSig = kindleSig;
-                    if (k != null && !p.paragraphs.isEmpty() && newSig != null && !newSig.equals(p.signature) && newSig.equals(kindleSig)) {
+                    // (only if the new reading is of the page this turn left: not another book, or a page found some other way)
+                    if (k != null && !p.paragraphs.isEmpty() && newSig != null && !newSig.equals(p.signature) && newSig.equals(oldSig)) {
                         KindleService.Page b = k.turnBack(p.signature);
                         Log.i("LoudbookTest", "kindle: turned back to the new reading's page: " + (b == null ? "didn't turn" : newSig.equals(b.signature) ? "yes" : "a different page"));
                     }

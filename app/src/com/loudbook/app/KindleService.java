@@ -525,7 +525,7 @@ public class KindleService extends AccessibilityService {
         if (svc == null) return;
         if (busy) return;
         busy = true;
-        new Thread(() -> {
+        new Thread(() -> { try {
             pause(150);                                              // (let the picker's window go first)
             boolean[] ex = {false, false};
             Page p = readOrExplore(ex);
@@ -541,6 +541,7 @@ public class KindleService extends AccessibilityService {
                 busy = false;
                 begin(p, ex, letter);
             });
+          } catch (Throwable t) { failed(t); }
         }, "lb-kindle-from").start();
     }
 
@@ -622,7 +623,7 @@ public class KindleService extends AccessibilityService {
         }
         if (busy) return;
         busy = true;
-        new Thread(() -> {
+        new Thread(() -> { try {
             boolean[] ex = {false, false};
             final Page got = readOrExplore(ex);
             final String why = report(got);                  // (also kept for Settings)
@@ -631,7 +632,14 @@ public class KindleService extends AccessibilityService {
                 if (got.paragraphs.isEmpty()) { noText(why); return; }
                 begin(got, ex, 0);
             });
+          } catch (Throwable t) { failed(t); }
         }, "lb-kindle").start();
+    }
+    /** Reading the page went wrong (an error on a worker thread): the button works again and says so, instead of the app closing. */
+    private void failed(Throwable t) {
+        Log.w(TAG, "kindle page", t);
+        Log.i("LoudbookTest", "kindle: reading the page failed: " + t);
+        main.post(() -> { busy = false; toast("Loudbook couldn't read this page (" + t.getClass().getSimpleName() + "). Tap the button to try again."); });
     }
 
     /** The page's text. Kindle may share a book's text only with a screen reader that explores by touch
@@ -779,7 +787,13 @@ public class KindleService extends AccessibilityService {
     private void reopenBook() {
         // (one at a time: turning screen-reader touch on, Kindle's scrolling notice and the text search each started one, and
         // their taps cancelled each other's, or landed on the book just opened)
-        if (!reopening.compareAndSet(false, true)) return;
+        if (!reopening.compareAndSet(false, true)) {
+            // (another is opening it: wait for that one, or a page turn right after found the book still closed and took it
+            // as the end of the book)
+            long end = System.currentTimeMillis() + 12000;
+            while (reopening.get() && System.currentTimeMillis() < end) pause(200);
+            return;
+        }
         try { reopenBookNow(); } finally { reopening.set(false); }
     }
     private void reopenBookNow() {
@@ -1208,7 +1222,14 @@ public class KindleService extends AccessibilityService {
             if (CHROME.matcher(t).matches() && t.length() < 60) continue;
             body.add(b);
         }
-        body.sort((a, b) -> a.r.top != b.r.top && Math.abs(a.r.top - b.r.top) > 4 ? Integer.compare(a.r.top, b.r.top) : Integer.compare(a.r.left, b.r.left));
+        // top to bottom, then rows (tops within 4 px of the row's first) left to right. (One comparison doing both wasn't
+        // consistent, tops 0/2/5 with lefts 20/10/0, and a long page's sort could throw and take the service down)
+        body.sort((a, b) -> Integer.compare(a.r.top, b.r.top));
+        for (int i = 0, j; i < body.size(); i = j) {
+            int rowTop = body.get(i).r.top;
+            for (j = i + 1; j < body.size() && body.get(j).r.top - rowTop <= 4; ) j++;
+            if (j - i > 1) body.subList(i, j).sort((a, b) -> Integer.compare(a.r.left, b.r.left));
+        }
         // lines into paragraphs: a bigger gap than usual, or an indented line, starts a new one
         List<Integer> gaps = new ArrayList<>();
         for (int i = 1; i < body.size(); i++) gaps.add(body.get(i).r.top - body.get(i - 1).r.bottom);
