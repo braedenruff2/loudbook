@@ -1044,6 +1044,7 @@ function tidy(t) {
     // more laughs and anime words: "Hehe" ("hee-hee"), "Ehehe" ("eh-heh"), "Ufufu" ("you-fu-fu"), "Kukuku" ("cue-koo-koo"), "Nani" ("nanny"), "Yosh" ("yawsh")
     .replace(/\b([Ee]?)([Hh])e((?:he)+)\b/g, (m, e, h, rest) => (e ? (e === 'E' ? 'H' : h) : h) + 'eh' + '-heh'.repeat(rest.length / 2 + (e ? 1 : 0)))
     .replace(/\b([Uu])fu(?:fu)+\b/g, (m, u) => (u === 'U' ? 'O' : 'o') + 'o' + '-foo'.repeat((m.length - 1) / 2)).replace(/\b([Kk])u(?:ku){2,}\b/g, (m, k) => k + 'oo' + '-koo'.repeat(m.length / 2 - 1))
+    .replace(/\b([Ff])u(?:fu){2,}\b/g, (m, f) => f + 'oo' + '-foo'.repeat(m.length / 2 - 1)).replace(/\b([Cc])haebol(s?)\b/g, (m, c, s) => (c === 'C' ? 'J' : 'j') + 'aybol' + s).replace(/\b([Mm])anhua(s?)\b/g, '$1ahnhwah$2')   // "Fufufu" ("few-foo-foo"), chaebol ("key-bol"), manhua ("man-hyoo-a"), lab 2026-11-05
     .replace(/(^|[\s"“'‘(])([Ee])w+(?=[\s"”'’.,!?…)]|$)/g, (m, pre, e) => pre + e + 'e-yew')   // "Ew, gross" (said "you")
     .replace(/\b([Kk])u(?:fu)+\b/g, (m, k) => k + 'oo' + '-foo'.repeat((m.length - 2) / 2)).replace(/\b([Gg])a((?:ha){2,})\b/g, (m, g, h) => g + 'ah' + '-ha'.repeat(h.length / 2)).replace(/\b([Uu])wa+h*(?=[\s!?.,…"”'’)]|$)/g, (m, u) => (u === 'U' ? 'O' : 'o') + 'o-wah')   // "Kufufu" ("cue-fu-fu"), "Gahaha", "Uwah" ("you-wah")
     .replace(/\b([Nn])ani(?=\?|!|\s*$)/g, '$1ah-nee').replace(/\b([Yy])osh\b/g, '$1ohsh')
