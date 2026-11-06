@@ -316,23 +316,29 @@ class NaturalEngine:
         self.cur_style = st
         if st is not None:
             # a voice with its own settings ("s17@0.85/e0.35/c0.4": Onyx, copied from a slower reading of the passage, calmer)
-            base, ref_speed = st[0], st[1]
-            if ref_speed == 1.0 or not isinstance(base, int): return self._voice_base(base)
+            base, ref_speed, pitch = st[0], st[1], st[4]
+            if (ref_speed == 1.0 and pitch == 0) or not isinstance(base, int): return self._voice_base(base)
             if sid not in self.voices:
-                self._make_ref(base, ref_speed, path(os.path.join("refs", f"{base}@{ref_speed:g}.wav")))
-                self.model.prepare_conditionals(path(os.path.join("refs", f"{base}@{ref_speed:g}.wav")))
+                ref = path(os.path.join("refs", f"{base}@{ref_speed:g}" + (f"^{pitch:+g}" if pitch else "") + ".wav"))
+                self._make_ref(base, ref_speed, ref, pitch)
+                self.model.prepare_conditionals(ref)
                 self.voices[sid] = self.model.conds
             self.model.conds = self.voices[sid]
             return
         return self._voice_base(sid)
 
-    def _make_ref(self, sid, speed, ref):
+    def _make_ref(self, sid, speed, ref, pitch=0):
+        """The passage read by Kokoro voice sid at this speed, its pitch moved by `pitch` semitones (a deeper or lighter
+        voice for the full model to copy: each character a voice of their own)."""
         import numpy as np, wave
         if os.path.exists(ref): return
         os.makedirs(os.path.dirname(ref), exist_ok=True)
         with self.kokoro.lock:
             a = self.kokoro.tts.generate(REFERENCE_TEXT, sid=sid, speed=speed)
         x = np.asarray(a.samples, dtype=np.float32)
+        if pitch:
+            import librosa
+            x = librosa.effects.pitch_shift(x, sr=a.sample_rate, n_steps=float(pitch)).astype(np.float32)
         with wave.open(ref + ".part", "wb") as w:
             w.setnchannels(1); w.setsampwidth(2); w.setframerate(a.sample_rate)
             w.writeframes((np.clip(x, -1, 1) * 32767).astype("<i2").tobytes())
@@ -518,12 +524,17 @@ def load_best(kokoro):
 
 
 def style_of(who):
-    """A voice with its own settings: "s<speaker>[@<speed the passage it copies is read at>][/e<exaggeration>][/c<cfg>]",
-    or "builtin/e0.4", or "<recorded id>/c0.3". Returns (base voice, speed, exaggeration or None, cfg or None), or None."""
+    """A voice with its own settings: "s<speaker>[@<speed the passage it copies is read at>][^<semitones up or down>]
+    [/e<exaggeration>][/c<cfg>]" ("s17^-2/e0.75": Onyx two semitones deeper, expressive), or "builtin/e0.4", or
+    "<recorded id>/c0.3". Returns (base voice, speed, exaggeration or None, cfg or None, semitones), or None."""
     if not isinstance(who, str) or "/" not in who and not who.startswith("s"): return None
     parts = who.split("/")
     head = parts[0]
     try:
+        pitch = 0.0
+        if "^" in head:
+            head, _, pt = head.partition("^")
+            pitch = max(-6.0, min(6.0, float(pt)))
         if head.startswith("s") and head[1:2].isdigit():
             sid, _, sp = head[1:].partition("@")
             base, speed = max(0, min(52, int(sid))), max(0.6, min(1.4, float(sp))) if sp else 1.0
@@ -534,7 +545,7 @@ def style_of(who):
         for p in parts[1:]:
             if p[:1] == "e": ex = max(0.0, min(1.5, float(p[1:])))
             elif p[:1] == "c": cfg = max(0.0, min(1.0, float(p[1:])))
-        return base, speed, ex, cfg
+        return base, speed, ex, cfg, pitch
     except ValueError:
         return None
 
