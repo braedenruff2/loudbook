@@ -45,6 +45,18 @@ public class UnitTest {
         // a "next" link back to the same page isn't a next chapter
         check("the letter A for the phone voice", Chapter.forKokoro("Plan A failed. He got an A on the test, an A-plus, Grade A. A man came. Type A people. A. Smith, a plan A."),
             "Plan Eigh failed. He got an Eigh on the test, an A-plus, Grade Eigh. A man came. Type Eigh people. A. Smith, a plan Eigh.");
+        // review 2026-11-06: words the phone voice's respellings got wrong
+        check("sub: a group that didn't take part is empty", Chapter.sub(java.util.regex.Pattern.compile("(a)|(b)"), "xaybz", "[$1$2]"), "x[a]y[b]z");
+        check("lead the metal, alternation groups", Chapter.forKokoro("A lead pipe. Made of lead. Molten lead."), "A led pipe. Made of led. Molten led.");
+        for (String keep : new String[]{"The mysterious object the old man held.", "His previous record the clerk kept.", "This object the size of a fist.",
+                "This present the king gave.", "The notorious rebel escaped.", "The curious object to the left.", "He held her close the whole night.",
+                "She hugged him close that night.", "I truly learned a lot from him.", "Most learned it the hard way.", "We're content creators.",
+                "Each of the three does his part."})
+            check("left as it is for the phone voice: " + keep, Chapter.forKokoro(keep), keep);
+        check("still respelled: the guards escort the prisoner", Chapter.forKokoro("The guards escort the prisoner.").contains("escort the"), false);
+        check("still respelled: let her close the door", Chapter.forKokoro("Let her close the door.").contains("cloze") || Chapter.forKokoro("Let her close the door.").contains("loze"), true);
+        check("still respelled: a learned man", Chapter.forKokoro("He was a learned man.").contains("lernid"), true);
+        check("still respelled: I'm content", Chapter.forKokoro("I'm content with that.").contains("contennt"), true);
         check("dashes as pauses for the phone voice", Chapter.forKokoro("\"Wait\u2014no\u2014stop!\" The man--tall, thin--walked in. He - well, he left. It was\u2013how to put it\u2013odd. She smiled\u2014\u201cYes.\u201d"),
             "\"Wait \u2014 no \u2014 stop!\" The man \u2014 tall, thin \u2014 walked in. He \u2014 well, he left. It was \u2014 how to put it \u2014 odd. She smiled \u2014 \u201cYes.\u201d");
         check("dashes for the phone voice: ranges, hyphens and a cut-off word stay", Chapter.forKokoro("Open 9\u20135, pages 10--12, a well-known A-plus man. \"I\u2014\" she began. Three \u2014 four."),

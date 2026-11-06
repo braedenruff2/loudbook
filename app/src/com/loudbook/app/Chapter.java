@@ -22,7 +22,9 @@ final class Chapter {
     // (checked in the Kokoro lab, 2026-11-01). Only for the phone voice: Gemini reads these fine.
     private static final String OBJ = "(?=[ \\t]+(?:the|a|an|your|my|his|her|their|our|its|it|them|him|me|us|this|that|these|those|every|each|all|both|everything|everyone|everybody|someone|somebody|anyone|anybody|yourself|myself|himself|herself|themselves|ourselves)\\b)";
     private static final java.util.regex.Pattern CLOSE = java.util.regex.Pattern.compile(
-        "(?<!\\b(?:[Aa]|[Tt]he|[Mm]ore|[Mm]ost|[Ss]uch|[Ss]o|[Tt]oo|[Aa]s|[Hh]ow|[Vv]ery|[Qq]uite|[Pp]retty|[Rr]eally|[Tt]his|[Tt]hat|[Gg]ot|[Cc]ame|[Cc]ome|[Gg]et|[Ss]tood|[Ww]as|[Ww]ere|[Ii]s|[Aa]re|[Bb]e|[Bb]een|[Ff]elt|[Ss]eemed|[Dd]rew|[Ll]eaned|[Ss]tayed|[Ss]tay|[Kk]ept|[Hh]eld|[Ss]at|[Ll]ay|[Mm]oved|[Pp]ulled|[Uu]p|[Dd]rawing|[Gg]etting|[Cc]oming|[Ss]tanding|[Ss]itting|[Ss]taying|[Ff]ollowed|[Ss]wam|[Ff]lew|[Cc]reeping|[Cc]rept)[ \\t])\\b([Cc])lose" + OBJ.replace("|a|an|", "|"));
+        "(?<!\\b(?:[Aa]|[Tt]he|[Mm]ore|[Mm]ost|[Ss]uch|[Ss]o|[Tt]oo|[Aa]s|[Hh]ow|[Vv]ery|[Qq]uite|[Pp]retty|[Rr]eally|[Tt]his|[Tt]hat|[Gg]ot|[Cc]ame|[Cc]ome|[Gg]et|[Ss]tood|[Ww]as|[Ww]ere|[Ii]s|[Aa]re|[Bb]e|[Bb]een|[Ff]elt|[Ss]eemed|[Dd]rew|[Ll]eaned|[Ss]tayed|[Ss]tay|[Kk]ept|[Hh]eld|[Ss]at|[Ll]ay|[Mm]oved|[Pp]ulled|[Uu]p|[Dd]rawing|[Gg]etting|[Cc]oming|[Ss]tanding|[Ss]itting|[Ss]taying|[Ff]ollowed|[Ss]wam|[Ff]lew|[Cc]reeping|[Cc]rept)[ \\t])"
+        // (not "near" after holding someone: "He held her close the whole night.")
+        + "(?<!\\b(?:held|hold|holds|holding|hugged|hug|hugs|hugging|pulled|pull|pulling|drew|draw|kept|keep|keeping|clutched|clasped|cradled|pressed|squeezed|tucked)[ \\t](?:her|him|them|me|us|you|it)[ \\t])\\b([Cc])lose" + OBJ.replace("|a|an|", "|"));
     // close with no object it says "cloce" too: "the doors close behind him", "her eyes close slowly", "the walls close in on",
     // "let them close." (only after "the/her... <plural>" and before a word that makes it the verb; lab 2026-11-01)
     private static final java.util.regex.Pattern CLOSE_INTR = java.util.regex.Pattern.compile(
@@ -67,8 +69,8 @@ final class Chapter {
     // and after a plural subject ("the guards escort the prisoner", "mages use their mana", "many suspect him") or "and"
     // ("stood up and record the scene"): present-tense web fiction (lab 2026-11-01)
     private static final java.util.regex.Pattern PL_VERB = java.util.regex.Pattern.compile(
-        "(?<=\\b(?:(?:[Tt]he|[Tt]hese|[Tt]hose|[Hh]is|[Hh]er|[Tt]heir|[Oo]ur|[Mm]y|[Yy]our|[Mm]any|[Ss]ome|[Aa]ll|[Bb]oth|[Mm]ost|[Ff]ew|[Tt]wo|[Tt]hree)[ \\t]\\p{Ll}{1,19}[a-rt-z]s"
-        + "|[A-Z]\\p{Ll}{1,19}[a-rt-z]s|[Mm]any|[Ff]ew|[Bb]oth|[Oo]thers|[Pp]eople|and)[ \\t])"
+        "(?<=\\b(?:(?:[Tt]he|[Tt]hese|[Tt]hose|[Hh]is|[Hh]er|[Tt]heir|[Oo]ur|[Mm]y|[Yy]our|[Mm]any|[Ss]ome|[Aa]ll|[Bb]oth|[Mm]ost|[Ff]ew|[Tt]wo|[Tt]hree)[ \\t]\\p{Ll}{1,19}[a-hj-rtv-z]s"
+        + "|[A-Z]\\p{Ll}{1,19}[a-hj-rtv-z]s|[Mm]any|[Ff]ew|[Bb]oth|[Oo]thers|[Pp]eople|and)[ \\t])"
         + "(use|abuse|separate|record|present|polish|tear|permit|insult|increase|decrease|estimate|moderate|conduct|project|object|protest|suspect|convict|console|contract|torment|escort|transport|export|insert|desert|contest)" + OBJ);
     private static final java.util.regex.Pattern AND_USE = java.util.regex.Pattern.compile(
         "(?<=\\b(?:and|then|[Pp]lease|[Jj]ust|[Nn]ow|[Ss]o|[Oo]r)[ \\t])use" + OBJ);
@@ -142,7 +144,7 @@ final class Chapter {
     private static final java.util.regex.Pattern MINUTE = java.util.regex.Pattern.compile(
         "(?<!\\b(?i:last|eleventh|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty|thirty|forty|fifty|sixty|few|several|ninety)[ \\t-])(?<![\\d-][ \\t]?)\\b([Mm])inute(?=[ \\t]+(?:amounts?|details?|fraction|quantity|quantities|traces?|particles?|cracks?|adjustments?|differences?|variations?|specks?|droplets?|fragments?|grains?|examination|inspection|description|observations?|investigation|particulars|scrutiny|accuracy|precision)\\b)");
     private static final java.util.regex.Pattern DOES = java.util.regex.Pattern.compile(
-        "(?<=\\b(?:[Tt]he|(?i:two|three|four|five|six|seven|eight|nine|ten|several|pregnant)|bucks and|stags and)[ \\t])does\\b(?![-'\u2019]|[ \\t]+(?:and[ \\t]+don|not|so|it|that|this)\\b)");
+        "(?<=\\b(?:[Tt]he|(?i:two|three|four|five|six|seven|eight|nine|ten|several|pregnant)|bucks and|stags and)[ \\t])does\\b(?![-'\u2019]|[ \\t]+(?:and[ \\t]+don|not|so|it|that|this|his|her|their|its|my|our|your|what|whatever|nothing|everything|anything|well|better)\\b)");
     // "a blazing row" / "had a row with him" (the quarrel; it says "roe") -> rau; "caught a bass", "sea bass", "bass fishing" (the
     // fish; it says "base") -> bas; "a pile of refuse", "the refuse heap" (rubbish; it says the verb "ri-fyooz") -> reffuce (lab 2026-11-01)
     private static final java.util.regex.Pattern ROW = java.util.regex.Pattern.compile(
@@ -170,7 +172,7 @@ final class Chapter {
     // "learned" the adjective it says as the verb ("lurnd"): "a learned man", "the most learned scholar", "very learned" -> lernid
     // (lab 2026-11-01); not "a learned behaviour/skill/response" (said "lurnd").
     private static final java.util.regex.Pattern LEARNED = java.util.regex.Pattern.compile(
-        "(?<=\\b(?:[Aa]n?|[Tt]he|[Mm]ost|[Vv]ery|[Hh]ighly|[Tt]ruly|[Mm]ore|[Ll]ess)[ \\t])learned\\b(?![-'\u2019]|[ \\t]+(?:behaviou?rs?|responses?|skills?|helplessness|traits?|habits?|reflex(?:es)?|to|the|that|how)\\b)");
+        "(?<=\\b(?:[Aa]n?|[Tt]he|[Mm]ost|[Vv]ery|[Hh]ighly|[Tt]ruly|[Mm]ore|[Ll]ess)[ \\t])learned\\b(?![-'\u2019]|[ \\t]+(?:behaviou?rs?|responses?|skills?|helplessness|traits?|habits?|reflex(?:es)?|to|the|that|how|it|them|a|an|from|his|her|their|my|our|your|about|of|nothing|something|everything|this|what|much|more|quickly|fast|early)\\b)");
     // "resume" the noun it says as the verb ("ri-ZOOM"): "his resume", "an updated resume", "the resumes piled up" -> résumé, which
     // it says right (lab 2026-11-02: ɹˈɛzuːmˌeɪ); not "her resume" ("let her resume her work"), "to resume", "the talks resume".
     private static final java.util.regex.Pattern RESUME = java.util.regex.Pattern.compile(
@@ -184,7 +186,7 @@ final class Chapter {
     // and "rebel" after a plural subject anywhere ("the slaves rebel at night", "the rebels rebel.", "Rebels rebel."): "REB-el" too
     // (lab 2026-11-02); after "will/to/they/might" it's right already. Not before the noun it describes ("the villages rebel leaders").
     private static final java.util.regex.Pattern REBEL_PL = java.util.regex.Pattern.compile(
-        "(?<=(?:\\b(?:[Tt]he|[Tt]hese|[Tt]hose|[Hh]is|[Hh]er|[Tt]heir|[Oo]ur|[Mm]any|[Ss]ome|[Aa]ll|[Mm]ost)[ \\t]\\p{Ll}{1,19}[a-rt-z]s|(?:^|[.!?][ \\t])[A-Z]\\p{Ll}{1,19}[a-rt-z]s)[ \\t])"
+        "(?<=(?:\\b(?:[Tt]he|[Tt]hese|[Tt]hose|[Hh]is|[Hh]er|[Tt]heir|[Oo]ur|[Mm]any|[Ss]ome|[Aa]ll|[Mm]ost)[ \\t]\\p{Ll}{1,19}[a-hj-rtv-z]s|(?:^|[.!?][ \\t])[A-Z]\\p{Ll}{1,19}[a-hj-rtv-z]s)[ \\t])"
         + "rebel(?![-'\u2019\\p{L}]|[ \\t]+(?:leaders?|army|armies|forces?|camps?|bases?|fleets?|troops|soldiers|fighters|groups?|factions?|movements?|cause|alliance|scum|ships?|strongholds?|territory|held|yell|spirit|side|heart|lines?|units?|commanders?|generals?|ranks|uprising|cells?|spies|spy|flags?|banners?)\\b)");
     // "produce" the noun ("fresh produce", "baskets of produce", "Produce was scarce") it says as the verb ("pruh-DOOSE") after an
     // adjective or "of", or at a sentence start: -> prodoose (lab 2026-11-02: pɹˈɑːduːs, as it says "the produce"). Not after a
@@ -200,8 +202,8 @@ final class Chapter {
     // "object to" after a plural subject ("the villagers object to the plan", "Many object to it") it says as the noun ("OB-ject"):
     // -> objekt (lab 2026-11-02: ɑːbdʒˈɛkt, as it says "will object to")
     private static final java.util.regex.Pattern OBJECT_TO = java.util.regex.Pattern.compile(
-        "(?<=\\b(?:(?:[Tt]he|[Tt]hese|[Tt]hose|[Hh]is|[Hh]er|[Tt]heir|[Oo]ur|[Mm]y|[Yy]our|[Mm]any|[Ss]ome|[Aa]ll|[Bb]oth|[Mm]ost|[Ff]ew|[Tt]wo|[Tt]hree)[ \\t]\\p{Ll}{1,19}[a-rt-z]s"
-        + "|[A-Z]\\p{Ll}{1,19}[a-rt-z]s|[Mm]any|[Ff]ew|[Bb]oth|[Oo]thers|[Pp]eople)[ \\t])object(?=[ \\t]+to\\b)");
+        "(?<=\\b(?:(?:[Tt]he|[Tt]hese|[Tt]hose|[Hh]is|[Hh]er|[Tt]heir|[Oo]ur|[Mm]y|[Yy]our|[Mm]any|[Ss]ome|[Aa]ll|[Bb]oth|[Mm]ost|[Ff]ew|[Tt]wo|[Tt]hree)[ \\t]\\p{Ll}{1,19}[a-hj-rtv-z]s"
+        + "|[A-Z]\\p{Ll}{1,19}[a-hj-rtv-z]s|[Mm]any|[Ff]ew|[Bb]oth|[Oo]thers|[Pp]eople)[ \\t])object(?=[ \\t]+to\\b)");
     // "articulate" the adjective it says as the verb ("-late"): "she is articulate", "an articulate speaker", "inarticulate rage" -> articulit
     // (lab 2026-11-02: ɑːɹtˈɪkjʊlˌɪt); after "to/not/could/and" it's the verb and stays.
     private static final java.util.regex.Pattern ARTICULATE = java.util.regex.Pattern.compile(
@@ -216,7 +218,7 @@ final class Chapter {
     // so "more content coming soon", "the content of the letter" stay.
     private static final java.util.regex.Pattern CONTENT = java.util.regex.Pattern.compile(
         "(?<=(?:\\b(?:am|felt|feel|feels|feeling|seemed|seem|seems|looked|look|looks|looking|remained|remain|remains|stayed|grew)|['\u2019](?:m|re))"
-        + "(?:[ \\t](?:not|quite|perfectly|entirely|fairly|rather|very|so|more|almost|oddly|strangely|completely|mostly|reasonably))?[ \\t])content(?![-'\u2019\\p{L}])");
+        + "(?:[ \\t](?:not|quite|perfectly|entirely|fairly|rather|very|so|more|almost|oddly|strangely|completely|mostly|reasonably))?[ \\t])content(?![-'\u2019\\p{L}]|[ \\t]+(?:creators?|creation|warnings?|moderat\\p{L}*|farms?|marketing|strateg\\p{L}*|polic\\p{L}*|types?|filters?|ratings?|providers?|management|delivery|updates?|streams?|streamers?|writers?|makers?)\\b)");
     // "associate" / "advocate" the noun it says as the verb ("-ate"): "an associate of mine", "his associates", "a fierce advocate for them"
     // -> associat / advokit (lab 2026-11-02: ɐsˈoʊʃət, ˈædvəkˌɪt). Only after a determiner (or an adjective after one): "they advocate
     // change", "I associate it with fear" stay.
@@ -230,9 +232,9 @@ final class Chapter {
     private static final java.util.regex.Pattern HAD_TO = java.util.regex.Pattern.compile("\\b([Hh])ad([ \\t]+)to(?=[ \\t]+\\p{Ll})");
     private static final java.util.regex.Pattern HAS_TO_READ = java.util.regex.Pattern.compile("\\b([Hh]as[ \\t]+to[ \\t]+)read\\b(?![-'\u2019])");
     private static String heteronyms(String t) {
-        if (t.contains("ad to")) t = HAD_TO.matcher(t).replaceAll("$1add$2to");
-        if (t.contains("as to read")) t = HAS_TO_READ.matcher(t).replaceAll("$1reed");
-        if (t.contains("lose")) t = CLOSE.matcher(t).replaceAll("$1loze");
+        if (t.contains("ad to")) t = sub(HAD_TO, t, "$1add$2to");
+        if (t.contains("as to read")) t = sub(HAS_TO_READ, t, "$1reed");
+        if (t.contains("lose")) t = sub(CLOSE, t, "$1loze");
         if (t.contains("lose")) {
             java.util.regex.Matcher m = CLOSE_INTR.matcher(t);
             StringBuffer b = new StringBuffer();
@@ -240,7 +242,7 @@ final class Chapter {
             m.appendTail(b);
             t = b.toString();
         }
-        if (t.contains("xcuse")) t = EXCUSE.matcher(t).replaceAll("$1xcuze");
+        if (t.contains("xcuse")) t = sub(EXCUSE, t, "$1xcuze");
         {
             java.util.regex.Matcher m = START_VERB.matcher(t);
             StringBuffer b = new StringBuffer();
@@ -286,17 +288,17 @@ final class Chapter {
             t = b.toString();
         }
         if (t.contains("ead")) {
-            t = READ.matcher(t).replaceAll("$1$2ed");
-            t = READ_ANY.matcher(t).replaceAll("$1$2ed");
-            t = LEAD.matcher(t).replaceAll("$1$2$3ed");
+            t = sub(READ, t, "$1$2ed");
+            t = sub(READ_ANY, t, "$1$2ed");
+            t = sub(LEAD, t, "$1$2$3ed");
         }
         if (t.contains("dove")) t = DOVE_NOUN.matcher(DOVE.matcher(t).replaceAll("dohv")).replaceAll("dohv");
         if (t.contains("desert")) t = DESERT.matcher(t).replaceAll("dessert");
-        if (t.contains("inute")) t = MINUTE.matcher(t).replaceAll("$1y-nute");
+        if (t.contains("inute")) t = sub(MINUTE, t, "$1y-nute");
         if (t.contains("does")) t = DOES.matcher(t).replaceAll("doze");
-        if (t.contains("nsult")) t = INSULT.matcher(t).replaceAll("$1n-sult$2");
+        if (t.contains("nsult")) t = sub(INSULT, t, "$1n-sult$2");
         if (t.contains("learned")) t = LEARNED.matcher(t).replaceAll("lernid");
-        if (t.contains("ebel against")) t = REBEL.matcher(t).replaceAll("$1ebell");
+        if (t.contains("ebel against")) t = sub(REBEL, t, "$1ebell");
         if (t.contains("object to")) t = OBJECT_TO.matcher(t).replaceAll("objekt");
         if (t.contains("rticulate")) {
             java.util.regex.Matcher m = ARTICULATE.matcher(t);
@@ -305,7 +307,7 @@ final class Chapter {
             m.appendTail(b);
             t = b.toString();
         }
-        if (t.contains("intimate")) t = INTIMATE.matcher(t).replaceAll("intimayt$1");
+        if (t.contains("intimate")) t = sub(INTIMATE, t, "intimayt$1");
         if (t.contains("content")) t = CONTENT.matcher(t).replaceAll("contennt");
         if (t.contains("ate")) {
             java.util.regex.Matcher m = ASSOC_ADV.matcher(t);
@@ -314,7 +316,7 @@ final class Chapter {
             m.appendTail(b);
             t = b.toString();
         }
-        if (t.contains("tear")) t = TEAR_RIP.matcher(t).replaceAll("tare$1");
+        if (t.contains("tear")) t = sub(TEAR_RIP, t, "tare$1");
         if (t.contains("s rebel")) t = REBEL_PL.matcher(t).replaceAll("rebell");
         if (t.contains("roduce")) {
             java.util.regex.Matcher m = PRODUCE.matcher(t);
@@ -323,7 +325,7 @@ final class Chapter {
             m.appendTail(b);
             t = b.toString();
         }
-        if (t.contains("resume")) t = RESUME.matcher(t).replaceAll("r\u00e9sum\u00e9$1");
+        if (t.contains("resume")) t = sub(RESUME, t, "r\u00e9sum\u00e9$1");
         if (t.contains("ubject")) {
             java.util.regex.Matcher m = SUBJECT.matcher(t);
             StringBuffer b = new StringBuffer();
@@ -347,12 +349,12 @@ final class Chapter {
             t = b.toString();
         }
         if (t.contains("moped")) t = MOPED.matcher(t).replaceAll("mohpt");
-        if (t.contains(" row")) t = ROW_FIGHT.matcher(t).replaceAll("$1rau");
-        if (t.contains("sow")) t = SOW.matcher(t).replaceAll("sau$1").replaceAll("\\bsaus\\b", "sauz");
+        if (t.contains(" row")) t = sub(ROW_FIGHT, t, "$1rau");
+        if (t.contains("sow")) t = sub(SOW, t, "sau$1").replaceAll("\\bsaus\\b", "sauz");
         if (t.contains("wind")) t = WIND.matcher(t).replaceAll("wined");
         if (t.contains("Wind")) t = WIND_START.matcher(t).replaceAll("Wined");
         if (t.contains("wound")) t = WOUND.matcher(t).replaceAll("wownd");
-        if (t.contains("bow")) t = SHIP_BOW.matcher(t).replaceAll("bough$1$2");
+        if (t.contains("bow")) t = sub(SHIP_BOW, t, "bough$1$2");
         if (t.contains("ow")) {
             java.util.regex.Matcher m = BOW.matcher(t);
             StringBuffer b = new StringBuffer();
@@ -367,6 +369,26 @@ final class Chapter {
             t = b.toString();
         }
         return t;
+    }
+    /** p's matches in t replaced by repl, where $1..$9 are the groups and a group that didn't take part is "" (Android 8-10
+     *  appended "null" for it in replaceAll: "A lead pipe" -> "A lnullnulled pipe" with LEAD's alternation). */
+    static String sub(java.util.regex.Pattern p, String t, String repl) {
+        java.util.regex.Matcher m = p.matcher(t);
+        if (!m.find()) return t;
+        StringBuilder b = new StringBuilder(t.length() + 16);
+        int last = 0;
+        do {
+            b.append(t, last, m.start());
+            for (int k = 0; k < repl.length(); k++) {
+                char c = repl.charAt(k);
+                if (c == '$' && k + 1 < repl.length() && Character.isDigit(repl.charAt(k + 1))) {
+                    String g = m.group(repl.charAt(++k) - '0');
+                    if (g != null) b.append(g);
+                } else b.append(c);
+            }
+            last = m.end();
+        } while (m.find());
+        return b.append(t, last, t.length()).toString();
     }
     static String forKokoro(String t) {
         t = heteronyms(t);
@@ -384,11 +406,11 @@ final class Chapter {
         if (t.contains("Nike")) t = NIKE.matcher(t).replaceAll("Nikey");
         if (t.contains("Niamh")) t = NIAMH.matcher(t).replaceAll("Neeve");
         if (t.contains("Thucydides")) t = t.replace("Thucydides", "Thoosiddideez");   // ("thuh-sid-dides", lab 2026-11-05)
-        if (t.indexOf('-') >= 0) t = WAIT_WHAT.matcher(t).replaceAll("$1, $2");
+        if (t.indexOf('-') >= 0) t = sub(WAIT_WHAT, t, "$1, $2");
         // Japanese name endings: "Tanaka-kun" ("kun" as in "pun"), "Yuki-chan" ("chan" as in "can"); Korean "ajumma" ("adj-umma")
         if (t.contains("-kun")) t = KUN.matcher(t).replaceAll("koon");
         if (t.contains("-chan")) t = CHAN.matcher(t).replaceAll("chahn");
-        if (t.contains("acha")) t = GACHA.matcher(t).replaceAll("$1ahcha");   // gacha games ("gatch-a", lab 2026-11-05)
+        if (t.contains("acha")) t = sub(GACHA, t, "$1ahcha");   // gacha games ("gatch-a", lab 2026-11-05)
         if (t.contains("jumma")) { java.util.regex.Matcher m = AJUMMA.matcher(t); StringBuffer b = new StringBuffer(); while (m.find()) m.appendReplacement(b, m.group(1) + (m.group(2).isEmpty() ? "h-joom-ma" : "h-joom-mahs")); m.appendTail(b); t = b.toString(); }
         // a dash between words ("Wait—no—stop", "the man--tall--walked", "He - well"): Kokoro pauses only at a spaced em dash,
         // and ran the rest together ("Wait no stop"; the highlight's timing expects a pause there, see SpeechTiming.breaks)

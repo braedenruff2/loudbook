@@ -32,7 +32,9 @@ echo "app open (fancy text, emoji): sentences said: $(grep -c 'LoudbookTest: spe
 # highlighted there. They used to be the browser's error page, "its words weren't found on the page")
 # (dialogue in a second voice is on: chapter one quotes in double quotes, chapter two in single ones, with an apostrophe)
 { grep -qE "two voices: .*(Tom tried it|It never opens)" logcat.txt && echo "second voice, double quotes (chapter one): yes" || echo "second voice, double quotes (chapter one): NO"
-  grep -q "two voices: 2 parts.*Is anyone here" logcat.txt && echo "second voice, single quotes (chapter two): yes" || echo "second voice, single quotes (chapter two): NO"; } > dual.txt
+  grep -q "two voices: 2 parts.*Is anyone here" logcat.txt && echo "second voice, single quotes (chapter two): yes" || echo "second voice, single quotes (chapter two): NO"
+  grep -qE "two voices: [23] parts.*Hello, garden" logcat.txt && echo "second voice, dashes (chapter two): yes" || echo "second voice, dashes (chapter two): NO"
+  grep -q "two voices: 2 parts.*Nobody answers" logcat.txt && echo "second voice, guillemets (chapter two): yes" || echo "second voice, guillemets (chapter two): NO"; } > dual.txt
 awk '/test: the next audio write fails/{f=1} f' foreground.txt > audiofail.txt
 { grep -q "audio write failed" audiofail.txt && echo "audio output failed once: noticed" || echo "audio output failed once: NOT noticed (test hook not reached?)"
   grep -q "audio write failed" audiofail.txt && { sed -n '/audio write failed/,$p' logcat.txt | grep -q "LoudbookTest: speaking" && echo "reading went on after it: yes" || echo "reading went on after it: NO"; }; } > audio.txt
