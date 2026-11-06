@@ -425,7 +425,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def authed(self):
         auth = self.headers.get("Authorization", "")
         if auth.startswith("Bearer ") and token_ok(auth[7:].strip()): return True
-        Limits.fail(self.client_address[0])
+        # (a phone that was unpaired keeps asking with its old key every 30 s: counted, that blocked it from pairing again
+        # for 10 minutes. Keys are long random ones, nothing to guess; the pairing code's tries are limited on their own.)
+        if not auth.startswith("Bearer "): Limits.fail(self.client_address[0])
         self.reply(401, {"error": "not paired"})
         return False
 
