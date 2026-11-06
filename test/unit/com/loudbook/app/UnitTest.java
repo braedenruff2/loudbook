@@ -618,6 +618,24 @@ public class UnitTest {
             for (int yy = 300; yy < 330; yy++) for (int xx = 40; xx < 80; xx++) pOne[yy * W + xx] = 0xFF202020;
             check("one word, two inks: not placed", InkLayout.pageBoxes(Arrays.asList("Epilogue"), InkLayout.words(pOne, W, H, 0, 0)), null);
         }
+        {   // a drop cap beside the first three lines (it filled the gaps between them: one tall row, the words lost)
+            int DW = 1080, DH = 600;
+            int[] dc = new int[DW * DH]; java.util.Arrays.fill(dc, 0xFFF8F0E0);
+            String[] dl = {"he night was cold and the road ran on", "beyond the hills where nobody ever went", "and the wind blew hard from the north",
+                "over the fields that lay empty and still", "until morning came at last to the town"};
+            for (int yy = 100; yy < 240; yy++) for (int xx = 60; xx < 140; xx++) dc[yy * DW + xx] = 0xFF202020;
+            for (int l = 0; l < dl.length; l++) {
+                int dx = l < 3 ? 160 : 60, dy = 100 + l * 50;
+                for (String wd : dl[l].split(" ")) { for (int c = 0; c < wd.length(); c++) { for (int yy = dy; yy < dy + 30; yy++) for (int xx = dx; xx < dx + 14; xx++) dc[yy * DW + xx] = 0xFF202020; dx += 17; } dx += 12; }
+            }
+            String dt = "The night was cold and the road ran on beyond the hills where nobody ever went and the wind blew hard from the north over the fields that lay empty and still until morning came at last to the town";
+            java.util.List<InkLayout.Word> dw = InkLayout.words(dc, DW, DH, 0, 0);
+            int drows = 0; for (InkLayout.Word q : dw) if (q.rowEnd) drows++;
+            check("drop cap: five rows of text found", drows, 5);
+            java.util.List<float[][]> dp = InkLayout.pageBoxes(Arrays.asList(dt), dw);
+            float[] by = dp == null || dp.get(0) == null ? null : dp.get(0)[dt.indexOf("beyond")];
+            check("drop cap: 'beyond' (line 2, beside the cap) placed", by != null && Math.abs(by[0] - 160) < 4 && Math.abs(by[1] - 150) < 4, true);
+        }
         // spaces in justified text: loose rows (26-28 px) and tight ones (9-11 px), letters 1-6 px apart
         java.util.List<Integer> gs = new java.util.ArrayList<>();
         int[][] hist = {{1, 29}, {2, 36}, {3, 51}, {4, 13}, {5, 6}, {6, 4}, {9, 1}, {10, 1}, {11, 4}, {13, 4}, {14, 4}, {20, 2}, {26, 3}, {27, 3}, {28, 4}};

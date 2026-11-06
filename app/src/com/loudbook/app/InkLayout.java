@@ -43,13 +43,14 @@ final class InkLayout {
         if (bands.isEmpty()) return out;
         // join bits of one row (the dot over an i, a comma below the line)
         int typical = median(bands, 0);
+        bands = splitDropCaps(bands, ink, rowInk, w, typical, minInk);
         List<int[]> rows = new ArrayList<>();
         for (int[] b : bands) {
             if (!rows.isEmpty()) {
                 int[] last = rows.get(rows.size() - 1);
-                if (b[0] - last[1] < typical * 0.35 && (b[1] - b[0] < typical * 0.5 || last[1] - last[0] < typical * 0.5)) { last[1] = b[1]; continue; }
+                if (last.length < 4 && b.length < 4 && b[0] - last[1] < typical * 0.35 && (b[1] - b[0] < typical * 0.5 || last[1] - last[0] < typical * 0.5)) { last[1] = b[1]; continue; }
             }
-            rows.add(new int[]{b[0], b[1]});
+            rows.add(b.length < 4 ? new int[]{b[0], b[1]} : b.clone());
         }
         typical = median(rows, Math.max(4, typical / 3));
         // each row's runs of ink (split at every empty column), and the gaps between them
@@ -60,7 +61,10 @@ final class InkLayout {
             int rh = r[1] - r[0];
             if (rh < Math.max(4, typical * 0.4)) continue;              // a speck
             int[] col = new int[w];
-            for (int x = 0; x < w; x++) { int n = 0; for (int y = r[0]; y < r[1]; y++) if (ink[y * w + x]) n++; col[x] = n; }
+            for (int x = 0; x < w; x++) {
+                if (r.length >= 4 && x >= r[2] && x < r[3]) continue;   // (the drop cap beside this line, see splitDropCaps)
+                int n = 0; for (int y = r[0]; y < r[1]; y++) if (ink[y * w + x]) n++; col[x] = n;
+            }
             List<int[]> runs = new ArrayList<>();
             for (int x = 0; x < w; ) {
                 if (col[x] == 0) { x++; continue; }
@@ -87,6 +91,45 @@ final class InkLayout {
             }
             for (int k = 0; k < ws.size(); k++)
                 out.add(new Word(offX + ws.get(k)[0], offY + r[0], offX + ws.get(k)[1], offY + r[1], k == ws.size() - 1));
+        }
+        return out;
+    }
+
+    /**
+     * A drop cap (a big first letter beside the chapter's first two or three lines) fills the gaps between those lines, so they
+     * came out as one tall row and their words were lost (review 2026-11-06). A band over twice the usual height whose quiet rows
+     * (the gaps between lines) have ink only in one narrow place is split again without those columns; the lines after the first
+     * get {top, bottom, capLeft, capRight} so the cap isn't taken for a word on each of them.
+     */
+    private static List<int[]> splitDropCaps(List<int[]> bands, boolean[] ink, int[] rowInk, int w, int typical, int minInk) {
+        if (typical < 4) return bands;
+        List<int[]> out = new ArrayList<>();
+        for (int[] b : bands) {
+            if (b[1] - b[0] < typical * 2.2) { out.add(b); continue; }
+            int ca = w, cb = -1, quiet = 0;
+            for (int y = b[0]; y < b[1]; y++) {
+                if (rowInk[y] >= w / 10) continue;
+                quiet++;
+                for (int x = 0; x < w; x++) if (ink[y * w + x]) { if (x < ca) ca = x; if (x > cb) cb = x; }
+            }
+            if (cb < 0 || quiet < typical * 0.3 || cb - ca > w / 4) { out.add(b); continue; }
+            int exA = Math.max(0, ca - typical / 3), exB = Math.min(w, cb + 1 + typical / 3);
+            List<int[]> sub = new ArrayList<>();
+            for (int y = b[0]; y < b[1]; ) {
+                int n = rowInk[y];
+                for (int x = exA; x < exB; x++) if (ink[y * w + x]) n--;
+                if (n < minInk) { y++; continue; }
+                int s = y;
+                while (y < b[1]) {
+                    int m = rowInk[y];
+                    for (int x = exA; x < exB; x++) if (ink[y * w + x]) m--;
+                    if (m < minInk) break;
+                    y++;
+                }
+                sub.add(new int[]{s, y});
+            }
+            if (sub.size() < 2) { out.add(b); continue; }
+            for (int k = 0; k < sub.size(); k++) out.add(k == 0 ? sub.get(k) : new int[]{sub.get(k)[0], sub.get(k)[1], exA, exB});
         }
         return out;
     }
