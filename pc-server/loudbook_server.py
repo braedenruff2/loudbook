@@ -719,6 +719,23 @@ class Books:
         return os.path.join(BOOKS, cls.safe(job.get("out") or job.get("title") or "book"), f"{k + 1:04d} - {cls.safe(ch.get('name', ''), 70)}")
 
     @classmethod
+    def voice_map(cls, job):
+        """Name -> voice: the job's "voices", then its "voices_file" (a JSON file in BOOKS, {name: {"voice": ...}} or {name:
+        voice}), read at the start of each chapter so a change there applies from the next chapter on."""
+        m = dict(job.get("voices") or {})
+        vf = job.get("voices_file")
+        if vf:
+            try:
+                with open(vf if os.path.isabs(vf) else os.path.join(BOOKS, vf), encoding="utf-8") as h: d = json.load(h)
+                for name, e in d.items():
+                    if name.startswith("_"): continue
+                    v = e.get("voice") if isinstance(e, dict) else e
+                    if v is not None: m[name] = v
+            except Exception as e:
+                print(f"Loudbook PC voice: voices file {vf} can't be read: {e!r}"[:200], flush=True)
+        return m
+
+    @classmethod
     def earlier(cls, name):
         """Does a job named before this one have a chapter to make?"""
         for n, j in cls.jobs():
@@ -795,7 +812,8 @@ class Books:
         ch = job["chapters"][k]
         f = ch["file"] if os.path.isabs(ch["file"]) else os.path.join(BOOKS, ch["file"])
         with open(f, encoding="utf-8") as h: paras = json.load(h)
-        who = cls.who(job)
+        vmap = cls.voice_map(job)
+        who = cls.who({"voice": vmap["Narrator"]}) if "Narrator" in vmap else cls.who(job)
         dest = cls.chapter_path(job, k)
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         parts, marks, at = [], [], 0
@@ -812,7 +830,7 @@ class Books:
                     text = str(item[0]) if item else ""
                     if len(item) > 1 and item[1] is not None:
                         v = item[1]
-                        who_i = cls.who({"voice": (job.get("voices") or {}).get(v, v) if isinstance(v, str) else v})
+                        who_i = cls.who({"voice": vmap.get(v, v) if isinstance(v, str) else v})
                 else: text = str(item)
                 text = text.strip()
                 if not text: continue
