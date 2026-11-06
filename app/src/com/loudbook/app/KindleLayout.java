@@ -80,6 +80,14 @@ final class KindleLayout {
             String n = normOf(sentences.get(k));
             if (n.isEmpty()) { out.add(null); continue; }
             int f = norm.indexOf(n, at);
+            // (the page's first sentence, begun on the page before, whose end also comes later on the page: "To the." on a page
+            //  starting "the. E dog. ... To home to the." took the later "to the" and lost every sentence between. Its end at
+            //  the top of the page, with the next sentence right after it, comes first)
+            if (k == 0 && at == 0 && f != 0 && k + 1 < sentences.size()) {
+                int cut = -1;
+                for (int c = 1; c < n.length(); c++) { String sfx = n.substring(c); if (sfx.length() <= norm.length() && norm.substring(0, sfx.length()).equals(sfx) && nextAt(sentences.get(k + 1), sfx.length())) { cut = c; break; } }
+                if (cut > 0) { int e = n.length() - cut; out.add(new int[]{0, e, cut, n.length()}); at = e; continue; }
+            }
             if (f >= 0 && f - at < 400) { out.add(new int[]{f, f + n.length(), 0, n.length()}); at = f + n.length(); continue; }
             // only part of it is on this page (it started on the one before): find how it ends
             int tail = Math.min(n.length(), 30);

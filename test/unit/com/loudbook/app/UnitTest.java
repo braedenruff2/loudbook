@@ -489,6 +489,14 @@ public class UnitTest {
         check("a sentence with only a few words at the foot of the page is found", Arrays.toString(shortRun), "[64, 74, 0, 37]");
         KindleLayout top = new KindleLayout(Arrays.asList("ment to me. The road out of the", "valley was old."), Arrays.asList(new float[]{0, 100, 400, 140}, new float[]{0, 140, 400, 180}), null);
         check("a sentence with only a few words at the top of the page is found", Arrays.toString(top.spans(Arrays.asList("His attachment to me.", "The road out of the valley was old.")).get(0)), "[0, 8, 9, 17]");
+        {   // the page's first sentence, begun on the page before, whose words come again later on the page: its later copy was
+            // taken, so the sentences between had no highlight at all
+            KindleLayout rep = new KindleLayout(Arrays.asList("the gate. Mara waited by the wall.", "Then she went to the gate."), Arrays.asList(new float[]{0, 100, 400, 140}, new float[]{0, 140, 400, 180}), null);
+            List<int[]> rs = rep.spans(Arrays.asList("To the gate.", "Mara waited by the wall.", "Then she went to the gate."));
+            check("a first sentence's end at the top of the page is taken, not its words later on", Arrays.toString(rs.get(0)), "[0, 7, 2, 9]");
+            check("the sentence after it is found", Arrays.toString(rs.get(1)), "[7, 26, 0, 19]");
+            check("a sentence wholly at the page's top is still taken whole", Arrays.toString(rep.spans(Arrays.asList("The gate.", "Mara waited by the wall.")).get(0)), "[0, 7, 0, 7]");
+        }
         {   // a page holding one long sentence from its top on to the next page, which ends with a letter the page starts with
             // ("...the old road." on a page starting "The..."): it was taken as a sentence begun on the page before, marked on one letter
             KindleLayout one = new KindleLayout(Arrays.asList("The road out of the valley was older", "than the town, and Mara walked it"), Arrays.asList(new float[]{0, 100, 400, 140}, new float[]{0, 140, 400, 180}), null);
