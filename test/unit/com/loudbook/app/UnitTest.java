@@ -239,6 +239,11 @@ public class UnitTest {
         check("single quotes: \u2018em before another quote's close isn't speech", str(Dialogue.split("We\u2019ll get \u2018em now. \u2018Go,\u2019 she said.", false, true)), "[n:We\u2019ll get \u2018em now.][q:Go,][n:she said.]");
         check("single quotes: rock \u2018n\u2019 roll before speech", str(Dialogue.split("He loved rock \u2018n\u2019 roll. \u2018Yes,\u2019 she said.", false, true)), "[n:He loved rock \u2018n\u2019 roll.][q:Yes,][n:she said.]");
         check("single quotes: \u2018em then a line break", Dialogue.singles("We got \u2018em\nand left."), false);
+        check("single quotes: straight 'Round, split", str(Dialogue.split("'Round up the cattle,' he said.", false, true)), "[q:Round up the cattle,][n:he said.]");
+        check("single quotes: straight 'Round is speech", Dialogue.singles("'Round up the cattle,' he said."), true);
+        check("single quotes: straight 'em before another quote", str(Dialogue.split("We'll get 'em now. 'Go,' she said.", false, true)), "[n:We'll get 'em now.][q:Go,][n:she said.]");
+        check("single quotes: \u2018Round \u2018em up, split", str(Dialogue.split("\u2018Round \u2018em up,\u2019 he said.", false, true)), "[q:Round \u2018em up,][n:he said.]");
+        check("single quotes: straight 'em alone isn't speech", Dialogue.singles("I'll get 'em, I said. Rock 'n' roll."), false);
         check("an inch mark inside speech doesn't close it", str(Dialogue.split("\"I'm 6' 2\" tall,\" he said. \"Sure.\"", false)), "[q:I'm 6' 2\" tall,][n:he said.][q:Sure.]");
         check("an inch mark inside speech: still closed after", Dialogue.run("\"I'm 6' 2\" tall,\" he said.", false), false);
         check("a quote closing after a number, then the tag", str(Dialogue.split("\"Room 5\" he said. \"Go.\"", false)), "[q:Room 5][n:he said.][q:Go.]");

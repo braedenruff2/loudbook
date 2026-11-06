@@ -106,10 +106,10 @@ final class Dialogue {
         if (c + 2 < t.length() && "‘’'".indexOf(t.charAt(c + 1)) >= 0 && elision(t, c + 2)) return true;
         if (c + 1 >= t.length() || !Character.isLetter(t.charAt(c + 1)) && "…—".indexOf(t.charAt(c + 1)) < 0) return false;
         if (!elision(t, c + 1)) return true;
-        // (a left quote before "Round", "Cause", "Til"...: speech if it closes later on (‘Round up the cattle,’ he said.); a
-        // word processor turns 'em into ‘em too, so with no close it's that)
+        // (a quote before "Round", "Cause", "Til"...: speech if it closes later on (‘Round up the cattle,’ he said.); a
+        // word processor turns 'em into ‘em too, so with no close it's that; straight ones the same)
         // (the close must come before the next left quote opening a word: in "We'll get ‘em now. ‘Go,’ she said." the ,’ is Go's)
-        return ch == '‘' && closeBeforeOpener(t, c + 2);
+        return closeBeforeOpener(t, c + 2);
     }
     private static String stopText;
     private static int[] stopAt;                   // (per position: where the next close (>= 0) or word-opening ‘ (-1) is)
@@ -121,7 +121,8 @@ final class Dialogue {
             a[t.length()] = -1;
             for (int j = t.length() - 1; j >= 0; j--) {
                 if (closesSingle(t, j)) a[j] = j;
-                else if (t.charAt(j) == '‘' && (j == 0 || "( \t\n[—–".indexOf(t.charAt(j - 1)) >= 0)) a[j] = -1;
+                else if ((t.charAt(j) == '‘' || t.charAt(j) == '\'') && (j == 0 || "( \t\n[—–".indexOf(t.charAt(j - 1)) >= 0)
+                    && j + 1 < t.length() && Character.isLetter(t.charAt(j + 1)) && !elision(t, j + 1)) a[j] = -1;
                 else a[j] = a[j + 1];
             }
             stopText = t; stopAt = a;
