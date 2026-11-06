@@ -29,6 +29,7 @@ jobs:
       - name: Check pronunciation rules and the plain-Java parts
         run: |
           node test/say/run.js
+          node test/book/run.js
           javac -nowarn -d unit-out -cp "$ANDROID_JAR" app/src/com/loudbook/app/KindleText.java app/src/com/loudbook/app/Chapter.java app/src/com/loudbook/app/VoiceRecording.java app/src/com/loudbook/app/Dialogue.java app/src/com/loudbook/app/KindleLayout.java app/src/com/loudbook/app/InkLayout.java app/src/com/loudbook/app/SpeechTiming.java test/unit/com/loudbook/app/UnitTest.java
           java -cp unit-out com.loudbook.app.UnitTest
           javac -nowarn -d net-out app/src/com/loudbook/app/Net.java test/unit/com/loudbook/app/BuildInfo.java test/unit/com/loudbook/app/NetTest.java

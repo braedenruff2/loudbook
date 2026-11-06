@@ -137,8 +137,11 @@ final class PcLink {
     static final class BookFile { final String path; final long bytes; BookFile(String p, long b) { path = p; bytes = b; } }
 
     /** Every finished audiobook file on the PC ("book folder/0001 - name.mp3" and its .json). */
-    List<BookFile> books(int timeoutMs) throws IOException {
-        HttpsURLConnection c = open("/v1/books", fp, timeoutMs);
+    List<BookFile> books(int timeoutMs) throws IOException { return books(timeoutMs, false); }
+
+    /** With kindle, also each book's Kindle books ("book folder/name.epub", from the Whizzer Library download on the PC). */
+    List<BookFile> books(int timeoutMs, boolean kindle) throws IOException {
+        HttpsURLConnection c = open(kindle ? "/v1/books?kindle=1" : "/v1/books", fp, timeoutMs);
         c.setRequestProperty("Authorization", "Bearer " + token);
         String body = readText(c);
         List<BookFile> out = new ArrayList<>();

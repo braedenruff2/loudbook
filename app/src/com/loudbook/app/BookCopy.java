@@ -38,6 +38,7 @@ final class BookCopy {
         for (String g : gone) done.remove(g);
         if (!gone.isEmpty()) Log.i(TAG, "audiobook: " + gone.size() + " copied files are gone from the phone, copying them again");
         int todo = 0, copied = 0, mp3s = 0;
+        files = chapterFiles(files);                         // (the Kindle books (EPUB) are got one by one: sendToKindle)
         for (PcLink.BookFile f : files) if (!done.contains(f.path + "|" + f.bytes)) todo++;
         for (PcLink.BookFile f : files) if (f.path.endsWith(".mp3")) mp3s++;
         if (todo == 0) return mp3s == 0 ? "Your PC hasn't finished any audiobook chapters yet." : "All " + mp3s + " recorded chapters are on this phone already.";
@@ -66,6 +67,74 @@ final class BookCopy {
         String where = Build.VERSION.SDK_INT >= 29 ? "the phone's Audiobooks folder" : "Loudbook's files";
         return "Copied " + copied + " file" + (copied == 1 ? "" : "s") + " (" + String.join(", ", books) + ") to " + where
             + ". Play them in any audiobook app or in the car, with no connection.";
+    }
+
+    /** Only the chapters (MP3 and its .json). */
+    static List<PcLink.BookFile> chapterFiles(List<PcLink.BookFile> files) {
+        List<PcLink.BookFile> out = new java.util.ArrayList<>();
+        for (PcLink.BookFile f : files) if (f.path.endsWith(".mp3") || f.path.endsWith(".json")) out.add(f);
+        return out;
+    }
+
+    /** The Kindle books (EPUB, from the Whizzer Library download) the PC offers beside its audiobooks. */
+    static List<PcLink.BookFile> kindleFiles(List<PcLink.BookFile> files) {
+        List<PcLink.BookFile> out = new java.util.ArrayList<>();
+        for (PcLink.BookFile f : files) if (f.path.toLowerCase(java.util.Locale.ROOT).endsWith(".epub") && f.path.indexOf('/') > 0) out.add(f);
+        return out;
+    }
+
+    static final String KINDLE_DIR = "Loudbook";
+
+    /** The EPUB already in the phone's Download/Loudbook/<book>/ at its full size, or null (Android 10+). */
+    static Uri kindleHere(Context ctx, PcLink.BookFile f) {
+        if (Build.VERSION.SDK_INT < 29) return null;
+        int slash = f.path.indexOf('/');
+        String book = f.path.substring(0, slash), name = f.path.substring(slash + 1);
+        Uri coll = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+        try (android.database.Cursor c = ctx.getContentResolver().query(coll, new String[]{MediaStore.MediaColumns._ID, MediaStore.MediaColumns.SIZE},
+                MediaStore.MediaColumns.RELATIVE_PATH + "=? AND " + MediaStore.MediaColumns.DISPLAY_NAME + "=?",
+                new String[]{Environment.DIRECTORY_DOWNLOADS + "/" + KINDLE_DIR + "/" + book + "/", name}, null)) {
+            while (c != null && c.moveToNext()) if (f.bytes <= 0 || c.getLong(1) == f.bytes) return android.content.ContentUris.withAppendedId(coll, c.getLong(0));
+        } catch (Exception e) { Log.w(TAG, "kindle book: looking for " + name, e); }
+        return null;
+    }
+
+    /** Copies the EPUB into the phone's Download/Loudbook/<book>/ (once) and returns it, to share to the Kindle app. */
+    static Uri kindleCopy(Context ctx, PcLink l, PcLink.BookFile f, Progress p) throws Exception {
+        if (Build.VERSION.SDK_INT < 29) throw new java.io.IOException("this needs Android 10 or newer");
+        Uri have = kindleHere(ctx, f);
+        if (have != null) return have;
+        int slash = f.path.indexOf('/');
+        String book = f.path.substring(0, slash), name = f.path.substring(slash + 1);
+        ContentResolver cr = ctx.getContentResolver();
+        Uri coll = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+        String rel = Environment.DIRECTORY_DOWNLOADS + "/" + KINDLE_DIR + "/" + book + "/";
+        // (a short copy from before: gone first, so the folder doesn't get "name (1).epub")
+        try (android.database.Cursor c = cr.query(coll, new String[]{MediaStore.MediaColumns._ID},
+                MediaStore.MediaColumns.RELATIVE_PATH + "=? AND " + MediaStore.MediaColumns.DISPLAY_NAME + "=?", new String[]{rel, name}, null)) {
+            while (c != null && c.moveToNext()) cr.delete(android.content.ContentUris.withAppendedId(coll, c.getLong(0)), null, null);
+        } catch (Exception e) { Log.w(TAG, "kindle book: replacing " + name, e); }
+        ContentValues v = new ContentValues();
+        v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+        v.put(MediaStore.MediaColumns.MIME_TYPE, "application/epub+zip");
+        v.put(MediaStore.MediaColumns.RELATIVE_PATH, rel);
+        v.put(MediaStore.MediaColumns.IS_PENDING, 1);
+        Uri u = cr.insert(coll, v);
+        if (u == null) throw new java.io.IOException("the phone wouldn't make " + name);
+        try {
+            p.at("Copying " + name + " (" + Math.round(f.bytes / 1e5) / 10.0 + " MB)\u2026");
+            try (OutputStream out = cr.openOutputStream(u)) {
+                if (out == null) throw new java.io.IOException("can't write " + name);
+                whole(l.download(f.path, out, 120000), f, name);
+            }
+            ContentValues ok = new ContentValues();
+            ok.put(MediaStore.MediaColumns.IS_PENDING, 0);
+            cr.update(u, ok, null, null);
+        } catch (Exception e) {
+            cr.delete(u, null, null);
+            throw e;
+        }
+        return u;
     }
 
     /** A copy that came short (the Wi-Fi dropped as it ended) isn't kept as done. */

@@ -63,7 +63,20 @@ public class AheadTest { public static void main(String[] a) throws Exception {
     System.out.println("  " + f.path + " " + n + " bytes" + (ok ? "" : " FAIL"));
     if (!ok) bad++;
   }
-  for (String p : new String[]{"../state/devices.json", "Test Book/../../x.mp3", "Test Book/0001 - One.part.mp3", "x"}) {
+  // the Kindle book: only when asked for (older phones copied every file listed), downloaded whole
+  java.util.List<PcLink.BookFile> kf = l.books(5000, true);
+  PcLink.BookFile epub = null;
+  for (PcLink.BookFile f : kf) if (f.path.endsWith(".epub")) epub = f;
+  System.out.println("with Kindle books: " + kf.size() + " files" + (epub != null ? ", " + epub.path : ""));
+  if (kf.size() != 5 || epub == null || !epub.path.equals("Test Book/Test Book 01 - Volume 1.epub") || epub.bytes != 300000) { bad++; System.out.println("FAIL expected the 4 chapter files + 1 EPUB"); }
+  else {
+    java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+    long n = l.download(epub.path, o, 20000);
+    if (n != 300000 || o.size() != 300000) { bad++; System.out.println("FAIL EPUB came " + n + " bytes"); }
+  }
+  for (PcLink.BookFile f : bf) if (f.path.endsWith(".epub")) { bad++; System.out.println("FAIL EPUB listed without asking: " + f.path); }
+  for (String p : new String[]{"../state/devices.json", "Test Book/../../x.mp3", "Test Book/0001 - One.part.mp3", "x",
+      "Test Book/notes.txt", "Test Book/nope.epub", "Test Book/../Test Book 01 - Volume 1.epub", "Other/Test Book 01 - Volume 1.epub"}) {
     try { l.download(p, new java.io.ByteArrayOutputStream(), 5000); bad++; System.out.println("FAIL served " + p); }
     catch (java.io.IOException e) { }
   }

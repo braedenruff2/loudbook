@@ -69,6 +69,11 @@
         </activity>
 
         <service
+            android:name=".BookPlayer"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <service
             android:name=".ReaderService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback|microphone" />

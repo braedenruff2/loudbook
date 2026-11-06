@@ -61,6 +61,8 @@ import java.util.regex.Pattern;
 public class MainActivity extends Activity implements ReaderService.Listener {
     static final String TAG = "Loudbook";
     static final String HOME = "file:///android_asset/web/home.html";
+    /** The audiobooks the PC recorded, with their text (BookPlayer plays them). */
+    static final String BOOKS = "file:///android_asset/web/book.html";
     static final int C_BG = 0xFF14120F, C_PANEL = 0xFF1E1B17, C_LINE = 0xFF2E2A24, C_INK = 0xFFEDE6DA,
         C_DIM = 0xFFA79E90, C_AMBER = 0xFFE8AA46, C_RED = 0xFFE0735F;
 
@@ -350,6 +352,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             if (svc != null) svc.cloudChanged();
         }
         if (KindleService.testBuild() && i.getBooleanExtra("audiofail", false) && svc != null) { i.removeExtra("audiofail"); svc.testAudioFail(); }   // (chapter-test)
+        if (i.getBooleanExtra("openBooks", false)) { i.removeExtra("openBooks"); web.loadUrl(booksUrl()); return true; }   // (the audiobook's notification)
         if (i.getBooleanExtra("home", false)) { i.removeExtra("home"); web.loadUrl(homeUrl()); return true; }      // (screenshots in CI)
         if (i.getBooleanExtra("settings", false)) { i.removeExtra("settings"); main.postDelayed(this::showSettings, 1500); }   // (screenshots in CI)
         if (url == null) return false;
@@ -391,6 +394,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             }
             @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap icon) {
                 address.setText(url.startsWith("file:") ? "" : url);
+                // (the audiobook page has its own controls: the reader's would play something else)
+                if (playerPanel != null) playerPanel.setVisibility(url.startsWith(BOOKS) ? View.GONE : View.VISIBLE);
                 pageChapter = null;
                 readThisBtn.setVisibility(View.GONE);
             }
@@ -432,6 +437,85 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             });
             return true;
         });
+    }
+
+    // ---------------------------------------------------------------- audiobooks from the PC (book.html)
+    private volatile boolean copyBusy, kindleBusy;
+    private volatile String copyLine = "", kindleLine = "";
+    private volatile org.json.JSONArray kindleFiles = new org.json.JSONArray();
+    private java.util.List<PcLink.BookFile> kindleOnPc = new java.util.ArrayList<>();
+
+    private PcLink pcLinkFromPrefs() {
+        if (prefs.getString("pcToken", "").isEmpty()) return null;
+        return new PcLink(prefs.getString("pcHost", ""), prefs.getInt("pcPort", PcLink.PORT), prefs.getString("pcFp", ""), prefs.getString("pcToken", ""));
+    }
+
+    /** Copies the chapters the PC has finished (BookCopy), saying how it goes in copyLine. */
+    void copyBooks() {
+        if (copyBusy) return;
+        PcLink l = pcLinkFromPrefs();
+        if (l == null) { copyLine = "Pair with your PC first (\u2699 Settings \u203a PC voice \u203a Pair with my PC)."; return; }
+        copyBusy = true;
+        copyLine = "Asking your PC\u2026";
+        new Thread(() -> {
+            String r;
+            try { r = BookCopy.copyAll(getApplicationContext(), l, line -> copyLine = line); }
+            catch (Exception e) { Log.w(TAG, "audiobooks", e); r = "Couldn't copy from your PC (" + e.getMessage() + "). It needs your home Wi-Fi and the PC on; anything copied so far is kept."; }
+            copyLine = r;
+            copyBusy = false;
+        }, "lb-books").start();
+    }
+
+    /** The Kindle books (EPUB) the PC has beside its audiobooks. */
+    void listKindle() {
+        if (kindleBusy) return;
+        PcLink l = pcLinkFromPrefs();
+        if (l == null) { kindleLine = "Pair with your PC first (\u2699 Settings \u203a PC voice \u203a Pair with my PC)."; return; }
+        kindleBusy = true;
+        kindleLine = "Asking your PC\u2026";
+        new Thread(() -> {
+            try {
+                java.util.List<PcLink.BookFile> fs = BookCopy.kindleFiles(l.books(15000, true));
+                org.json.JSONArray a = new org.json.JSONArray();
+                for (PcLink.BookFile f : fs)
+                    a.put(new JSONObject().put("p", f.path).put("bytes", f.bytes).put("here", BookCopy.kindleHere(getApplicationContext(), f) != null)
+                        .put("name", f.path.substring(f.path.indexOf('/') + 1).replaceFirst("(?i)\\.epub$", "")));
+                kindleOnPc = fs;
+                kindleFiles = a;
+                kindleLine = fs.isEmpty() ? "Your PC has no Kindle books beside its audiobooks yet (it looks in the Whizzer Library download's Kindle folder)."
+                    : "Tap a book: it's copied to this phone (Download \u203a Loudbook) and handed to the Kindle app (pick Kindle, or Send to Kindle).";
+            } catch (Exception e) { Log.w(TAG, "kindle books", e); kindleLine = "Couldn't ask your PC (" + e.getMessage() + "). It needs your home Wi-Fi and the PC on."; }
+            kindleBusy = false;
+        }, "lb-kindle").start();
+    }
+
+    /** Copies one Kindle book here (once) and opens the share sheet to hand it to the Kindle app. */
+    void sendKindle(String path) {
+        if (kindleBusy) return;
+        PcLink.BookFile f = null;
+        for (PcLink.BookFile x : kindleOnPc) if (x.path.equals(path)) f = x;
+        PcLink l = pcLinkFromPrefs();
+        if (f == null || l == null) return;
+        final PcLink.BookFile ff = f;
+        kindleBusy = true;
+        new Thread(() -> {
+            try {
+                Uri u = BookCopy.kindleCopy(getApplicationContext(), l, ff, line -> kindleLine = line);
+                kindleLine = "Pick Kindle (or Send to Kindle) to put it in your Kindle library. It's also in Download \u203a Loudbook.";
+                try {
+                    org.json.JSONArray a = kindleFiles;
+                    for (int i = 0; i < a.length(); i++) if (a.getJSONObject(i).optString("p").equals(ff.path)) a.getJSONObject(i).put("here", true);
+                } catch (Exception ignored) { }
+                main.post(() -> {
+                    Intent send = new Intent(Intent.ACTION_SEND).setType("application/epub+zip").putExtra(Intent.EXTRA_STREAM, u)
+                        .putExtra(Intent.EXTRA_TITLE, ff.path.substring(ff.path.indexOf('/') + 1)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    send.setClipData(android.content.ClipData.newRawUri("", u));
+                    try { startActivity(Intent.createChooser(send, "Send to Kindle")); }
+                    catch (Exception e) { kindleLine = "No app here takes it (" + e.getMessage() + "). Install Kindle, or open it from Download \u203a Loudbook."; }
+                });
+            } catch (Exception e) { Log.w(TAG, "kindle book", e); kindleLine = "Couldn't copy it (" + e.getMessage() + "). It needs your home Wi-Fi and the PC on."; }
+            kindleBusy = false;
+        }, "lb-kindle").start();
     }
 
     /** The chapter being read, from its copy read ahead, when its page can't be loaded. */
@@ -483,6 +567,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
      */
     private String homeKey = "";
     String homeUrl() { return HOME + "#k=" + homeKey; }
+    String booksUrl() { return BOOKS + "#k=" + homeKey; }
     private boolean onStartPage(String key) { return key != null && !homeKey.isEmpty() && homeKey.equals(key); }
 
     /** Called from the page script. Runs on a WebView thread: hop to the main thread. */
@@ -512,12 +597,50 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 return new JSONObject().put("lastUrl", prefs.getString("lastUrl", ""))
                     .put("lastTitle", prefs.getString("lastTitle", "")).put("lastFiction", prefs.getString("lastFiction", ""))
                     .put("lastPct", prefs.getInt("lastPct", 0)).put("shelf", new org.json.JSONArray(prefs.getString("shelf", "[]")))
+                    .put("books", Books.list(getApplicationContext()).size()).put("paired", !prefs.getString("pcToken", "").isEmpty())
                     .put("news", newsToShow()).toString();
             } catch (Exception e) { return "{}"; }
         }
         @JavascriptInterface public void resume(String key, String url) { if (onStartPage(key)) main.post(() -> { resumeOnLoad = url; web.loadUrl(url); }); }
         /** "What's new" was read: don't show it again until there's something newer. */
         @JavascriptInterface public void newsSeen(String key) { if (onStartPage(key)) prefs.edit().putInt("newsSeen", readAsset("web/new.txt").hashCode()).apply(); }
+        // ---- the audiobook page (web/book.html, opened with the same key)
+        @JavascriptInterface public String books(String key) { return onStartPage(key) ? Books.listJson(getApplicationContext(), prefs) : "[]"; }
+        @JavascriptInterface public String chapter(String key, String book, String file) { return onStartPage(key) ? Books.chapterText(getApplicationContext(), book, file) : ""; }
+        @JavascriptInterface public void bookPlay(String key, String book, int ch, double sec) {
+            if (!onStartPage(key)) return;
+            main.post(() -> {
+                if (svc != null && svc.isPlaying() && !svc.isPaused()) svc.pause();   // (one voice at a time)
+                askNotificationPermission();
+                BookPlayer.play(getApplicationContext(), book, ch, sec);
+            });
+        }
+        @JavascriptInterface public void bookToggle(String key) {
+            if (!onStartPage(key)) return;
+            main.post(() -> {
+                if (!BookPlayer.isPlaying() && svc != null && svc.isPlaying() && !svc.isPaused()) svc.pause();
+                BookPlayer.toggle();
+            });
+        }
+        @JavascriptInterface public void bookSeek(String key, double ms) { if (onStartPage(key)) BookPlayer.seekMs((long) ms); }
+        @JavascriptInterface public void bookJump(String key, int ms) { if (onStartPage(key)) BookPlayer.jump(ms); }
+        @JavascriptInterface public void bookSpeed(String key, double s) {
+            if (!onStartPage(key)) return;
+            prefs.edit().putFloat("bookSpeed", (float) s).apply();
+            BookPlayer.setSpeed((float) s);
+        }
+        @JavascriptInterface public String bookState(String key) { return onStartPage(key) ? BookPlayer.state(getApplicationContext()) : "{}"; }
+        @JavascriptInterface public void bookCopy(String key) { if (onStartPage(key)) main.post(MainActivity.this::copyBooks); }
+        @JavascriptInterface public String copyState(String key) {
+            if (!onStartPage(key)) return "{}";
+            try { return new JSONObject().put("busy", copyBusy).put("line", copyLine).toString(); } catch (Exception e) { return "{}"; }
+        }
+        @JavascriptInterface public void kindleList(String key) { if (onStartPage(key)) main.post(MainActivity.this::listKindle); }
+        @JavascriptInterface public void kindleSend(String key, String path) { if (onStartPage(key)) main.post(() -> sendKindle(path)); }
+        @JavascriptInterface public String kindleState(String key) {
+            if (!onStartPage(key)) return "{}";
+            try { return new JSONObject().put("busy", kindleBusy).put("line", kindleLine).put("files", kindleFiles).toString(); } catch (Exception e) { return "{}"; }
+        }
         /** Takes a story off "Your stories". */
         @JavascriptInterface public void forget(String key, String url) {
             if (!onStartPage(key)) return;
@@ -531,6 +654,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         }
     }
     private String resumeOnLoad = null;
+    private View playerPanel;
 
     private void gotChapter(Chapter ch) {
         // (the browser's own error page, read as if it were a chapter: "This site can't be reached")
@@ -717,6 +841,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         if (svc == null) return;
         askNotificationPermission();
         if (svc.isPlaying() && !svc.isPaused()) { svc.pause(); return; }
+        BookPlayer.pauseIfPlaying();                      // (one voice at a time)
         if (svc.chapter() == null && pageChapter != null) { svc.setChapter(pageChapter, 0, true); return; }
         svc.play();
     }
@@ -1559,6 +1684,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         root.addView(web, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
         LinearLayout player = vbox(dp(14), dp(10));
+        playerPanel = player;
         player.setBackgroundColor(C_PANEL);
         storyText = text(11, C_AMBER, true);
         storyText.setAllCaps(true);

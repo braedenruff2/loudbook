@@ -26,7 +26,7 @@ you pair can use it:
   python loudbook_server.py pair       show a pairing code and wait for the phone
   python loudbook_server.py forget     unpair every phone
 """
-import base64, collections, datetime, hashlib, hmac, http.server, ipaddress, json, os, secrets, socket, ssl, sys
+import base64, collections, datetime, glob, hashlib, hmac, http.server, ipaddress, json, os, secrets, socket, ssl, sys
 import threading, time
 
 os.environ.setdefault("TQDM_DISABLE", "1")       # no progress bars filling the log for every sentence
@@ -798,8 +798,37 @@ class Books:
         return done, total
 
     @classmethod
-    def finished(cls):
-        """[{name, files: [{p: path inside BOOKS, bytes}]}] of every finished chapter (MP3 and its .json), by book."""
+    def kindle_dir(cls, d):
+        """The folder of Kindle books (EPUB) for the book folder d: its job's "kindle" (a folder), or else the Whizzer
+        Library download's Kindle/<the book's title...> folder found beside BOOKS (Desktop\\*\\Whizzer Library\\Kindle)."""
+        for _, j in cls.jobs():
+            if cls.safe(j.get("out") or j.get("title") or "book") != d: continue
+            k = j.get("kindle")
+            if k:
+                k = k if os.path.isabs(k) else os.path.join(BOOKS, k)
+                return k if os.path.isdir(k) else None
+            key = cls.safe(j.get("title") or d).lower()
+            base = os.path.dirname(os.path.abspath(BOOKS))
+            for pat in ("*/Whizzer Library/Kindle", "*/*/Whizzer Library/Kindle"):
+                for root in sorted(glob.glob(os.path.join(glob.escape(base), pat))):
+                    try: names = sorted(os.listdir(root))
+                    except OSError: continue
+                    for n in names:
+                        if cls.safe(n).lower().startswith(key) and os.path.isdir(os.path.join(root, n)): return os.path.join(root, n)
+        return None
+
+    @classmethod
+    def kindle_files(cls, d):
+        """[(file name, full path)] of the EPUBs for book folder d."""
+        k = cls.kindle_dir(d)
+        if not k: return []
+        try: return [(n, os.path.join(k, n)) for n in sorted(os.listdir(k)) if n.lower().endswith(".epub") and os.path.isfile(os.path.join(k, n))]
+        except OSError: return []
+
+    @classmethod
+    def finished(cls, kindle=False):
+        """[{name, files: [{p: path inside BOOKS, bytes}]}] of every finished chapter (MP3 and its .json), by book; with
+        kindle, the book's Kindle books (EPUB) too (asked for apart: older phones copied every file listed)."""
         out = []
         try: dirs = sorted(d for d in os.listdir(BOOKS) if os.path.isdir(os.path.join(BOOKS, d)))
         except OSError: return out
@@ -809,7 +838,10 @@ class Books:
                 full = os.path.join(BOOKS, d, f)
                 if (f.endswith(".mp3") and not f.endswith(".part.mp3")) or (f.endswith(".json") and os.path.exists(full[:-5] + ".mp3")):
                     files.append({"p": d + "/" + f, "bytes": os.path.getsize(full)})
-            if any(x["p"].endswith(".mp3") for x in files): out.append({"name": d, "files": files})
+            if any(x["p"].endswith(".mp3") for x in files):
+                if kindle:
+                    for n, full in cls.kindle_files(d): files.append({"p": d + "/" + n, "bytes": os.path.getsize(full)})
+                out.append({"name": d, "files": files})
         return out
 
     @classmethod
@@ -817,6 +849,9 @@ class Books:
         """The finished file at p (book folder/file name) inside BOOKS, or None (nothing outside it, nothing half-made)."""
         parts = str(p).replace("\\", "/").split("/")
         if len(parts) != 2 or any(not x or x in (".", "..") for x in parts): return None
+        if parts[1].lower().endswith(".epub"):
+            # (a Kindle book: only one listed for that book, from its Kindle folder)
+            return dict(cls.kindle_files(parts[0])).get(parts[1])
         if not (parts[1].endswith(".mp3") or parts[1].endswith(".json")) or ".part" in parts[1]: return None
         f = os.path.join(BOOKS, parts[0], parts[1])
         root = os.path.realpath(BOOKS)
@@ -1094,10 +1129,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                     "bestSpeed": round(b.speed(), 2) if b else 0,
                                     "aheadTotal": a["total"], "aheadWaiting": a["waiting"], "aheadMade": a["made"],
                                     "aheadOdd": a["odd"], "aheadLoading": a["loading"]})
-        if self.path == "/v1/books":
-            # the finished audiobook chapters (for the phone to copy and play with no connection)
+        if self.path == "/v1/books" or self.path == "/v1/books?kindle=1":
+            # the finished audiobook chapters (for the phone to copy and play with no connection), and the Kindle books
             if not self.authed(): return
-            return self.reply(200, {"books": Books.finished()})
+            return self.reply(200, {"books": Books.finished(kindle=self.path.endswith("kindle=1"))})
         if self.path.startswith("/v1/books/get?"):
             if not self.authed(): return
             from urllib.parse import parse_qs
@@ -1105,7 +1140,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not f: return self.reply(404, {"error": "no such file"})
             n = os.path.getsize(f)
             self.send_response(200)
-            self.send_header("Content-Type", "audio/mpeg" if f.endswith(".mp3") else "application/json")
+            self.send_header("Content-Type", "audio/mpeg" if f.endswith(".mp3") else "application/epub+zip" if f.lower().endswith(".epub") else "application/json")
             self.send_header("Content-Length", str(n))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()

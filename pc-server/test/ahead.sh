@@ -10,6 +10,10 @@ mkdir -p "$T/books/text"
 echo '[["First sentence of the book.", "Another one."], ["A new paragraph."]]' > "$T/books/text/1.json"
 echo '[["Chapter two begins here."]]' > "$T/books/text/2.json"
 echo '{"title": "Test Book", "voice": "phone", "out": "Test Book", "chapters": [{"name": "One", "file": "text/1.json"}, {"name": "Two", "file": "text/2.json", "say_title": false}]}' > "$T/books/test.job.json"
+# (a Kindle book beside it, where the Whizzer Library download keeps them: listed only when asked for)
+mkdir -p "$T/Whizzer Library Downloader/Whizzer Library/Kindle/Test Book Rise of Tests"
+head -c 300000 /dev/urandom > "$T/Whizzer Library Downloader/Whizzer Library/Kindle/Test Book Rise of Tests/Test Book 01 - Volume 1.epub"
+echo x > "$T/Whizzer Library Downloader/Whizzer Library/Kindle/Test Book Rise of Tests/notes.txt"
 PY=${PYTHON:-python3}
 javac -nowarn -d "$T/out" app/src/com/loudbook/app/PcLink.java pc-server/test/AheadTest.java || exit 1
 $PY -u pc-server/loudbook_server.py serve --fake > "$T/server.log" 2>&1 &

@@ -1,0 +1,327 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Audiobooks</title>
+<style>
+  [hidden]{display:none!important}
+  :root{--bg:#14120f;--panel:#1e1b17;--line:#2e2a24;--ink:#ede6da;--dim:#a79e90;--amber:#e8aa46;--lit:rgba(232,170,70,.22);--fs:19px}
+  html,body{background:var(--bg);color:var(--ink)}
+  body{margin:0;font:15px/1.5 system-ui,sans-serif;-webkit-tap-highlight-color:transparent}
+  button{font:inherit;color:inherit}
+  h1{font:600 24px/1.2 Georgia,serif;margin:6px 0 4px}
+  h2{font:600 13px/1.2 system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:18px 0 10px}
+  .dim{color:var(--dim)} .small{font-size:13px}
+  #lib{padding:18px 16px 40px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin:0 0 14px}
+  .card b{display:block;font:600 18px/1.3 Georgia,serif}
+  .bar{height:3px;background:var(--line);border-radius:2px;margin:8px 0}.bar i{display:block;height:3px;background:var(--amber);border-radius:2px}
+  .go{display:block;width:100%;text-align:left;background:var(--bg);border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:10px;padding:10px 12px;margin:10px 0 6px}
+  .go small{display:block;color:var(--amber);letter-spacing:.08em;text-transform:uppercase;font-size:11px}
+  .btn{background:var(--amber);color:#1b1712;border:0;border-radius:18px;padding:8px 16px;font-weight:600;margin:4px 6px 4px 0}
+  .btn.ghost{background:none;color:var(--ink);border:1px solid var(--line)}
+  .btn:disabled{opacity:.5}
+  .chs{margin-top:8px}
+  .ch{display:flex;gap:10px;align-items:baseline;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--line);padding:10px 2px}
+  .ch span{flex:1;min-width:0}.ch em{font-style:normal;color:var(--dim);font-size:12px;white-space:nowrap}
+  .ch.cur span{color:var(--amber)} .ch.noaudio{opacity:.45}
+  .msg{color:var(--dim);font-size:13px;margin:6px 0}
+  /* reader */
+  #reader{padding:0 0 170px}
+  #rhead{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:6px;background:var(--panel);border-bottom:1px solid var(--line);padding:6px 8px}
+  #rhead .t{flex:1;min-width:0}
+  #rhead .t small{display:block;color:var(--amber);letter-spacing:.08em;text-transform:uppercase;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #rhead .t b{display:block;font:600 15px/1.25 Georgia,serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .icon{background:none;border:0;color:var(--dim);font-size:20px;min-width:40px;min-height:40px;border-radius:20px}
+  #text{padding:8px 18px;font:var(--fs)/1.65 Georgia,'Noto Serif',serif;max-width:720px;margin:0 auto;overflow-wrap:break-word}
+  #text p{margin:0 0 .8em}
+  #text .s{border-radius:3px;transition:background-color .15s}
+  #text .s.lit{background:var(--lit);box-shadow:0 0 0 2px var(--lit)}
+  #ctl{position:fixed;left:0;right:0;bottom:0;z-index:3;background:var(--panel);border-top:1px solid var(--line);padding:8px 12px 12px}
+  #seek{width:100%;accent-color:var(--amber);margin:0}
+  .times{display:flex;justify-content:space-between;color:var(--dim);font-size:12px;margin:0 2px 4px}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:4px}
+  .row .icon{color:var(--ink);font-size:18px;flex:1}
+  #play{flex:0 0 60px;width:60px;height:60px;border-radius:30px;background:var(--amber);color:#1b1712;border:0;font-size:24px}
+  #follow{position:fixed;right:14px;bottom:150px;z-index:3;background:var(--amber);color:#1b1712;border:0;border-radius:18px;padding:7px 14px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+  #err{color:#f0a08a;font-size:13px;margin:0 2px 4px}
+</style></head><body>
+
+<div id="lib">
+  <h1>Audiobooks</h1>
+  <p class="dim small" id="libTip">Chapters your PC recorded, with their text. They play with no connection.</p>
+  <div id="books"></div>
+  <div class="card" id="getCard">
+    <b>From your PC</b>
+    <p class="msg" id="copyMsg">Copies the chapters your PC has finished recording (on your home Wi-Fi). Only new ones are copied.</p>
+    <button class="btn" id="copyBtn">Get chapters from my PC</button>
+    <h2 id="kindleH" hidden>Kindle books</h2>
+    <p class="msg" id="kindleMsg" hidden></p>
+    <div id="kindleList"></div>
+    <button class="btn ghost" id="kindleBtn">Kindle books on my PC</button>
+  </div>
+</div>
+
+<div id="reader" hidden>
+  <div id="rhead">
+    <button class="icon" id="backBtn" aria-label="All chapters">&#x2190;</button>
+    <div class="t"><small id="rBook"></small><b id="rTitle"></b></div>
+    <button class="icon" id="smaller" aria-label="Smaller text">A&#x2212;</button>
+    <button class="icon" id="bigger" aria-label="Bigger text">A+</button>
+  </div>
+  <div id="text"></div>
+  <button id="follow" hidden>Back to the voice</button>
+  <div id="ctl">
+    <div id="err" hidden></div>
+    <input type="range" id="seek" min="0" max="1000" value="0" aria-label="Where in the chapter">
+    <div class="times"><span id="tNow">0:00</span><span id="tLeft"></span></div>
+    <div class="row">
+      <button class="icon" id="prevCh" aria-label="Previous chapter">&#x23EE;</button>
+      <button class="icon" id="back15" aria-label="Back 15 seconds">&#x21BA;15</button>
+      <button id="play" aria-label="Play">&#x25B6;</button>
+      <button class="icon" id="fwd15" aria-label="Forward 15 seconds">15&#x21BB;</button>
+      <button class="icon" id="nextCh" aria-label="Next chapter">&#x23ED;</button>
+      <button class="icon" id="speed" aria-label="Speed">1&#xD7;</button>
+    </div>
+  </div>
+</div>
+
+<script src="book.js"></script>
+<script>
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const N = window.LoudbookNative;
+  const K = LBBook.route(location.hash).k || '';
+  const call = (name, ...a) => { try { return N && N[name] ? N[name](K, ...a) : null; } catch (e) { return null; } };
+  const json = (s, d) => { try { return s ? JSON.parse(s) : d; } catch (e) { return d; } };
+  let books = [];
+  let shown = null;          // {book, file, idx, sentences, spans} in the reader
+  let lit = -1, follow = true, touchedAt = 0, dragging = false, last = {};
+  const store = { get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } },
+                  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { } } };
+  document.documentElement.style.setProperty('--fs', store.get('lbFs', '19') + 'px');
+
+  // ------------------------------------------------------------ library
+  function loadBooks() { books = json(call('books'), []); }
+  function renderLib() {
+    loadBooks();
+    const box = $('books'); box.textContent = '';
+    if (!books.length) {
+      const p = document.createElement('p'); p.className = 'msg';
+      p.textContent = 'No audiobooks on this phone yet. Get the chapters your PC has recorded below.';
+      box.appendChild(p);
+    }
+    const st = json(call('bookState'), {});
+    for (const b of books) {
+      const card = document.createElement('div'); card.className = 'card';
+      const name = document.createElement('b'); name.textContent = b.name;
+      const withAudio = b.chapters.filter(c => c.audio).length;
+      const info = document.createElement('div'); info.className = 'dim small';
+      const total = b.chapters.reduce((t, c) => t + (c.seconds || 0), 0);
+      info.textContent = b.chapters.length + ' chapters · ' + LBBook.clock(total) + (withAudio < b.chapters.length ? ' · ' + (b.chapters.length - withAudio) + ' without their recording' : '');
+      const bar = document.createElement('div'); bar.className = 'bar';
+      const fill = document.createElement('i'); fill.style.width = Math.max(1, Math.round(LBBook.progress(b) * 100)) + '%'; bar.appendChild(fill);
+      card.append(name, info, bar);
+      const atIdx = b.at ? b.chapters.findIndex(c => c.file === b.at.file) : -1;
+      const go = document.createElement('button'); go.className = 'go';
+      const gs = document.createElement('small'); gs.textContent = atIdx >= 0 ? 'Continue listening' : 'Start listening';
+      const gt = document.createElement('span');
+      const ci = Math.max(0, atIdx);
+      gt.textContent = b.chapters[ci].title + (atIdx >= 0 && b.at.sec > 5 ? ' · ' + LBBook.clock(b.at.sec) : '');
+      go.append(gs, gt);
+      go.onclick = () => { openChapter(b.name, b.chapters[ci].file, true); };
+      card.appendChild(go);
+      const more = document.createElement('button'); more.className = 'btn ghost'; more.textContent = 'All chapters';
+      const list = document.createElement('div'); list.className = 'chs'; list.hidden = store.get('lbOpen:' + b.name, '') !== '1';
+      more.onclick = () => { list.hidden = !list.hidden; store.set('lbOpen:' + b.name, list.hidden ? '' : '1'); };
+      b.chapters.forEach((c, i) => {
+        const r = document.createElement('button');
+        r.className = 'ch' + (i === atIdx ? ' cur' : '') + (c.audio ? '' : ' noaudio');
+        const t = document.createElement('span'); t.textContent = c.title;
+        const d = document.createElement('em'); d.textContent = c.audio ? LBBook.clock(c.seconds) : 'not copied';
+        r.append(t, d);
+        r.onclick = () => openChapter(b.name, c.file, i === atIdx);
+        list.appendChild(r);
+      });
+      card.append(more, list);
+      if (st.book === b.name && st.playing) { gs.textContent = 'Playing now'; }
+      box.appendChild(card);
+    }
+  }
+
+  // ------------------------------------------------------------ copying from the PC
+  $('copyBtn').onclick = () => { call('bookCopy'); watchCopy(); };
+  function watchCopy() {
+    const s = json(call('copyState'), {});
+    if (s.line) $('copyMsg').textContent = s.line;
+    $('copyBtn').disabled = !!s.busy;
+    if (s.busy) setTimeout(watchCopy, 500);
+    else if (s.line) renderLib();
+  }
+  $('kindleBtn').onclick = () => { call('kindleList'); watchKindle(); };
+  function watchKindle() {
+    const s = json(call('kindleState'), {});
+    $('kindleH').hidden = false; $('kindleMsg').hidden = !s.line; $('kindleMsg').textContent = s.line || '';
+    $('kindleBtn').disabled = !!s.busy;
+    const box = $('kindleList'); box.textContent = '';
+    for (const f of s.files || []) {
+      const r = document.createElement('button'); r.className = 'ch';
+      const t = document.createElement('span'); t.textContent = f.name;
+      const d = document.createElement('em'); d.textContent = f.here ? 'Send to Kindle' : (Math.round(f.bytes / 1e5) / 10) + ' MB';
+      r.append(t, d);
+      r.onclick = () => { call('kindleSend', f.p); watchKindle(); };
+      box.appendChild(r);
+    }
+    if (s.busy) setTimeout(watchKindle, 500);
+  }
+
+  // ------------------------------------------------------------ reader
+  function openChapter(book, file, resume) {
+    const want = LBBook.hash(K, book, file);
+    if (location.hash !== want) { pendingPlay = { book, file, resume }; location.hash = want; return; }
+    pendingPlay = { book, file, resume }; route();
+  }
+  let pendingPlay = null;
+
+  function showChapter(book, file) {
+    loadBooks();
+    const b = books.find(x => x.name === book);
+    const idx = b ? b.chapters.findIndex(c => c.file === file) : -1;
+    if (idx < 0) { location.hash = LBBook.hash(K); return false; }
+    const data = json(call('chapter', book, file), null);
+    const sentences = data && data.sentences || [];
+    const box = $('text'); box.textContent = '';
+    const spans = [];
+    for (const para of LBBook.paragraphs(sentences)) {
+      const p = document.createElement('p');
+      para.forEach((i, j) => {
+        const s = document.createElement('span'); s.className = 's'; s.dataset.i = i;
+        s.textContent = sentences[i].text; spans[i] = s;
+        p.appendChild(s); if (j < para.length - 1) p.appendChild(document.createTextNode(' '));
+      });
+      box.appendChild(p);
+    }
+    if (!sentences.length) { const p = document.createElement('p'); p.className = 'dim'; p.textContent = 'This chapter has no text.'; box.appendChild(p); }
+    shown = { book, file, idx, sentences, spans, b, seconds: data && data.seconds || b.chapters[idx].seconds };
+    $('rBook').textContent = book + ' · ' + (idx + 1) + ' of ' + b.chapters.length;
+    $('rTitle').textContent = b.chapters[idx].title;
+    document.title = b.chapters[idx].title;
+    lit = -1; follow = true; $('follow').hidden = true;
+    window.scrollTo(0, 0);
+    return true;
+  }
+
+  function route() {
+    const r = LBBook.route(location.hash);
+    if (r.b && r.f) {
+      $('lib').hidden = true; $('reader').hidden = false;
+      if (!shown || shown.book !== r.b || shown.file !== r.f) { if (!showChapter(r.b, r.f)) return; }
+      const p = pendingPlay; pendingPlay = null;
+      if (p && p.book === r.b && p.file === r.f) {
+        const st = json(call('bookState'), {});
+        if (!(st.book === p.book && st.file === p.file && st.playing)) call('bookPlay', p.book, shown.idx, p.resume ? -1 : 0);
+      }
+      tick();
+    } else {
+      $('reader').hidden = true; $('lib').hidden = false; shown = null; renderLib();
+    }
+  }
+  window.addEventListener('hashchange', route);
+
+  // tap a sentence: the voice goes there
+  $('text').addEventListener('click', (e) => {
+    const s = e.target.closest('.s'); if (!s || !shown) return;
+    const st = json(call('bookState'), {});
+    const sent = shown.sentences[+s.dataset.i];
+    if (st.book === shown.book && st.file === shown.file) { call('bookSeek', Math.round(sent.start * 1000)); if (!st.playing) call('bookToggle'); }
+    else call('bookPlay', shown.book, shown.idx, sent.start);
+    follow = true; $('follow').hidden = true;
+    setTimeout(tick, 120);
+  });
+  // scrolling by hand stops the page following the voice for a while (a button brings it back)
+  const touched = () => { touchedAt = Date.now(); if (follow && lit >= 0) { follow = false; $('follow').hidden = false; } };
+  window.addEventListener('touchmove', touched, { passive: true });
+  window.addEventListener('wheel', touched, { passive: true });
+  $('follow').onclick = () => { follow = true; $('follow').hidden = true; scrollToLit(true); };
+
+  function scrollToLit(force) {
+    if (lit < 0 || !shown || !shown.spans[lit]) return;
+    const r = shown.spans[lit].getBoundingClientRect(), h = window.innerHeight;
+    if (force || r.top < 70 || r.bottom > h - 190) window.scrollBy({ top: r.top - h * 0.3, behavior: force ? 'auto' : 'smooth' });
+  }
+
+  $('backBtn').onclick = () => { location.hash = LBBook.hash(K); };
+  $('play').onclick = () => {
+    const st = json(call('bookState'), {});
+    if (shown && !(st.book === shown.book && st.file === shown.file)) call('bookPlay', shown.book, shown.idx, -1);
+    else call('bookToggle');
+    setTimeout(tick, 150);
+  };
+  $('back15').onclick = () => { call('bookJump', -15000); setTimeout(tick, 120); };
+  $('fwd15').onclick = () => { call('bookJump', 15000); setTimeout(tick, 120); };
+  const step = (d) => { if (!shown) return; const c = shown.b.chapters[shown.idx + d]; if (c) openChapter(shown.book, c.file, false); };
+  $('prevCh').onclick = () => step(-1);
+  $('nextCh').onclick = () => step(1);
+  const SPEEDS = [0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5];
+  $('speed').onclick = () => {
+    const st = json(call('bookState'), {}); const s = st.speed || 1;
+    const nx = SPEEDS.find(x => x > s + 0.01) || SPEEDS[0];
+    call('bookSpeed', nx); $('speed').textContent = nx + '×';
+  };
+  const fs = (d) => { const v = Math.max(14, Math.min(30, (+store.get('lbFs', '19')) + d)); store.set('lbFs', String(v)); document.documentElement.style.setProperty('--fs', v + 'px'); scrollToLit(true); };
+  $('smaller').onclick = () => fs(-1);
+  $('bigger').onclick = () => fs(1);
+  $('seek').addEventListener('input', () => { dragging = true; const d = last.dur || 0; $('tNow').textContent = LBBook.clock(d / 1000 * $('seek').value / 1000); });
+  $('seek').addEventListener('change', () => {
+    dragging = false;
+    if (!shown) return;
+    const st = json(call('bookState'), {});
+    const sec = (st.dur || shown.seconds * 1000) / 1000 * $('seek').value / 1000;
+    if (st.book === shown.book && st.file === shown.file) call('bookSeek', Math.round(sec * 1000));
+    else call('bookPlay', shown.book, shown.idx, sec);
+    follow = true; $('follow').hidden = true;
+    setTimeout(tick, 150);
+  });
+
+  // ------------------------------------------------------------ following the voice
+  let timer = 0;
+  function tick() {
+    clearTimeout(timer);
+    if (!shown || $('reader').hidden) return;
+    const st = json(call('bookState'), {}); last = st;
+    const mine = st.book === shown.book && st.file === shown.file;
+    // the player went on to the next chapter by itself: the page goes with it (unless it's been scrolled by hand)
+    if (!mine && st.book === shown.book && st.file && st.playing && follow && Date.now() - touchedAt > 3000) {
+      location.hash = LBBook.hash(K, st.book, st.file);
+      timer = setTimeout(tick, 300);
+      return;
+    }
+    const playing = mine && st.playing;
+    $('play').textContent = playing ? '❚❚' : '▶';
+    $('play').setAttribute('aria-label', playing ? 'Pause' : 'Play');
+    $('speed').textContent = (st.speed || 1) + '×';
+    $('err').hidden = !st.error; $('err').textContent = st.error || '';
+    const dur = mine ? st.dur : shown.seconds * 1000;
+    let ms = mine ? st.ms : 0;
+    if (!mine) { const b = books.find(x => x.name === shown.book); if (b && b.at && b.at.file === shown.file) ms = b.at.sec * 1000; }
+    if (!dragging) {
+      $('seek').value = dur > 0 ? Math.round(ms / dur * 1000) : 0;
+      $('tNow').textContent = LBBook.clock(ms / 1000);
+      $('tLeft').textContent = '−' + LBBook.clock(Math.max(0, dur - ms) / 1000);
+    }
+    const i = LBBook.at(shown.sentences, ms / 1000);
+    if (i !== lit) {
+      if (lit >= 0 && shown.spans[lit]) shown.spans[lit].classList.remove('lit');
+      lit = i;
+      if (lit >= 0 && shown.spans[lit]) shown.spans[lit].classList.add('lit');
+      if (follow) scrollToLit(false);
+    }
+    if (!follow && Date.now() - touchedAt > 20000 && playing) { follow = true; $('follow').hidden = true; scrollToLit(false); }
+    timer = setTimeout(tick, playing ? 200 : 700);
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { if (shown) tick(); else renderLib(); } });
+
+  route();
+})();
+</script>
+</body></html>

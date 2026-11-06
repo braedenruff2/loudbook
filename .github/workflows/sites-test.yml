@@ -5,7 +5,7 @@ name: Sites test
 on:
   push:
     branches: [main]
-    paths: ['app/assets/web/loudbook.js', 'test/sites/**', '.github/workflows/sites-test.yml']
+    paths: ['app/assets/web/loudbook.js', 'app/assets/web/book.*', 'test/sites/**', 'test/book/**', '.github/workflows/sites-test.yml']
   workflow_dispatch:
 jobs:
   sites:
@@ -23,3 +23,4 @@ jobs:
           NODE_PATH=/tmp/js/node_modules node test/sites/offline.js
           node test/sites/stale.js
           NODE_PATH=/tmp/js/node_modules node test/sites/marks.js
+          NODE_PATH=/tmp/js/node_modules node test/book/run.js
