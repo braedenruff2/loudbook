@@ -1711,9 +1711,11 @@ public class ReaderService extends Service {
                     filling = byPhone;
                 }
                 if (c != null && firstSoundFor != myGen) logFirstSound(myGen, gem, byPhone);
+                float[] whole = null; long cutAt = 0;          // (a clip cut to start mid-sentence: timed on all of it, see below)
                 if (c != null && offsetIdx >= 0) {
                     // (the highlight was moved by hand: on from where the voice was, not the sentence's start)
                     if (offsetIdx == next && gem && !byPhone && offsetSamples > 0 && offsetSamples < c.samples.length - c.rate / 10) {
+                        whole = c.samples; cutAt = offsetSamples;
                         c = new Voice.Clip(java.util.Arrays.copyOfRange(c.samples, (int) offsetSamples, c.samples.length), c.rate, c.madeAt, c.ms);
                         clipOffset.put(next, offsetSamples);
                     } else clipOffset.remove(next);
@@ -1735,7 +1737,10 @@ public class ReaderService extends Service {
                     AudioTrack t = ensureTrack(c.rate);
                     current = c;
                     try {
-                        SpeechTiming st = SpeechTiming.of(ch.chunks.get(next).text, ch.chunks.get(next).say, c.samples, c.rate);
+                        // (a cut clip is timed on the whole recording of the sentence, then shifted: timing the cut part alone
+                        // spread the whole sentence's text over its end, so the mark restarted at the first word)
+                        SpeechTiming st = SpeechTiming.of(ch.chunks.get(next).text, ch.chunks.get(next).say, whole != null ? whole : c.samples, c.rate);
+                        if (cutAt > 0) st = st.from(cutAt);
                         timings.put(next, st);
                         Log.i("LoudbookTest", "timing " + next + ": speech " + st.speechStart * 1000 / c.rate + "-" + st.speechEnd * 1000 / c.rate + " ms of "
                             + c.samples.length * 1000L / c.rate + ", " + st.matched + " of " + SpeechTiming.breaks(ch.chunks.get(next).text).size() + " pauses matched");

@@ -296,6 +296,13 @@ public class UnitTest {
             check("timing: at 'Seven' (after the full stop's pause), 22 of 32", Math.round(st.fracAt(wordStart[6] + 10) * 32), 22);
             check("timing: in the trailing silence, all said", st.fracAt(sm.length - 10), 1.0f);
             check("timing: the reverse, where 'four' starts", Math.abs(st.frameAt(11 / 32f) - wordStart[3]) < rate / 20, true);
+            // a clip cut to start at 'four' (the highlight moved by hand on Gemini): frame 0 of what plays is 'four', not 'One'
+            long cut = wordStart[3];
+            SpeechTiming sc = st.from(cut);
+            check("timing, cut clip: at its first frame, 11 of 32 letters said", Math.round(sc.fracAt(10) * 32), 11);
+            check("timing, cut clip: at 'Seven', 22 of 32", Math.round(sc.fracAt(wordStart[6] - cut + 10) * 32), 22);
+            check("timing, cut clip: where 'Seven' starts", Math.abs(sc.frameAt(22 / 32f) - (wordStart[6] - cut)) < rate / 20, true);
+            check("timing, cut clip: the original is unchanged", Math.round(st.fracAt(wordStart[0]) * 100), 0);
         }
         {   // words said longer than they're written ("Mr." -> "Mister", "12" -> "twelve") take their share of the time
             int rate = 24000;

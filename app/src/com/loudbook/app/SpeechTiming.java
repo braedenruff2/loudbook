@@ -25,8 +25,19 @@ final class SpeechTiming {
         this.at = at; this.frac = frac; speechStart = s; speechEnd = e; this.matched = matched;
     }
 
+    /** Frames of the clip cut off its start before it played (see from()). */
+    private long shift;
+
     /** The fraction of the text's letters said by a frame of the clip (0..1). */
-    float fracAt(long frame) { return Math.max(0f, Math.min(1f, toText(saidAt(frame)))); }   // (float rounding in the said-text map gave 1.0000001)
+    float fracAt(long frame) { return Math.max(0f, Math.min(1f, toText(saidAt(frame + shift)))); }
+
+    /** The same timing for the clip with its first frames cut off (the highlight moved by hand into the middle of a sentence:
+     *  playback goes on from there, and frame 0 of what plays is frame "frames" of the whole clip). */
+    SpeechTiming from(long frames) {
+        SpeechTiming t = new SpeechTiming(at, frac, speechStart, speechEnd, matched);
+        t.said2text = said2text; t.shift = shift + Math.max(0, frames);
+        return t;
+    }   // (float rounding in the said-text map gave 1.0000001)
 
     private float toText(float w) {
         float[][] m = said2text;
@@ -64,7 +75,8 @@ final class SpeechTiming {
     }
 
     /** The frame where the voice gets to a fraction of the text's letters (the reverse of fracAt). */
-    long frameAt(float t) {
+    long frameAt(float t) { return wholeFrameAt(t) - shift; }
+    private long wholeFrameAt(float t) {
         float f = fromText(said2text, t);
         if (f <= frac[0]) return at[0];
         for (int i = 1; i < at.length; i++) {
