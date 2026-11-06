@@ -177,7 +177,8 @@ final class InkLayout {
             if (Math.abs(nk - k) < k * 0.02) break;
             k = nk;
         }
-        if (f.matched < Math.max(2, n * 0.6) || f.fitSum / f.matched > 0.35) return null;   // didn't line up: don't trust it
+        // (one word of text and one of ink, "Epilogue" alone on its page: that one is enough)
+        if (f.matched < (n == 1 && m == 1 ? 1 : Math.max(2, n * 0.6)) || f.fitSum / f.matched > 0.35) return null;   // didn't line up: don't trust it
         List<float[][]> out = new ArrayList<>();
         for (String t : texts) out.add(new float[t.length()][]);
         boolean[] any = new boolean[texts.size()];
