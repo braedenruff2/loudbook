@@ -236,6 +236,8 @@ if (!window.LB) {
     {
       id: 'ffn', name: 'FanFiction.net', hosts: /(^|\.)(fanfiction\.net|fictionpress\.com)$/,
       roots: (doc) => [q(doc, '#storytext')],
+      // (authors' notes and disclaimers sit in the chapter text itself: "A/N: ...", "Disclaimer: I don't own...")
+      notes: true,
       fiction: (doc) => txt(q(doc, '#profile_top b.xcontrast_txt, #profile_top b')),
       title: (doc) => {
         const o = q(doc, '#chap_select option[selected], select#chap_select option:checked');
@@ -386,6 +388,13 @@ if (!window.LB) {
       const head = site && site.postTitle ? site.postTitle(root) : '';
       if (head && roots.length > 1) blocks.push({ el: root, text: head, shared: true, base: -1, heading: true });
       blocks.push(...blocksOf(root, isHidden, site && site.skip, !!(site && site.lines), site && site.skipText, !site));
+    }
+    // the author's notes at the start and end of the chapter text (a site with notes: true)
+    if (site && site.notes) {
+      const NOTE = /^\W{0,3}(?:a\/n\b|(?:author'?s?|authors?)\s+notes?\b|disclaimer\b|note\s*:)/i, AN = /^\W{0,3}AN\s*:/;
+      const note = (b) => NOTE.test(b.text) || AN.test(b.text);
+      while (blocks.length > 1 && note(blocks[0])) blocks.shift();
+      while (blocks.length > 1 && note(blocks[blocks.length - 1])) blocks.pop();
     }
     const nav = (dir) => {
       if (site && site[dir]) { const v = site[dir](doc, url); if (v !== undefined) return v; }

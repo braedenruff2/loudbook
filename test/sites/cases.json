@@ -69,6 +69,21 @@
   "prev": "https://www.fanfiction.net/s/777/1/Quiet-Harbor"
  },
  {
+  "page": "ffn-notes.html",
+  "url": "https://www.fanfiction.net/s/777/3/Quiet-Harbor",
+  "site": "ffn",
+  "title": "Storm",
+  "count": 2,
+  "first": "The storm broke over the harbor at noon.",
+  "last": "Note how the boats strained at their ropes, Harry thought.",
+  "not": [
+   "Disclaimer",
+   "A/N",
+   "review"
+  ],
+  "next": null
+ },
+ {
   "page": "xenforo.html",
   "url": "https://forums.spacebattles.com/threads/steel-harvest.99/reader/page-2",
   "site": "xenforo",
