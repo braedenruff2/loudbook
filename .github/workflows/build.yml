@@ -35,6 +35,8 @@ jobs:
           java -cp net-out com.loudbook.app.NetTest
           javac -nowarn -d gb-out -cp "$ANDROID_JAR" -sourcepath app/src:test/unit test/unit/com/loudbook/app/GeminiBookTest.java
           java -cp gb-out:"$ANDROID_JAR" com.loudbook.app.GeminiBookTest
+          python3 -m pip install --quiet --break-system-packages cryptography numpy
+          bash pc-server/test/ahead.sh
       - name: Build the APK
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}

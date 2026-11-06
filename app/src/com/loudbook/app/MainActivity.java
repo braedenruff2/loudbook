@@ -1323,12 +1323,13 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         Switch pcOn = toggle("Read with my PC when it's on", prefs.getBoolean("pcOn", false), null);
         box.addView(pcOn);
         Spinner pcStyle = new Spinner(this);
-        String[] psl = {"PC voice: natural (graphics card)", "PC voice: Kokoro (same as the phone)"};
+        String[] psl = {"PC voice: natural (graphics card)", "PC voice: Kokoro (same as the phone)", "PC voice: best quality (the PC records chapters ahead)"};
+        String[] pse = {"natural", "kokoro", "best"};
         pcStyle.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, psl));
-        pcStyle.setSelection("kokoro".equals(prefs.getString("pcEngine", "natural")) ? 1 : 0);
+        pcStyle.setSelection(Math.max(0, java.util.Arrays.asList(pse).indexOf(prefs.getString("pcEngine", "natural"))));
         pcStyle.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(android.widget.AdapterView<?> p, View v, int i, long id) {
-                String e = i == 1 ? "kokoro" : "natural";
+                String e = pse[Math.max(0, Math.min(pse.length - 1, i))];
                 if (!e.equals(prefs.getString("pcEngine", "natural"))) { prefs.edit().putString("pcEngine", e).apply(); if (svc != null && svc.isPlaying()) svc.seek(svc.pos()); }
             }
             @Override public void onNothingSelected(android.widget.AdapterView<?> p) { }
@@ -1408,11 +1409,25 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             String nat = hh == null ? "" : hh.natural.isEmpty() ? " It has no natural voice (needs an NVIDIA graphics card), so it reads with Kokoro."
                 : hh.naturalOk ? " Natural voice: " + hh.natural + (hh.naturalSpeed > 0 ? String.format(java.util.Locale.US, ", %.1f\u00d7 faster than reading.", hh.naturalSpeed) : ".")
                 : " Its natural voice is too slow on that graphics card, so it reads with Kokoro.";
+            if (hh != null && "best".equals(prefs.getString("pcEngine", "natural"))) {
+                // (best quality: the full Chatterbox model records the next chapters ahead; what isn't ready yet is read live)
+                nat = hh.best.isEmpty() ? " It has no natural voice (needs an NVIDIA graphics card), so it reads with Kokoro."
+                    : hh.aheadLoading ? " Loading the best-quality voice on the PC…"
+                    : hh.aheadTotal == 0 ? " Best quality: the PC records the chapters ahead once reading starts."
+                    : String.format(java.util.Locale.US, " Best quality: %d of the next %d sentences recorded%s.",
+                        Math.max(0, hh.aheadTotal - hh.aheadWaiting), hh.aheadTotal,
+                        hh.bestSpeed > 0 ? String.format(java.util.Locale.US, " (%.1f\u00d7 reading speed)", hh.bestSpeed) : "")
+                      + (hh.aheadWaiting > 0 ? " Sentences not recorded yet are read live." : "");
+            }
             String where = v == null ? "" : v.pcOk ? "Reading on your PC now." + nat : v.pcError.length() > 0 ? "Can't reach it right now (" + v.pcError + "), so the phone reads." : "";
             pcInfo.setText(!paired ? "Run \u201cSet up PC voice.bat\u201d on your PC (in the Loudbook-android folder), then pair here with the code it shows. Works on your home Wi-Fi; elsewhere the phone reads as usual."
                 : "Paired with " + prefs.getString("pcName", "your PC") + " (" + prefs.getString("pcHost", "") + "). " + (prefs.getBoolean("pcOn", false) ? where : "Off: the phone reads."));
         };
         showPc.run();
+        if (svc != null && svc.voice() != null && "best".equals(prefs.getString("pcEngine", "natural")) && prefs.getBoolean("pcOn", false)) {
+            Voice vv = svc.voice();                              // (fresh numbers for how far ahead the PC is)
+            new Thread(() -> { vv.checkPc(); main.post(showPc); }, "lb-pc-health").start();
+        }
         pcOn.setOnCheckedChangeListener((b, on) -> { prefs.edit().putBoolean("pcOn", on).apply(); if (svc != null) svc.pcChanged(); main.postDelayed(showPc, 3500); showPc.run(); });
         pcPair.setOnClickListener(v -> pairPc(showPc));
         pcForget.setOnClickListener(v -> {

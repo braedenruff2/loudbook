@@ -53,6 +53,9 @@ final class PcLink {
     /** What the PC has: its Kokoro, and the natural voice if it has a graphics card for it. */
     static final class Health {
         final String engine, natural; final boolean naturalOk; final float naturalSpeed;
+        /** The full Chatterbox model ("" if the PC can't run it, "not loaded yet" until something asks for it), and the
+         *  sentences it's making ahead: in the phone's last list, still to make, made so far. */
+        String best = ""; float bestSpeed; int aheadTotal, aheadWaiting, aheadMade; boolean aheadLoading;
         Health(String e, String n, boolean ok, float sp) { engine = e; natural = n; naturalOk = ok; naturalSpeed = sp; }
     }
 
@@ -63,8 +66,41 @@ final class PcLink {
         c.setRequestProperty("Authorization", "Bearer " + token);
         String body = readText(c);
         String n = str(body, "natural");
-        return new Health(str(body, "engine"), n == null ? "" : n, body.matches("(?s).*\"naturalOk\"\\s*:\\s*true.*"),
+        Health h = new Health(str(body, "engine"), n == null ? "" : n, body.matches("(?s).*\"naturalOk\"\\s*:\\s*true.*"),
             Float.parseFloat(num(body, "naturalSpeed")));
+        String b = str(body, "best");
+        h.best = b == null ? "" : b;
+        try {
+            h.bestSpeed = Float.parseFloat(num(body, "bestSpeed"));
+            h.aheadTotal = (int) Float.parseFloat(num(body, "aheadTotal"));
+            h.aheadWaiting = (int) Float.parseFloat(num(body, "aheadWaiting"));
+            h.aheadMade = (int) Float.parseFloat(num(body, "aheadMade"));
+        } catch (NumberFormatException ignored) { }
+        h.aheadLoading = body.matches("(?s).*\"aheadLoading\"\\s*:\\s*true.*");
+        return h;
+    }
+
+    /**
+     * The sentences the phone will read next ({text, text respelled for Kokoro or null, speaker number} each, in reading
+     * order), for the PC to make ahead with its best voice; this list replaces the last one. voice: a recorded voice's id, or
+     * null. Returns {sentences, already made}.
+     */
+    int[] ahead(List<String[]> items, String voice, int timeoutMs) throws IOException {
+        HttpsURLConnection c = open("/v1/ahead", fp, timeoutMs);
+        c.setRequestProperty("Authorization", "Bearer " + token);
+        StringBuilder b = new StringBuilder("{\"items\":[");
+        for (int i = 0; i < items.size(); i++) {
+            String[] x = items.get(i);
+            if (i > 0) b.append(',');
+            b.append('[').append(quote(x[0])).append(',').append(x[1] == null || x[1].equals(x[0]) ? "null" : quote(x[1]))
+             .append(',').append(x[2]).append(']');
+        }
+        b.append(']');
+        if (voice != null && !voice.isEmpty()) b.append(",\"voice\":").append(quote(voice));
+        b.append('}');
+        post(c, b.toString().getBytes(StandardCharsets.UTF_8));
+        String r = readText(c);
+        return new int[]{(int) Float.parseFloat(num(r, "total")), (int) Float.parseFloat(num(r, "ready"))};
     }
 
     /** engine: "natural" for the graphics-card voice when the PC has it, otherwise Kokoro. */
@@ -222,6 +258,9 @@ final class PcLink {
         c.setReadTimeout(timeoutMs);
         c.setUseCaches(false);
         c.setInstanceFollowRedirects(false);
+        // (each request has its own pinned socket factory, so a kept-alive connection is never used again: it only held one
+        // of the PC's 24 connection slots until it timed out, and five requests a second ran the PC out of them)
+        c.setRequestProperty("Connection", "close");
         return c;
     }
 

@@ -12,6 +12,11 @@ you pair can use it:
   * It only answers devices on your home network (private addresses, plus Tailscale's range),
     limits request sizes and rates, and never logs what's being read.
 
+  Best quality (the phone's setting "PC voice: best quality"): the phone sends the chapter it's reading and the next
+  ones; the PC records every sentence ahead with the full Chatterbox model (each up to 3 times, keeping a take of a
+  believable length), keeps them in its own folder (LOUDBOOK_AHEAD_GB, 4 GB by default, oldest dropped first) and
+  answers from there. Sentences not made yet are read live, as before.
+
   python loudbook_server.py serve      run the server (the setup script starts it at log-on)
   python loudbook_server.py pair       show a pairing code and wait for the phone
   python loudbook_server.py forget     unpair every phone
@@ -27,6 +32,8 @@ DISCOVERY_PORT = PORT + 1
 MAX_BODY = 16 * 1024
 MAX_TEXT = 2000
 MAX_VOICE = 6 * 1024 * 1024          # a recorded voice: about a minute of speech, as base64
+MAX_AHEAD = 2 * 1024 * 1024          # a list of sentences to make ahead: a few chapters
+MAX_AHEAD_ITEMS = 8000
 PAIR_MINUTES = 10
 PAIR_TRIES = 5
 STATE = os.environ.get("LOUDBOOK_STATE") or os.path.join(
@@ -252,23 +259,25 @@ class NaturalEngine:
     """Chatterbox-Turbo (Resemble AI, MIT licence) on the graphics card: more natural, expressive
     reading. It copies each Kokoro voice from a short reference clip, so voice choices carry over.
     It doesn't do speed itself; the phone speeds playback up instead."""
+    best = False
+
     def __init__(self, kokoro):
         import torch
-        from chatterbox.tts_turbo import ChatterboxTurboTTS
         dev = os.environ.get("LOUDBOOK_NATURAL_DEVICE") or ("cuda" if torch.cuda.is_available() else "cpu")
         self.device = dev
         self.gpu = torch.cuda.get_device_name(0) if dev == "cuda" else "no graphics card (CPU)"
-        self.model = ChatterboxTurboTTS.from_pretrained(device=dev)
+        self.model = self.load(dev)
         self.rate = self.model.sr
         self.kokoro = kokoro
         self.voices = {}                      # sid -> conditionals
         self.lock = threading.Lock()
         self.recent = collections.deque(maxlen=12)     # (seconds of speech, seconds of work)
         self.gain = None
-        self.name = f"Chatterbox-Turbo ({self.gpu})"
+        self.name = self.label()
         self.too_slow = False
         # warm up, then see whether this card keeps ahead of reading
         self.speak("Ready to read.", 3)
+        if self.best: return                  # (it reads ahead: keeping up with reading isn't the point)
         self.recent.clear()
         for t in ("He set the lantern down and listened to the wind moving through the empty house.",
                   "Nobody answered, so she knocked again, louder this time."):
@@ -277,6 +286,24 @@ class NaturalEngine:
             self.too_slow = True
             print(f"Loudbook PC voice: the natural voice makes speech at {self.speed():.2f}x real time here, "
                   "too slow to keep up, so Kokoro reads instead.", flush=True)
+
+    def load(self, dev):
+        from chatterbox.tts_turbo import ChatterboxTurboTTS
+        return ChatterboxTurboTTS.from_pretrained(device=dev)
+
+    def label(self): return f"Chatterbox-Turbo ({self.gpu})"
+
+    def generate(self, text): return self.model.generate(text)
+
+    def close(self):
+        """Lets go of the graphics card's memory (the full model and Turbo don't both fit on a 6 GB card)."""
+        import gc
+        self.model = None; self.voices.clear()
+        gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available(): torch.cuda.empty_cache()
+        except Exception: pass
 
     def _voice(self, sid):
         if isinstance(sid, str):                     # a recorded voice
@@ -317,7 +344,7 @@ class NaturalEngine:
         with self.lock, torch.inference_mode():
             t0 = time.time()                           # (after the wait for the lock: waiting behind another request isn't
             self._voice(sid)                           # slowness, and it made Kokoro take over for good)
-            wav = self.model.generate(text)
+            wav = self.generate(text)
         x = wav.squeeze(0).detach().cpu().numpy().astype(np.float32)
         # steady loudness, close to Kokoro's, without pumping between sentences
         rms = float(np.sqrt(np.mean(x * x))) if len(x) else 0
@@ -345,6 +372,285 @@ def load_natural(kokoro):
         print("Loudbook PC voice: natural voice unavailable:", repr(e)[:300], flush=True)
         print("".join(traceback.format_exc().splitlines(True)[-8:]), flush=True)
         return None
+
+
+class BestEngine(NaturalEngine):
+    """The full Chatterbox model (Resemble AI, MIT licence): the most natural reading this PC can do, slower than Turbo.
+    Used to record chapters ahead of reading, where time doesn't matter. Each sentence is made up to 3 times and a take
+    of a believable length kept (now and then a take babbles on or stops short)."""
+    best = True
+    EXAGGERATION = float(os.environ.get("LOUDBOOK_BEST_EXAGGERATION", "0.5"))
+    CFG = float(os.environ.get("LOUDBOOK_BEST_CFG", "0.5"))
+    TAKES = max(1, int(os.environ.get("LOUDBOOK_BEST_TAKES", "3")))
+
+    def load(self, dev):
+        from chatterbox.tts import ChatterboxTTS
+        return ChatterboxTTS.from_pretrained(device=dev)
+
+    def label(self): return f"Chatterbox, full model ({self.gpu})"
+
+    def generate(self, text):
+        return self.model.generate(text, exaggeration=self.EXAGGERATION, cfg_weight=self.CFG)
+
+    def expected(self, ktext, sid):
+        """How long Kokoro takes to say it, in seconds (speech only): what a good take should be near."""
+        import numpy as np
+        try:
+            x, sr = self.kokoro.samples(ktext, sid if isinstance(sid, int) else 3)
+        except Exception: return 0
+        x = np.abs(np.asarray(x))
+        loud = np.nonzero(x > 0.01)[0]
+        return (loud[-1] - loud[0]) / sr if len(loud) > 1 else 0
+
+    @staticmethod
+    def spoken(pcm, rate):
+        """Seconds from the first sound to the last in 16-bit audio, and the longest silence inside (seconds)."""
+        import numpy as np
+        x = np.abs(np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768)
+        loud = np.nonzero(x > 0.01)[0]
+        if len(loud) < 2: return 0, 0
+        gaps = np.diff(loud)
+        return (loud[-1] - loud[0]) / rate, float(gaps.max()) / rate
+
+    @staticmethod
+    def pieces(text):
+        """A long sentence in parts of at most ~250 letters, at commas and the like (a take stops after ~40 s of speech)."""
+        import re
+        if len(text) <= 260: return [text]
+        out, cur = [], ""
+        for part in re.split(r"(?<=[,;:\u2014)])\s+", text):
+            if cur and len(cur) + len(part) > 250: out.append(cur); cur = part
+            else: cur = (cur + " " + part).strip()
+        if cur: out.append(cur)
+        final = []
+        for p in out:                              # (no comma for a long way: by words)
+            while len(p) > 300:
+                cut = p.rfind(" ", 0, 250)
+                if cut < 50: cut = 250
+                final.append(p[:cut].strip()); p = p[cut:].strip()
+            if p: final.append(p)
+        return final
+
+    def best_take(self, text, sid, ktext=None, takes=None):
+        """The sentence made up to `takes` times; the first take of a believable length (against Kokoro's), else the
+        nearest. Returns (pcm, rate, how sure: 'ok' or 'odd')."""
+        import numpy as np
+        parts = self.pieces(text)
+        if len(parts) > 1:
+            gap = np.zeros(int(0.12 * self.rate), dtype="<i2").tobytes()
+            out, sure = [], "ok"
+            for p in parts:
+                pcm, rate, s = self.best_take(p, sid, None, takes)
+                out.append(pcm); sure = sure if s == "ok" else s
+            return gap.join(out), self.rate, sure
+        want = self.expected(ktext or text, sid)
+        best, best_off = None, 9e9
+        for t in range(takes or self.TAKES):
+            pcm, rate = self.speak(text, sid)
+            got, hole = self.spoken(pcm, rate)
+            if want <= 0.3: return pcm, rate, "ok"      # (too short to judge)
+            r = got / want
+            # (Chatterbox reads a little slower than Kokoro; a long silence inside is a take gone wrong, unless the text pauses)
+            ok = 0.7 <= r <= 1.8 and (hole < 1.6 or "..." in text or "\u2026" in text)
+            if ok: return pcm, rate, "ok"
+            off = abs(np.log(max(r, 1e-3) / 1.15)) + (1 if hole >= 1.6 else 0)
+            if off < best_off: best, best_off = (pcm, rate), off
+            print(f"Loudbook PC voice: take {t + 1} of a sentence came out {r:.2f}x Kokoro's length"
+                  + (f" with a {hole:.1f} s gap" if hole >= 1.6 else "") + ", making it again", flush=True)
+        return best[0], best[1], "odd"
+
+
+def load_best(kokoro):
+    """The full Chatterbox model, if its packages are installed (the same ones as the natural voice)."""
+    try:
+        import chatterbox  # noqa: F401
+    except ImportError:
+        return None
+    try:
+        print("Loudbook PC voice: loading the best-quality voice (Chatterbox, full model)...", flush=True)
+        return BestEngine(kokoro)
+    except Exception as e:
+        import traceback
+        print("Loudbook PC voice: best-quality voice unavailable:", repr(e)[:300], flush=True)
+        print("".join(traceback.format_exc().splitlines(True)[-8:]), flush=True)
+        return None
+
+
+# ------------------------------------------------------------------ sentences made ahead (best quality)
+def ahead_key(text, who):
+    return hashlib.sha256(("best|" + str(who) + "|" + " ".join(str(text).split())).encode()).hexdigest()[:40]
+
+
+class Ahead:
+    """The sentences the phone will read next, made one by one with the full model while the graphics card is free,
+    and kept on disk (raw 16-bit audio after a 4-byte sample rate) until the folder is full, oldest dropped first."""
+    cond = threading.Condition()
+    queue = collections.deque()          # (key, text, kokoro text, who)
+    queued = set()
+    heard = set()                        # read live already (passed): not worth making now
+    total = 0                            # sentences in the phone's last list
+    made = 0; odd = 0; failed = 0
+    stores = 0
+    live = 0                             # live requests running: they come first
+    making = 0                           # 1 while a sentence is being made (it counts as waiting)
+    last_used = time.time()
+    loading = False
+    MAX_BYTES = int(float(os.environ.get("LOUDBOOK_AHEAD_GB", "4")) * 1e9)
+
+    @staticmethod
+    def dir(): return path("ahead")
+
+    @classmethod
+    def file(cls, key): return os.path.join(cls.dir(), key + ".pcm")
+
+    @classmethod
+    def get(cls, key):
+        f = cls.file(key)
+        try:
+            with open(f, "rb") as h: data = h.read()
+        except OSError: return None
+        if len(data) < 6: return None
+        try: os.utime(f)                              # (recently used: dropped last)
+        except OSError: pass
+        return data[4:], int.from_bytes(data[:4], "little")
+
+    @classmethod
+    def has(cls, key): return os.path.exists(cls.file(key))
+
+    @classmethod
+    def put(cls, key, pcm, rate):
+        os.makedirs(cls.dir(), exist_ok=True)
+        f = cls.file(key)
+        with open(f + ".part", "wb") as h: h.write(int(rate).to_bytes(4, "little")); h.write(pcm)
+        os.replace(f + ".part", f)
+        cls.stores += 1
+        if cls.stores % 25 == 1: cls.trim()
+
+    @classmethod
+    def trim(cls):
+        try:
+            fs = [(e.stat().st_mtime, e.stat().st_size, e.path) for e in os.scandir(cls.dir()) if e.name.endswith(".pcm")]
+        except OSError: return
+        size = sum(f[1] for f in fs)
+        for m, n, p in sorted(fs):
+            if size <= cls.MAX_BYTES: break
+            try: os.remove(p); size -= n
+            except OSError: pass
+
+    @classmethod
+    def set(cls, items):
+        """The phone's list (in reading order) replaces what was waiting. Returns (sentences, already made)."""
+        with cls.cond:
+            cls.queue.clear(); cls.queued.clear()
+            done = 0
+            for key, text, ktext, who in items:
+                if key in cls.queued: continue
+                if cls.has(key): done += 1; continue
+                cls.queue.append((key, text, ktext, who)); cls.queued.add(key)
+            cls.total = len(items)
+            cls.heard.clear()
+            cls.last_used = time.time()
+            cls.cond.notify_all()
+        return cls.total, done
+
+    @classmethod
+    def status(cls):
+        with cls.cond:
+            return {"total": cls.total, "waiting": len(cls.queue) + cls.making, "made": cls.made, "odd": cls.odd, "failed": cls.failed,
+                    "loading": cls.loading}
+
+    @classmethod
+    def next(cls):
+        """The next sentence to make, or None after half a minute with nothing to do."""
+        with cls.cond:
+            if not cls.queue: cls.cond.wait(30)
+            return cls._pop()
+
+    @classmethod
+    def _pop(cls):
+        while cls.queue:
+            it = cls.queue.popleft(); cls.queued.discard(it[0])
+            if it[0] not in cls.heard and not cls.has(it[0]): return it
+        return None
+
+
+def best_engine():
+    """The full model, loaded the first time it's needed. On a card without room for it next to Turbo, Turbo goes (the
+    full model reads live too when it keeps up; otherwise Kokoro does)."""
+    if Handler.best is not None or Handler.engine is None or isinstance(Handler.engine, FakeEngine): return Handler.best
+    with Handler.gpu_lock:
+        if Handler.best is not None: return Handler.best
+        if time.time() < Handler.best_retry: return None
+        try:
+            import torch
+            if torch.cuda.is_available() and Handler.natural is not None:
+                free, _ = torch.cuda.mem_get_info()
+                if free < float(os.environ.get("LOUDBOOK_BEST_VRAM_GB", "4.5")) * 1e9:
+                    print(f"Loudbook PC voice: {free / 1e9:.1f} GB free on the graphics card: Turbo makes room for the full model", flush=True)
+                    n = Handler.natural; Handler.natural = None
+                    with n.lock: n.close()
+        except ImportError:
+            return None
+        Ahead.loading = True
+        try: Handler.best = load_best(Handler.engine)
+        finally: Ahead.loading = False
+        if Handler.best is None: Handler.best_retry = time.time() + 600
+        return Handler.best
+
+
+def ahead_worker():
+    while True:
+        it = Ahead.next()
+        if it is None:
+            # (nothing to make for half an hour: the full model gives the card back to Turbo for live reading)
+            b = Handler.best
+            if b is not None and time.time() - Ahead.last_used > 1800 and not Handler.natural_off:
+                with Handler.gpu_lock:
+                    if time.time() - Ahead.last_used > 1800 and Handler.best is b:
+                        Handler.best = None
+                        with b.lock: b.close()
+                        print("Loudbook PC voice: nothing to make ahead: the natural voice (Turbo) is back", flush=True)
+                        Handler.natural = load_natural(Handler.engine)
+            continue
+        key, text, ktext, who = it
+        b = best_engine()
+        if b is None:                                   # (couldn't load it: the sentence waits, and loading is tried later)
+            with Ahead.cond:
+                if key not in Ahead.queued: Ahead.queue.appendleft(it); Ahead.queued.add(key)
+            time.sleep(30); continue
+        while Ahead.live > 0: time.sleep(0.2)          # (a sentence the phone is waiting for comes first)
+        Ahead.making = 1
+        try:
+            pcm, rate, sure = b.best_take(text, who, ktext)
+            Ahead.put(key, pcm, rate)
+            Ahead.made += 1
+            if sure != "ok": Ahead.odd += 1
+            Ahead.last_used = time.time()
+        except Exception as e:
+            Ahead.failed += 1
+            print("Loudbook PC voice: making a sentence ahead failed:", repr(e)[:200], flush=True)
+            time.sleep(2)
+        finally:
+            Ahead.making = 0
+
+
+class FakeBest:
+    """For tests: the best-quality voice as a different quiet tone, a little slow."""
+    name, rate, best, too_slow = "test best", 24000, True, False
+    def __init__(self): self.lock = threading.Lock(); self.voices = {}; self.calls = 0
+    def speed(self): return 2.0
+    def usable(self): return True
+    def speak(self, text, sid):
+        import array, math
+        with self.lock:
+            self.calls += 1
+            time.sleep(float(os.environ.get("LOUDBOOK_FAKE_BEST_SECS", "0.05")))
+            n = int(self.rate * min(10, 0.05 * len(text)))
+            return array.array("h", (int(1200 * math.sin(i / 9)) for i in range(n))).tobytes(), self.rate
+    def best_take(self, text, sid, ktext=None, takes=None):
+        pcm, rate = self.speak(text, sid)
+        return pcm, rate, "ok"
+    def close(self): pass
 
 
 class FakeEngine:
@@ -393,9 +699,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
     timeout = 20
     engine = None
     natural = None
+    best = None                      # the full Chatterbox model, once something asks for it
+    best_retry = 0
+    natural_off = os.environ.get("LOUDBOOK_NATURAL", "1") == "0"
+    gpu_lock = threading.Lock()
     fp = b""
 
     def log_message(self, fmt, *args): pass          # never log what's being read
+
+    @staticmethod
+    def can_best():
+        """Is the full model installed here (it comes with the natural voice's packages)?"""
+        if isinstance(Handler.engine, FakeEngine): return Handler.fake_best
+        try:
+            import importlib.util
+            return importlib.util.find_spec("chatterbox") is not None
+        except Exception: return False
+    fake_best = False
 
     def reply(self, code, body=b"", ctype="application/json", headers=None):
         if isinstance(body, (dict, list)): body = json.dumps(body).encode()
@@ -413,6 +733,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # only a paired phone may send a recording; everything else is small
         big = self.path == "/v1/voice/add" and self.headers.get("Authorization", "").startswith("Bearer ") \
             and token_ok(self.headers.get("Authorization", "")[7:].strip())
+        if not big and self.path == "/v1/ahead" and self.headers.get("Authorization", "").startswith("Bearer ") \
+            and token_ok(self.headers.get("Authorization", "")[7:].strip()):
+            if n < 0 or n > MAX_AHEAD: raise ValueError("too big")
+            return json.loads(self.rfile.read(n) or b"{}")
         if n < 0 or n > (MAX_VOICE if big else MAX_BODY): raise ValueError("too big")
         return json.loads(self.rfile.read(n) or b"{}")
 
@@ -438,14 +762,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.path == "/v1/hello": return self.reply(200, {"app": "loudbook", "v": VERSION})
         if self.path == "/v1/health":
             if not self.authed(): return
-            n = Handler.natural
+            n = Handler.natural or Handler.best
+            b = Handler.best
+            a = Ahead.status()
             return self.reply(200, {"engine": Handler.engine.name, "rate": Handler.engine.rate, "host": socket.gethostname()[:40],
                                     "natural": n.name if n else "", "naturalSpeed": round(n.speed(), 2) if n else 0,
-                                    "naturalOk": bool(n and not n.too_slow)})
+                                    "naturalOk": bool(n and not n.too_slow),
+                                    "best": b.name if b else ("" if not Handler.can_best() else "not loaded yet"),
+                                    "bestSpeed": round(b.speed(), 2) if b else 0,
+                                    "aheadTotal": a["total"], "aheadWaiting": a["waiting"], "aheadMade": a["made"],
+                                    "aheadOdd": a["odd"], "aheadLoading": a["loading"]})
         if self.path == "/v1/voices":
             if not self.authed(): return
             return self.reply(200, {"voices": [{"id": v["id"], "name": str(v.get("name", "")).replace("{", "(").replace("}", ")")} for v in voices()],
-                                    "natural": Handler.natural is not None})
+                                    "natural": Handler.natural is not None or Handler.best is not None})
         self.reply(404, {"error": "no such thing"})
 
     def do_POST(self):
@@ -469,7 +799,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.reply(200, {"token": tok})
             if self.path == "/v1/voice/add":
                 if not self.authed(): return
-                if Handler.natural is None:
+                if Handler.natural is None and Handler.best is None:
                     return self.reply(409, {"error": "this PC has no natural voice (it needs an NVIDIA graphics card and Set up PC voice.bat)"})
                 try: vid = add_voice(req.get("name", ""), base64.b64decode(str(req.get("wav", ""))))
                 except Exception as e: return self.reply(400, {"error": str(e)[:200] or "not a recording"})
@@ -477,8 +807,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if self.path == "/v1/voice/delete":
                 if not self.authed(): return
                 delete_voice(str(req.get("id", "")))
-                if Handler.natural: Handler.natural.voices.pop(str(req.get("id", "")), None)
+                for e in (Handler.natural, Handler.best):
+                    if e: e.voices.pop(str(req.get("id", "")), None)
                 return self.reply(200, {})
+            if self.path == "/v1/ahead":
+                if not self.authed(): return
+                if not Handler.can_best(): return self.reply(409, {"error": "this PC has no natural voice (it needs an NVIDIA graphics card and Set up PC voice.bat)"})
+                vid = req.get("voice")
+                if vid and (not voice_file(vid) or not os.path.exists(voice_file(vid))): return self.reply(404, {"error": "that recorded voice isn't on this PC"})
+                items = []
+                try:
+                    for x in list(req.get("items") or [])[:MAX_AHEAD_ITEMS]:
+                        text = str(x[0])[:MAX_TEXT]; ktext = str(x[1] or text)[:MAX_TEXT] if len(x) > 1 else text
+                        sid = max(0, min(52, int(x[2]))) if len(x) > 2 else 3
+                        if sum(ch.isalpha() for ch in text) < 4: continue      # (a lone word or symbols: read live)
+                        who = vid if vid else sid
+                        items.append((ahead_key(text, who), text, ktext, who))
+                except (TypeError, ValueError, IndexError): return self.reply(400, {"error": "bad request"})
+                total, done = Ahead.set(items)
+                return self.reply(200, {"total": total, "ready": done})
             if self.path == "/v1/speak":
                 if not self.authed(): return
                 text = str(req.get("text", ""))[:MAX_TEXT]
@@ -486,8 +833,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except (TypeError, ValueError): return self.reply(400, {"error": "bad request"})
                 if not text.strip(): return self.reply(400, {"error": "no text"})
                 t0 = time.time()
-                n = Handler.natural
+                n = Handler.natural or Handler.best
                 vid = req.get("voice")
+                if req.get("engine") == "best":
+                    # made ahead: straight from the folder. Otherwise read live (the full model when it keeps up and is
+                    # free, else the natural voice or Kokoro), and the sentence is marked as passed for the maker
+                    who = vid if vid else sid
+                    key = ahead_key(text, who)
+                    got = Ahead.get(key)
+                    if got is not None:
+                        Ahead.last_used = time.time()
+                        return self.reply(200, got[0], "audio/L16", {"X-Sample-Rate": str(got[1]), "X-Work-Ms": str(int((time.time() - t0) * 1000)),
+                                                                     "X-Made-At": "1.000", "X-Engine": "best"})
+                    with Ahead.cond: Ahead.heard.add(key)
+                    b = Handler.best
+                    if b is not None and not b.lock.locked() and b.usable() and sum(ch.isalpha() for ch in text) >= 4:
+                        Ahead.live += 1
+                        try:
+                            pcm, rate = b.speak(text, who)
+                            Ahead.put(key, pcm, rate)
+                            return self.reply(200, pcm, "audio/L16", {"X-Sample-Rate": str(rate), "X-Work-Ms": str(int((time.time() - t0) * 1000)),
+                                                                      "X-Made-At": "1.000", "X-Engine": "best-live"})
+                        except Exception as e:
+                            print("Loudbook PC voice: best-quality voice failed:", repr(e)[:200], flush=True)
+                        finally: Ahead.live -= 1
+                    n = Handler.natural
+                    if vid and n is None and b is not None: n = b       # (a recorded voice: the full model copies it, waiting its turn)
+                    req = dict(req, engine="natural")
                 if vid:
                     # a recorded voice: only the natural voice can copy one
                     if not voice_file(vid) or not os.path.exists(voice_file(vid)): return self.reply(404, {"error": "that recorded voice isn't on this PC"})
@@ -550,7 +922,8 @@ class Server(http.server.ThreadingHTTPServer):
             try: tls.close()
             except OSError: pass
 
-    def handle_error(self, request, client_address): pass     # bad handshakes, dropped connections
+    def handle_error(self, request, client_address):     # bad handshakes, dropped connections
+        if os.environ.get("LOUDBOOK_DEBUG"): import traceback; traceback.print_exc()
 
 
 def discovery(stop):
@@ -576,6 +949,8 @@ def serve(fake=False):
     print("Loudbook PC voice: loading the voice...", flush=True)
     Handler.engine = FakeEngine() if fake else Engine()
     if not fake: Handler.natural = load_natural(Handler.engine)
+    elif os.environ.get("LOUDBOOK_FAKE_BEST"): Handler.fake_best = True; Handler.best = FakeBest()
+    threading.Thread(target=ahead_worker, daemon=True, name="ahead").start()
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.minimum_version = ssl.TLSVersion.TLSv1_2
     ctx.load_cert_chain(cert, key)

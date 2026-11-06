@@ -423,6 +423,7 @@ public class ReaderService extends Service {
             Log.i("LoudbookTest", "audio focus refused; reading anyway");
         }
         preloadNext(chapter);
+        pcAhead();
         if (!wake.isHeld()) wake.acquire(6 * 60 * 60 * 1000L);
         final int myGen = ++gen;
         playAt = System.currentTimeMillis();
@@ -2034,7 +2035,8 @@ public class ReaderService extends Service {
                 if (c == null) { Log.w(TAG, "next chapter ahead: " + err); return; }
                 Chapter now = chapter;
                 if (now != null && url.equals(now.nextUrl)) { nextFor = url; nextCh = c; }
-                aheadFrom(c, AHEAD - 1);
+                aheadFrom(c, aheadChapters() - 1);
+                pcAhead();
             });
         });
     }
@@ -2052,7 +2054,82 @@ public class ReaderService extends Service {
         preloadNext(ch);
     }
 
-    static final int AHEAD = 3;
+    static final int AHEAD = 3, AHEAD_BEST = 8;
+    /** How many chapters' text to load ahead: more when the PC records them ahead with its best voice. */
+    private int aheadChapters() { return bestOnPc() ? AHEAD_BEST : AHEAD; }
+
+    // ---------------------------------------------------------------- best quality on the PC: sentences made ahead
+    private final ExecutorService aheadSender = Executors.newSingleThreadExecutor();
+    private volatile String aheadSent = "";
+    private volatile long aheadSentAt;
+    /** "PC voice: best quality" is chosen, the PC is in use and Gemini isn't reading. */
+    boolean bestOnPc() { return "best".equals(prefs.getString("pcEngine", "natural")) && voice.pcLink() != null && !cloudOn(); }
+    /**
+     * Sends the PC the rest of this chapter and the chapters loaded after it, sentence by sentence just as they'll be asked
+     * for, so it records them with its best voice while this one plays (it answers from those recordings at once). Main thread.
+     */
+    void pcAhead() {
+        if (!bestOnPc()) return;
+        final Chapter ch = chapter;
+        if (ch == null || "kindle".equals(ch.site) || "text".equals(ch.site) && ch.size() == 0) return;
+        final java.util.List<Chapter> chs = new java.util.ArrayList<>();
+        chs.add(ch);
+        Chapter c = ch;
+        while (c != null && c.nextUrl != null && chs.size() <= AHEAD_BEST) {
+            Chapter n = c.nextUrl.equals(nextFor) && nextCh != null ? nextCh : fetcher().ready(c.nextUrl);
+            if (n == null || chs.contains(n)) break;
+            chs.add(n); c = n;
+        }
+        final int from = Math.max(0, Math.min(pos, ch.size()));
+        final int want = sid;
+        final String rec = prefs.getString("pcVoice", "");
+        final boolean dual = twoVoices();
+        StringBuilder sig = new StringBuilder(rec).append('|').append(want).append('|').append(dual).append('|').append(from);
+        for (Chapter x : chs) sig.append('|').append(x.url).append(':').append(x.size());
+        final String key = sig.toString();
+        if (key.equals(aheadSent) && System.currentTimeMillis() - aheadSentAt < 10 * 60_000) return;
+        aheadSent = key; aheadSentAt = System.currentTimeMillis();
+        aheadSender.submit(() -> {
+            PcLink l = voice.pcLink();
+            if (l == null) return null;
+            java.util.List<String[]> items = new java.util.ArrayList<>();
+            int letters = 0;
+            for (int k = 0; k < chs.size() && items.size() < 6000 && letters < 700_000; k++) {
+                Chapter x = chs.get(k);
+                for (int i = k == 0 ? from : 0; i < x.size() && items.size() < 6000 && letters < 700_000; i++)
+                    for (String[] p : piecesFor(x, i, want, dual)) { items.add(p); letters += p[0].length() + (p[1] == null ? 0 : p[1].length()); }
+            }
+            try {
+                int[] r = l.ahead(items, rec.isEmpty() ? null : rec, 20000);
+                Log.i("LoudbookTest", "pc ahead: " + r[0] + " sentences of " + chs.size() + " chapters sent, " + r[1] + " made already");
+            } catch (Exception e) {
+                Log.w(TAG, "pc ahead: " + e.getMessage());
+                aheadSent = "";                                  // (tried again at the next play or chapter loaded)
+            }
+            return null;
+        });
+    }
+    /**
+     * The pieces sentence i is read in: {text, text for Kokoro or null, speaker} each, as makeVoiced asks the voice for them
+     * (with the second voice, its quoted parts on their own in the other voice).
+     */
+    java.util.List<String[]> piecesFor(Chapter ch, int i, int want, boolean dual) {
+        java.util.List<String[]> out = new java.util.ArrayList<>();
+        String text = ch.chunks.get(i).say;
+        java.util.List<String[]> parts = null;
+        if (dual) {
+            parts = Dialogue.split(text, Dialogue.openAt(ch, i), Dialogue.singles(ch, i), Dialogue.after(ch, i), Dialogue.dashes(ch, i));
+            if (parts.size() == 1) parts = java.util.Collections.singletonList(new String[]{text, parts.get(0)[1]});
+        } else parts = java.util.Collections.singletonList(new String[]{text, "n"});
+        int other = dialogueVoice(want);
+        for (String[] p : parts) {
+            String t = p[0];
+            if (t.length() > 2000 || !t.codePoints().anyMatch(Character::isLetterOrDigit)) continue;
+            String k = Chapter.forKokoro(t);
+            out.add(new String[]{t, k.equals(t) ? null : k, String.valueOf("q".equals(p[1]) ? other : want)});
+        }
+        return out;
+    }
     /** Loads a few more chapters' text after this one, one at a time, so reading goes on without a signal. */
     private void aheadFrom(Chapter c, int more) {
         if (more <= 0 || c == null || c.nextUrl == null || fetcher().ready(c.nextUrl) != null) {
@@ -2063,7 +2140,7 @@ public class ReaderService extends Service {
         main.postDelayed(() -> {
             Chapter now = chapter;
             if (now == null || fetcher().busyWith(url) || fetcher().busyWith(now.nextUrl)) return;
-            fetcher().get(url, (n, err) -> { if (n != null) aheadFrom(n, more - 1); });
+            fetcher().get(url, (n, err) -> { if (n != null) { aheadFrom(n, more - 1); pcAhead(); } });
         }, 3000);
     }
 
