@@ -39,7 +39,9 @@ if (!window.LB) {
         if (tag === 'BR') { out += '\n'; continue; }
         if (isHidden(n)) continue;
         if (tag === 'TD' || tag === 'TH') { walk(n); out += ' — '; continue; }
-        const br = lines && BLOCK_TAGS.test(tag);
+        // (a <div> inside a block, lines of a poem in a <blockquote>: a line break too, or "Roses red" + "Violets blue" ran
+        //  together as "redViolets")
+        const br = (lines || tag === 'DIV') && BLOCK_TAGS.test(tag);
         if (br) out += '\n';
         walk(n);
         if (br) out += '\n';
@@ -209,7 +211,8 @@ if (!window.LB) {
       roots: (doc) => [q(doc, '.chapter-inner.chapter-content, .chapter-content, .chapter-inner')],
       title: (doc) => txt(q(doc, '.fic-header h1, h1.font-white, .chapter-title')),
       fiction: (doc) => txt(q(doc, '.fic-header h2')) || titleParts(doc, '|')[1] || '',
-      navAccept: (href) => /\/chapter\//.test(href),
+      // (not the comments' own "Next ›" pages on the last chapter, whose Next button is disabled)
+      navAccept: (href) => /\/chapter\//.test(href) && !/comment/i.test(href),
     },
     {
       // Checked against Scribble Hub's known layout; its bot check blocked a live look.
@@ -347,13 +350,16 @@ if (!window.LB) {
       }
       // (a page Loudbook doesn't know: if the paragraphs hold only a small part of the text, e.g. a
       // Blogger post in <div> lines with one <p> translator's note, the text is read line by line)
-      if (out.length && !(generic && covers(out, root, isHidden, skipSel) < 0.6)) return out;
+      // (a known site too: a Royal Road chapter pasted with some <p> and the rest in <div>s or bare lines lost all but the <p>)
+      if (out.length && !(covers(out, root, isHidden, skipSel) < 0.6)) return out;
       out.length = 0;
     }
     const all = textOf(root, (n) => isHidden(n) || (n.matches && n.matches(skipSel)), true);
     let base = 0;
     for (const line of all.split('\n').map(s => s.trim()).filter(Boolean)) {
-      if (speakable(line) && withoutSkipped(line, skipText) && !isNavOnly(line)) out.push({ el: root, text: line, shared: true, base });
+      // (the line without the site's skipped sentences: an anti-theft line in a <br> chapter was read with the story)
+      const kept = withoutSkipped(line, skipText);
+      if (speakable(kept) && !isNavOnly(kept)) out.push({ el: root, text: kept, shared: true, base });
       base += squashLen(line);
     }
     return out;

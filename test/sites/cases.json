@@ -18,6 +18,31 @@
   "prev": "https://www.royalroad.com/fiction/123/the-iron-path/chapter/1011/chapter-11-the-river"
  },
  {
+  "page": "royalroad-mixed.html",
+  "url": "https://www.royalroad.com/fiction/123/the-iron-path/chapter/1040/chapter-40-the-end-of-the-road",
+  "site": "royalroad",
+  "title": "Chapter 40 - The End of the Road",
+  "fiction": "The Iron Path",
+  "first": "The road ended at the sea.",
+  "last": "\"We made it,\" Doran said at last.",
+  "has": [
+   "Mira set down her pack",
+   "Doran came up beside her",
+   "She thought of the bridge",
+   "He ran ahead.",
+   "Roses red",
+   "Violets blue"
+  ],
+  "not": [
+   "Royal Road",
+   "Amazon",
+   "redViolets",
+   "What an ending"
+  ],
+  "next": null,
+  "prev": "https://www.royalroad.com/fiction/123/the-iron-path/chapter/1039/chapter-39-the-cliffs"
+ },
+ {
   "page": "ao3.html",
   "url": "https://archiveofourown.org/works/555/chapters/1003",
   "site": "ao3",
