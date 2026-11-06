@@ -52,7 +52,7 @@ final class Chapter {
     private static final java.util.regex.Pattern ADV_VERB = java.util.regex.Pattern.compile(
         "(?<!\\b(?:[Tt]he|[Aa]|[Aa]n|[Hh]is|[Hh]er|[Ii]ts|[Tt]heir|[Mm]y|[Yy]our|[Oo]ur|[Tt]his|[Tt]hat|[Nn]o|[Aa]ny|[Ee]very|[Ss]ome|[Ee]ach|[Ww]as|[Ww]ere|[Ii]s|[Aa]re|[Bb]e|[Bb]een|[Bb]eing|[Aa]m)[ \\t])"
         + "\\b((?!(?:early|only|family|ally|belly|bully|jelly|lily|rally|tally|fly|reply|supply|apply|rely|assembly|holy|ugly|lovely|lonely|friendly|elderly|silly|jolly|daily|weekly|monthly|yearly|hourly|nightly|likely|deadly|costly|bodily|orderly|lowly|kindly|curly|burly|surly|chilly|hilly|oily|wily|lively|comely|homely|manly|womanly|worldly|scholarly|cowardly|stately|ghastly|ghostly|beastly|sickly|smelly|bubbly|wobbly|prickly|melancholy|anomaly|monopoly|italy|july|sally|molly|holly|emily|lily|kelly|billy|willy|polly)\\b)"
-        + "(?:[a-z]+ly|always|often|also|sometimes|usually|seldom|then|now|soon|just|still|even)[ \\t]+)"
+        + "(?:[a-z]+ly|always|often|also|sometimes|usually|seldom|then|now|soon|just|still(?![ \\t]+present\\b)|even)[ \\t]+)"
         + "(use|abuse|separate|record|present|polish|tear|permit|insult|increase|decrease|estimate|moderate|conduct|project|object|protest|suspect|convict|console|contract|torment|escort|transport|export|insert|desert|contest)" + OBJ);
     // ("Please permit me", "please present your papers", with no comma too, and "Quickly, record everything": lab 2026-11-03, they were the nouns)
     // and after "had better", "would rather", "you'd", "let's", "let me", "help him", "make them", "did he", "why not", "go", "come and", "Now," "Please,"
