@@ -186,6 +186,17 @@ public class UnitTest {
         check("a sentence's place on the page", kf.find("Pardon me for neglecting to profit by your advice."), KindleLayout.normOf("give me leave to observe that I consider the clerical office as equal. ").length());
         check("...a long one by its first letters", kf.find("Pardon me for neglecting to profit by your kind advice, which on every other subject shall be my guide.") > 0, true);
         check("...and not there", kf.find("Mr. Darcy was eyeing him."), -1);
+        {   // the page's first sentence by its last letters: a coincidence of one letter isn't it (review 2026-11-06)
+            KindleLayout sp = new KindleLayout(Arrays.asList("dog barked. Then silence."), new java.util.ArrayList<>(), new java.util.ArrayList<>());
+            List<int[]> ss = sp.spans(Arrays.asList("Nothing was said.", "Then silence."));
+            check("first sentence not on the page: no span", ss.get(0) == null, true);
+            check("...the next one still found", ss.get(1) == null ? "null" : ss.get(1)[0] + "-" + ss.get(1)[1], "9-20");
+            List<int[]> s3 = sp.spans(Arrays.asList("The old dog barked.", "Then silence."));
+            check("first sentence's end on the page", s3.get(0) == null ? "null" : s3.get(0)[0] + "-" + s3.get(0)[1], "0-9");
+            KindleLayout sq = new KindleLayout(Arrays.asList("ly. Then silence."), new java.util.ArrayList<>(), new java.util.ArrayList<>());
+            List<int[]> s4 = sq.spans(Arrays.asList("He went quietly.", "Then silence."));
+            check("first sentence's last two letters, the next one right after", s4.get(0) == null ? "null" : s4.get(0)[0] + "-" + s4.get(0)[1], "0-2");
+        }
         // reading starts on a page where no sentence ends (a heading alone): it's read, and not again before the next page
         KindleText ks = new KindleText("");
         List<Chapter.Chunk> s1 = ks.startChunks(Arrays.asList("CHAPTER FIVE"));

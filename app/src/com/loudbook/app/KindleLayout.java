@@ -94,7 +94,11 @@ final class KindleLayout {
             if (k == 0 && at == 0) {
                 int cut = -1;
                 for (int c = 1; c < n.length(); c++) { String sfx = n.substring(c); if (sfx.length() <= norm.length() && norm.substring(0, sfx.length()).equals(sfx)) { cut = c; break; } }
-                if (cut > 0) { int e = n.length() - cut; out.add(new int[]{0, e, cut, n.length()}); at = e; continue; }
+                // (a letter or two only when the next sentence starts right after them: else any sentence ending with the page's
+                //  first letter got a bogus span, as for one that ended on the page before)
+                if (cut > 0 && (n.length() - cut >= 3 || k + 1 < sentences.size() && nextAt(sentences.get(k + 1), n.length() - cut))) {
+                    int e = n.length() - cut; out.add(new int[]{0, e, cut, n.length()}); at = e; continue;
+                }
             }
             // or it runs on to the next page: the page ends with its start
             int head = Math.min(n.length(), 30);
@@ -109,6 +113,14 @@ final class KindleLayout {
             out.add(null);
         }
         return out;
+    }
+
+    /** Does this sentence's text start at letter e of the page (or its first 30 letters, for one running on)? */
+    private boolean nextAt(String sentence, int e) {
+        String n = normOf(sentence);
+        if (n.isEmpty() || e >= norm.length()) return false;
+        int len = Math.min(n.length(), Math.min(30, norm.length() - e));
+        return norm.substring(e, e + len).equals(n.substring(0, len));
     }
 
     /**
