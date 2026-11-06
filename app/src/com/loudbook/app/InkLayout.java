@@ -61,9 +61,10 @@ final class InkLayout {
             int rh = r[1] - r[0];
             if (rh < Math.max(4, typical * 0.4)) continue;              // a speck
             int[] col = new int[w];
+            boolean[] rule = underlines(ink, w, h, r, typical);
             for (int x = 0; x < w; x++) {
                 if (r.length >= 4 && x >= r[2] && x < r[3]) continue;   // (the drop cap beside this line, see splitDropCaps)
-                int n = 0; for (int y = r[0]; y < r[1]; y++) if (ink[y * w + x]) n++; col[x] = n;
+                int n = 0; for (int y = r[0]; y < r[1]; y++) if (ink[y * w + x] && (rule == null || !rule[(y - r[0]) * w + x])) n++; col[x] = n;
             }
             List<int[]> runs = new ArrayList<>();
             for (int x = 0; x < w; ) {
@@ -93,6 +94,49 @@ final class InkLayout {
                 out.add(new Word(offX + ws.get(k)[0], offY + r[0], offX + ws.get(k)[1], offY + r[1], k == ws.size() - 1));
         }
         return out;
+    }
+
+    /**
+     * A line under part of a row (Kindle's popular highlights, a link): thin, long and below the middle of the row. Its ink
+     * filled the gaps between the words above it, so an underlined stretch was taken for one word. Its pixels, row y of the
+     * band at (y - r[0]) * w + x; null if none. (Leaving out a thin stroke can only split a word, which the gaps join again.)
+     */
+    static boolean[] underlines(boolean[] ink, int w, int h, int[] r, int typical) {
+        int rh = r[1] - r[0], t = Math.max(2, rh / 8), maxGap = Math.max(3, typical / 12), wordGap = Math.max(4, typical / 5), minLen = Math.max(24, typical * 2);
+        boolean[] rule = null;
+        for (int y = r[0] + rh / 2; y < r[1]; y++) {
+            for (int x = 0; x < w; ) {
+                if (!ink[y * w + x]) { x++; continue; }
+                int s = x, e = x, n = 0;
+                while (x < w && x - e <= maxGap) { if (ink[y * w + x]) { e = x; n++; } x++; }
+                if (e - s < minLen) continue;
+                int up = 0, down = 0;
+                for (int k = s; k <= e; k++) {
+                    if (y - t >= 0 && ink[(y - t) * w + k]) up++;
+                    if (y + t < h && ink[(y + t) * w + k]) down++;
+                }
+                if (up < n * 0.45 && down < n * 0.45) {
+                    if (rule == null) rule = new boolean[rh * w];
+                    for (int k = s; k <= e; k++) rule[(y - r[0]) * w + k] = ink[y * w + k];
+                    continue;
+                }
+                // (a line touching the letters: only where it crosses a gap, nothing above it there for a word gap's width)
+                for (int k = s; k <= e; ) {
+                    int g = k;
+                    while (g <= e && !inkAbove(ink, w, r[0], y, g)) g++;
+                    if (g - k >= wordGap) {
+                        if (rule == null) rule = new boolean[rh * w];
+                        for (int q = k; q < g; q++) for (int yy = y; yy < r[1] && ink[yy * w + q]; yy++) rule[(yy - r[0]) * w + q] = true;
+                    }
+                    k = Math.max(g, k) + 1;
+                }
+            }
+        }
+        return rule;
+    }
+    private static boolean inkAbove(boolean[] ink, int w, int top, int y, int x) {
+        for (int yy = top; yy < y; yy++) if (ink[yy * w + x]) return true;
+        return false;
     }
 
     /**

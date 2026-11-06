@@ -645,6 +645,29 @@ public class UnitTest {
             float[] by = dp == null || dp.get(0) == null ? null : dp.get(0)[dt.indexOf("beyond")];
             check("drop cap: 'beyond' (line 2, beside the cap) placed", by != null && Math.abs(by[0] - 160) < 4 && Math.abs(by[1] - 150) < 4, true);
         }
+        {   // an underline under words 2-4 of line 2 (Kindle's popular highlights): it filled the gaps, the words ran into one
+            int DW = 1080, DH = 400;
+            String[] dl = {"the night was cold and the road ran on", "beyond the hills where nobody ever went", "and the wind blew hard from the north"};
+            for (int mode = 0; mode < 3; mode++) {
+                int[] dc = new int[DW * DH]; java.util.Arrays.fill(dc, 0xFFF8F0E0);
+                int ux0 = 0, ux1 = 0;
+                for (int l = 0; l < dl.length; l++) { int dx = 60, dy = 100 + l * 60, wi = 0;
+                    for (String wd : dl[l].split(" ")) { if (l == 1 && wi == 1) ux0 = dx;
+                        for (int c = 0; c < wd.length(); c++) { for (int yy = dy; yy < dy + 30; yy++) for (int xx = dx; xx < dx + 14; xx++) if (xx % 3 != 0 || yy % 6 == 0) dc[yy * DW + xx] = 0xFF202020;
+                            if ("ypg".indexOf(wd.charAt(c)) >= 0) for (int yy = dy + 30; yy < dy + 40; yy++) for (int xx = dx + 4; xx < dx + 8; xx++) dc[yy * DW + xx] = 0xFF202020;
+                            dx += 17; }
+                        if (l == 1 && wi == 3) ux1 = dx; dx += 12; wi++; } }
+                int uy = mode == 2 ? 191 : 195;     // (below the letters, or touching them)
+                for (int yy = uy; yy < uy + 2; yy++) for (int xx = ux0; xx < ux1; xx++) if (mode != 1 || xx % 4 < 2) dc[yy * DW + xx] = 0xFF505050;
+                java.util.List<InkLayout.Word> uw = InkLayout.words(dc, DW, DH, 0, 0);
+                String what = mode == 0 ? "solid" : mode == 1 ? "dotted" : "touching";
+                check("underline (" + what + "): every word found", uw.size(), 24);
+                String ut = String.join(" ", dl);
+                java.util.List<float[][]> up = InkLayout.pageBoxes(Arrays.asList(ut), uw);
+                float[] wb = up == null || up.get(0) == null ? null : up.get(0)[ut.indexOf("where")];
+                check("underline (" + what + "): 'where' placed", wb != null && Math.abs(wb[0] - 334) < 4 && wb[1] == 160, true);
+            }
+        }
         {   // two columns (Kindle in landscape): the left column's words first, then the right's
             java.util.List<InkLayout.Word> cw = new java.util.ArrayList<>();
             for (int r = 0; r < 5; r++) for (int k = 0; k < 8; k++) {
