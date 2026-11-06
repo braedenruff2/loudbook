@@ -50,8 +50,10 @@ def read_json(name, default):
     except (OSError, ValueError): return default
 
 
+voices_lock = threading.Lock()                         # (two voice changes at once could lose one)
+
 def write_json(name, data):
-    tmp = path(name + ".tmp")
+    tmp = path(name + ".tmp." + str(threading.get_ident()))
     with open(tmp, "w", encoding="utf-8") as f: json.dump(data, f, indent=1)
     os.replace(tmp, path(name))
 
@@ -227,15 +229,16 @@ def add_voice(name, wav_bytes):
     f = voice_file(vid)
     os.makedirs(os.path.dirname(f), exist_ok=True)
     with open(f, "wb") as out: out.write(wav_bytes)
-    name = " ".join(str(name).split())[:40] or "Recorded voice"
-    write_json("voices.json", voices() + [{"id": vid, "name": name, "seconds": round(secs, 1)}])
+    # (no braces: the phone finds the list's entries by them, and a voice named "Mum {old}" went missing there)
+    name = " ".join(str(name).replace("{", "(").replace("}", ")").split())[:40] or "Recorded voice"
+    with voices_lock: write_json("voices.json", voices() + [{"id": vid, "name": name, "seconds": round(secs, 1)}])
     print(f"Loudbook PC voice: added the voice \"{name}\" ({secs:.0f} s)", flush=True)
     return vid
 
 def delete_voice(vid):
     f = voice_file(vid)
     if f and os.path.exists(f): os.remove(f)
-    write_json("voices.json", [v for v in voices() if v.get("id") != vid])
+    with voices_lock: write_json("voices.json", [v for v in voices() if v.get("id") != vid])
 
 
 # A few sentences of plain narration (written for this) for the natural voice to copy each
@@ -309,9 +312,9 @@ class NaturalEngine:
 
     def speak(self, text, sid):
         import numpy as np, torch
-        t0 = time.time()
         with self.lock, torch.inference_mode():
-            self._voice(sid)
+            t0 = time.time()                           # (after the wait for the lock: waiting behind another request isn't
+            self._voice(sid)                           # slowness, and it made Kokoro take over for good)
             wav = self.model.generate(text)
         x = wav.squeeze(0).detach().cpu().numpy().astype(np.float32)
         # steady loudness, close to Kokoro's, without pumping between sentences
@@ -437,7 +440,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                     "naturalOk": bool(n and not n.too_slow)})
         if self.path == "/v1/voices":
             if not self.authed(): return
-            return self.reply(200, {"voices": [{"id": v["id"], "name": v.get("name", "")} for v in voices()],
+            return self.reply(200, {"voices": [{"id": v["id"], "name": str(v.get("name", "")).replace("{", "(").replace("}", ")")} for v in voices()],
                                     "natural": Handler.natural is not None})
         self.reply(404, {"error": "no such thing"})
 

@@ -190,12 +190,24 @@ final class Voice {
         PcLink l = pcLink();
         // (the PC reads at most 2000 letters of a request and drops the rest without saying so: a longer run-on sentence is
         // read by the phone's voice, all of it)
-        if (l != null && text.length() <= 2000 && (pcOk || System.currentTimeMillis() >= pcRetryAt)) {
+        // (the respelled text for Kokoro too: it can come out longer than the sentence)
+        String kText = l != null ? Chapter.forKokoro(text) : null;
+        if (l != null && text.length() <= 2000 && kText.length() <= 2000 && (pcOk || System.currentTimeMillis() >= pcRetryAt)) {
             try {
                 String engine = prefs(app).getString("pcEngine", "natural");
                 String rec = prefs(app).getString("pcVoice", "");          // a voice recorded on the PC
                 // (the PC reads with Kokoro too when asked for it or when its natural voice can't: the same respellings as the phone's)
-                PcLink.Audio a = l.speak(text, Chapter.forKokoro(text), sid, speed, engine, rec.isEmpty() ? null : rec, 30000);
+                PcLink.Audio a;
+                try { a = l.speak(text, kText, sid, speed, engine, rec.isEmpty() ? null : rec, 30000); }
+                catch (java.io.IOException e) {
+                    String m = String.valueOf(e.getMessage());
+                    // (the recorded voice was deleted on the PC, or it has no natural voice now: that isn't the PC being down, which
+                    // sent every sentence to the phone's voice and searched the network again each time. Its own voices read instead.)
+                    if (rec.isEmpty() || !(m.startsWith("PC said 404") || m.startsWith("PC said 409"))) throw e;
+                    Log.w(TAG, "PC voice: the recorded voice can't be used (" + m + "): the PC's own voice reads");
+                    prefs(app).edit().remove("pcVoice").apply();
+                    a = l.speak(text, kText, sid, speed, engine, null, 30000);
+                }
                 pcOk = true; pcError = ""; lastSource = "pc:" + a.engine;
                 float[] f = new float[a.pcm.length];
                 for (int i = 0; i < f.length; i++) f[i] = a.pcm[i] / 32768f;
