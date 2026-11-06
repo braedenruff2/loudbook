@@ -65,7 +65,9 @@ final class Updater {
                 int code = v.getInt("code");
                 String name = v.optString("name", String.valueOf(code));
                 cleanOld(app, code);
-                if (code > BuildInfo.CODE) {
+                // (an update that failed to install three times isn't downloaded again every 20 minutes: wait for the next one)
+                if (code > BuildInfo.CODE && p.getInt("failed:" + code, 0) >= 3) Log.w(TAG, "update " + name + " failed to install 3 times: waiting for a newer one");
+                else if (code > BuildInfo.CODE) {
                     File f = apk(app, code);
                     Net.download(BuildInfo.RELEASES + "download/v" + code + "/Loudbook.apk", f, v.optLong("size", 0), null);
                     PackageInfo pi = app.getPackageManager().getPackageArchiveInfo(f.getPath(), 0);
@@ -91,12 +93,15 @@ final class Updater {
     }
 
     /** Hands the downloaded APK to Android. The app restarts as part of it. */
-    static boolean install(Context c) {
+    static synchronized boolean install(Context c) {          // (one at a time: onStop starts it on its own thread)
         int code = readyCode(c);
         if (code == 0 || !mayInstall(c)) return false;
         File f = apk(c, code);
         try {
             PackageInstaller pi = c.getPackageManager().getPackageInstaller();
+            // (an earlier try still waiting (for a tap, on Android 11 and older) is dropped: each time the app was left made
+            // another, each with a copy of the APK)
+            for (PackageInstaller.SessionInfo si : pi.getMySessions()) try { pi.abandonSession(si.getSessionId()); } catch (Throwable ignored) { }
             PackageInstaller.SessionParams sp = new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
             sp.setAppPackageName(c.getPackageName());
             sp.setSize(f.length());
@@ -141,7 +146,10 @@ final class Updater {
                 String msg = i.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
                 prefs(c).edit().putString("error", "install: " + (msg == null ? "status " + st : msg)).apply();
                 // a failed APK is dropped so the next check downloads it fresh
-                if (st != PackageInstaller.STATUS_FAILURE_ABORTED) { int code = readyCode(c); if (code > 0) apk(c, code).delete(); }
+                if (st != PackageInstaller.STATUS_FAILURE_ABORTED) {
+                    int code = readyCode(c);
+                    if (code > 0) { apk(c, code).delete(); prefs(c).edit().putInt("failed:" + code, prefs(c).getInt("failed:" + code, 0) + 1).apply(); }
+                }
             }
         }
     }

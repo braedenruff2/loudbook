@@ -441,12 +441,17 @@ public class ReaderService extends Service {
         if (!playing) return;
         pausedForFocus = false;          // (his own pause: a call ending mustn't start reading again; the focus listener sets it after)
         paused = true;
+        pausedAt = System.currentTimeMillis();
         if (track != null) track.pause();
         state();
         saveProgress();
     }
 
     boolean isPaused() { return paused; }
+    private volatile long pausedAt;
+    /** Reading, or paused in a way that will go on soon (a call took the sound; paused in the last 10 minutes): an update
+     *  mustn't restart the app now. (It installed on leaving the app during a call: the service was killed, no reading after.) */
+    boolean holdsUpdate() { return playing && (!paused || pausedForFocus || System.currentTimeMillis() - pausedAt < 10 * 60_000); }
 
     private void stopPlayback() {
         gen++;

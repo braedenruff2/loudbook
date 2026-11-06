@@ -268,8 +268,13 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         super.onStop();
         visible = false;
         if (svc != null) svc.setAppVisible(false);
-        boolean reading = svc != null && svc.isPlaying() && !svc.isPaused();
-        if (!reading && !isChangingConfigurations() && Updater.readyCode(this) > 0 && Updater.mayInstall(this)) Updater.install(getApplicationContext());
+        // (not while the service isn't bound yet either: whether it's reading isn't known)
+        boolean reading = svc == null || svc.holdsUpdate();
+        // (off the main thread: install copies the whole APK into the installer's session)
+        if (!reading && !isChangingConfigurations() && Updater.readyCode(this) > 0 && Updater.mayInstall(this)) {
+            final android.content.Context app = getApplicationContext();
+            new Thread(() -> Updater.install(app), "lb-update-install").start();
+        }
     }
 
     private void refreshUpdate() {
