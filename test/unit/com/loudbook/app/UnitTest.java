@@ -236,6 +236,15 @@ public class UnitTest {
         check("a quote closing after a number still closes", str(Dialogue.split("\"Room 5\" was empty.", false)), "[q:Room 5][n:was empty.]");
         check("single quotes: speech starting 'Round", Dialogue.singles("\u2018Round up the cattle,\u2019 he said."), true);
         check("single quotes: speech starting 'Round, split", str(Dialogue.split("\u2018Round up the cattle,\u2019 he said.", false, true)), "[q:Round up the cattle,][n:he said.]");
+        check("single quotes: \u2018em before another quote's close isn't speech", str(Dialogue.split("We\u2019ll get \u2018em now. \u2018Go,\u2019 she said.", false, true)), "[n:We\u2019ll get \u2018em now.][q:Go,][n:she said.]");
+        check("single quotes: rock \u2018n\u2019 roll before speech", str(Dialogue.split("He loved rock \u2018n\u2019 roll. \u2018Yes,\u2019 she said.", false, true)), "[n:He loved rock \u2018n\u2019 roll.][q:Yes,][n:she said.]");
+        check("single quotes: \u2018em then a line break", Dialogue.singles("We got \u2018em\nand left."), false);
+        check("an inch mark inside speech doesn't close it", str(Dialogue.split("\"I'm 6' 2\" tall,\" he said. \"Sure.\"", false)), "[q:I'm 6' 2\" tall,][n:he said.][q:Sure.]");
+        check("an inch mark inside speech: still closed after", Dialogue.run("\"I'm 6' 2\" tall,\" he said.", false), false);
+        check("a quote closing after a number, then the tag", str(Dialogue.split("\"Room 5\" he said. \"Go.\"", false)), "[q:Room 5][n:he said.][q:Go.]");
+        { StringBuilder big = new StringBuilder("\u2018Get "); for (int r = 0; r < 3000; r++) big.append("\u2018em and \u2018em again. "); long t0 = System.nanoTime();
+          Dialogue.singles(big.toString()); Dialogue.singleMarks(big.toString(), false);
+          check("single quotes: a long paragraph of \u2018em is quick", (System.nanoTime() - t0) < 2_000_000_000L, true); }
         check("single quotes: \u2018em with no close is an apostrophe", Dialogue.singles("We\u2019ll get \u2018em tomorrow."), false);
         {
             // a plural's apostrophe inside single-quoted speech that runs over two sentences: the speech goes on

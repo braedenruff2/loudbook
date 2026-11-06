@@ -108,14 +108,32 @@ final class Dialogue {
         if (!elision(t, c + 1)) return true;
         // (a left quote before "Round", "Cause", "Til"...: speech if it closes later on (‘Round up the cattle,’ he said.); a
         // word processor turns 'em into ‘em too, so with no close it's that)
-        if (ch == '‘') for (int k = c + 2; k < t.length(); k++) if (closesSingle(t, k)) return true;
-        return false;
+        // (the close must come before the next left quote opening a word: in "We'll get ‘em now. ‘Go,’ she said." the ,’ is Go's)
+        return ch == '‘' && closeBeforeOpener(t, c + 2);
+    }
+    private static String stopText;
+    private static int[] stopAt;                   // (per position: where the next close (>= 0) or word-opening ‘ (-1) is)
+    /** Is there a clear single close at or after k, before any ‘ that starts a word? (Worked out once per text: a long
+     *  paragraph full of ‘em was checked to its end for every one, per sentence.) */
+    private static synchronized boolean closeBeforeOpener(String t, int k) {
+        if (t != stopText) {
+            int[] a = new int[t.length() + 1];
+            a[t.length()] = -1;
+            for (int j = t.length() - 1; j >= 0; j--) {
+                if (closesSingle(t, j)) a[j] = j;
+                else if (t.charAt(j) == '‘' && (j == 0 || "( \t\n[—–".indexOf(t.charAt(j - 1)) >= 0)) a[j] = -1;
+                else a[j] = a[j + 1];
+            }
+            stopText = t; stopAt = a;
+        }
+        return k < t.length() && stopAt[k] >= 0;
     }
     /** Does a word cut short at the front start at c ('em, 'tis, 'twas, 'cause: its apostrophe just before c)? */
     private static boolean elision(String t, int c) {
         String rest = t.substring(c, Math.min(t.length(), c + 6)).toLowerCase(java.util.Locale.ROOT);
-        return rest.matches("^(em|tis|twas|twere|cause|cos|til|till|n|nuff|bout|round|ello|ere)\\b.*");
+        return ELISION.matcher(rest).lookingAt();
     }
+    private static final java.util.regex.Pattern ELISION = java.util.regex.Pattern.compile("(em|tis|twas|twere|cause|cos|til|till|n|nuff|bout|round|ello|ere)\\b");
     /** A single quote closing speech: after the quote's last punctuation (,’ .’ !’), or before punctuation; not "the boys’ dog". */
     private static boolean closesSingle(String t, int c) {
         char ch = t.charAt(c);
@@ -128,6 +146,17 @@ final class Dialogue {
     /** A straight double quote right after a number, not opening speech: an inch mark (6' 2", a 12" pizza). (One closing speech
      *  can follow a number: "Room 5," she said.) */
     private static boolean inchMark(String t, int c) { return c > 0 && Character.isDigit(t.charAt(c - 1)); }
+    /** A straight double quote after a number inside open speech that is an inch mark, not the close: "I'm 6' 2" tall," he
+     *  said. Only when a word in lower case follows (not "he", "she", "said"...) and another " comes later in the text. */
+    private static boolean inchInside(String t, int c) {
+        if (!inchMark(t, c) || c + 2 >= t.length() || t.charAt(c + 1) != ' ' || !Character.isLowerCase(t.charAt(c + 2))) return false;
+        if (t.indexOf('"', c + 1) < 0) return false;
+        int e = c + 2;
+        while (e < t.length() && Character.isLetter(t.charAt(e))) e++;
+        return !TAG_WORDS.contains(t.substring(c + 2, e));
+    }
+    private static final java.util.Set<String> TAG_WORDS = new java.util.HashSet<>(java.util.Arrays.asList(
+        "he", "she", "they", "i", "we", "you", "it", "said", "asked", "replied", "called", "shouted", "whispered", "says", "and", "was"));
 
     /** Whether a quote is still open at the end of this text. */
     static boolean run(String t, boolean open) { return run(t, open, false); }
@@ -138,7 +167,7 @@ final class Dialogue {
             if (single) { if (marks == null) marks = singleMarks(t, open); if (marks[c] != 0) open = marks[c] > 0; continue; }
             if (ch == '“') open = true;
             else if (ch == '”') open = false;
-            else if (ch == '"' && !(open ? false : inchMark(t, c))) open = !open;
+            else if (ch == '"' && !(open ? inchInside(t, c) : inchMark(t, c))) open = !open;
         }
         return open;
     }
@@ -156,7 +185,7 @@ final class Dialogue {
             char ch = t.charAt(c);
             if (single && marks == null) marks = after == null || after.isEmpty() ? singleMarks(t, open) : java.util.Arrays.copyOf(singleMarks(t + " " + after, open), t.length());
             boolean opens = single ? marks[c] > 0 : ch == '“' || (ch == '"' && !open && !inchMark(t, c));
-            boolean closes = single ? marks[c] < 0 : ch == '”' || (ch == '"' && open);
+            boolean closes = single ? marks[c] < 0 : ch == '”' || (ch == '"' && open && !inchInside(t, c));
             if (opens && !open) { add(out, cur, false); open = true; continue; }
             if (closes && open) { add(out, cur, true); open = false; continue; }
             cur.append(ch);
