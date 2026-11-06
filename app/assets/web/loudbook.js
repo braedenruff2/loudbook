@@ -281,7 +281,11 @@ if (!window.LB) {
         const posts = qa(doc, 'article.message');
         if (!posts.length) return [null];
         const story = /\/(reader|threadmarks)\b/.test(url) ? posts : posts.filter(a => a.classList.contains('hasThreadmark'));
-        return (story.length ? story : posts.slice(0, 1)).map(a => q(a, '.message-body .bbWrapper, .bbWrapper')).filter(Boolean);
+        // (no threadmarked post: the thread's first post is the story's start, but on a later page ("/page-3") it's a reply)
+        const later = /\/page-(\d+)/.exec(new URL(url).pathname);
+        const pick = story.length ? story : later && Number(later[1]) > 1 ? [] : posts.slice(0, 1);
+        if (!pick.length) return [null];
+        return pick.map(a => q(a, '.message-body .bbWrapper, .bbWrapper')).filter(Boolean);
       },
       lines: true,
       skip: '.bbCodeBlock-expandLink, .bbCodeSpoiler-button, .message-signature, .js-selectToQuoteEnd',
