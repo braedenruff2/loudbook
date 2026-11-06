@@ -137,7 +137,7 @@ public final class BookPlayer extends Service {
         android.content.IntentFilter noisy = new android.content.IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(noisyReceiver, noisy, Context.RECEIVER_NOT_EXPORTED);
         else registerReceiver(noisyReceiver, noisy);
-        goForeground();                                   // (started with startForegroundService: must say so within 5 s)
+        goForeground(true);                               // (started with startForegroundService: must say so within 5 s)
         Runnable r = pending; pending = null;
         if (r != null) r.run();                           // (now, not posted: onStartCommand comes next and stops an empty player)
     }
@@ -148,7 +148,6 @@ public final class BookPlayer extends Service {
 
     @Override public int onStartCommand(Intent i, int flags, int id) {
         String a = i == null ? null : i.getAction();
-        if (!foreground) goForeground();
         if (ACT_TOGGLE.equals(a)) { if (playing) pause(); else { if (chapters == null) restore(); resume(); } }
         else if (ACT_BACK.equals(a)) seek(posMs() - JUMP_MS);
         else if (ACT_FWD.equals(a)) seek(posMs() + JUMP_MS);
@@ -368,7 +367,7 @@ public final class BookPlayer extends Service {
 
     // ---------------------------------------------------------------- notification, lock screen, car
 
-    private void update() { updateSession(); goForeground(); }
+    private void update() { updateSession(); goForeground(false); }
 
     private void updateSession() {
         PlaybackState.Builder s = new PlaybackState.Builder()
@@ -410,10 +409,12 @@ public final class BookPlayer extends Service {
             .build();
     }
 
-    private void goForeground() {
+    /** Foreground while playing (or when it must be, just started); paused, the notification stays but can be swiped away.
+     *  (Not foreground again on every change while paused: from the background Android 12+ refuses that.) */
+    private void goForeground(boolean must) {
         Notification n = notification();
         try {
-            if (playing || !foreground) {
+            if (playing || must) {
                 if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK);
                 else startForeground(NOTIF_ID, n);
                 foreground = true;

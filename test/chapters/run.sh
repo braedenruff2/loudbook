@@ -89,6 +89,9 @@ grep -q "opened again with its first intent" recents-log.txt && ! grep -q "Pelic
 grep -q "start page: last story there" logcat.txt && ! grep -q "isn't the start page" logcat.txt && echo "start page shows the last story: yes" >> recents.txt || echo "start page shows the last story: NO" >> recents.txt
 # the PC's audiobook played in Loudbook (BookPlayer + book.html, 2026-11-06): two short chapters pushed into Loudbook's files
 # (as BookCopy leaves them, the recordings in its own Audiobooks folder), played from chapter 1, on to chapter 2 by itself
+# (its own small log: cleared first, only Loudbook's lines. The whole 16 MB dump came back cut short late in the run,
+#  without this section's lines, 2026-11-06; what's before is kept in logcat.txt for the crash check)
+adb logcat -c
 adb shell log -t LoudbookTest "=== audiobook ==="
 BK=/tmp/lbbook; rm -rf $BK; mkdir -p $BK
 for n in 1 2; do
@@ -98,18 +101,22 @@ for n in 1 2; do
 done
 D=/sdcard/Android/data/com.loudbook.app/files
 adb shell mkdir -p "'$D/books/Test Book'" "'$D/Audiobooks/Test Book'"
-for n in 1 2; do adb push "$BK/000$n - Part $n.json" "$D/books/Test Book/" >/dev/null; adb push "$BK/000$n - Part $n.mp3" "$D/Audiobooks/Test Book/" >/dev/null; done
+for n in 1 2; do adb push "$BK/000$n - Part $n.json" "$D/books/Test Book/"; adb push "$BK/000$n - Part $n.mp3" "$D/Audiobooks/Test Book/"; done
+adb shell ls -l "'$D/books/Test Book'" "'$D/Audiobooks/Test Book'" > book-files.txt 2>&1
 adb shell input keyevent KEYCODE_WAKEUP; adb shell wm dismiss-keyguard
-adb shell am start -n com.loudbook.app/.MainActivity --es bookplay "'Test Book'"
+adb shell am start -n com.loudbook.app/.MainActivity --es bookplay "'Test Book'" > book-start.txt 2>&1
 sleep 14
 adb shell dumpsys media_session | grep -E "Loudbook audiobook|state=PlaybackState" | head -4 > book-session.txt
 sleep 6
-adb logcat -d > logcat.txt
-sed -n '/=== audiobook ===/,$p' logcat.txt > book-log.txt
+adb logcat -d -s LoudbookTest:* Loudbook:* AndroidRuntime:* MediaPlayer:E > book-log.txt
+cat book-log.txt >> logcat.txt
 {
   grep -o 'book: test book .*' book-log.txt | head -1
   grep -q "book: playing chapter 1 at" book-log.txt && echo "audiobook: chapter 1 plays: yes" || echo "audiobook: chapter 1 plays: NO"
   grep -q "book: chapter 1 ended" book-log.txt && grep -q "book: playing chapter 2 at" book-log.txt && echo "audiobook: on to chapter 2 by itself: yes" || echo "audiobook: on to chapter 2 by itself: NO"
   grep -q "Loudbook audiobook" book-session.txt && echo "audiobook: media session there (headphones, car): yes" || echo "audiobook: media session there: NO"
   grep -E "book: (player error|opening|couldn't)" book-log.txt | head -3
+  grep -q "book: playing chapter 2 at" book-log.txt || {
+    echo "  (start: $(tr '\n' ' ' < book-start.txt | cut -c1-200))"; sed 's/^/  (files) /' book-files.txt
+    grep -E "book|Book|AndroidRuntime" book-log.txt | tail -15 | sed 's/^/  /'; }
 } > book.txt
