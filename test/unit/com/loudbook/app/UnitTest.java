@@ -51,10 +51,12 @@ public class UnitTest {
         for (String keep : new String[]{"The mysterious object the old man held.", "His previous record the clerk kept.", "This object the size of a fist.",
                 "This present the king gave.", "The notorious rebel escaped.", "The curious object to the left.", "He held her close the whole night.",
                 "She hugged him close that night.", "I truly learned a lot from him.", "Most learned it the hard way.", "We're content creators.",
-                "Each of the three does his part."})
+                "Each of the three does his part.", "He took a bow from the rack and strung it.", "He picked up his sword and bow before leaving."})
             check("left as it is for the phone voice: " + keep, Chapter.forKokoro(keep), keep);
         check("still respelled: the guards escort the prisoner", Chapter.forKokoro("The guards escort the prisoner.").contains("escort the"), false);
         check("still respelled: let her close the door", Chapter.forKokoro("Let her close the door.").contains("cloze") || Chapter.forKokoro("Let her close the door.").contains("loze"), true);
+        check("still respelled: took a bow", Chapter.forKokoro("He took a bow and left the stage.").contains("bough"), true);
+        check("still respelled: they bow before the king", Chapter.forKokoro("They bow before the king.").contains("bough"), true);
         check("still respelled: a learned man", Chapter.forKokoro("He was a learned man.").contains("lernid"), true);
         check("still respelled: I'm content", Chapter.forKokoro("I'm content with that.").contains("contennt"), true);
         check("dashes as pauses for the phone voice", Chapter.forKokoro("\"Wait\u2014no\u2014stop!\" The man--tall, thin--walked in. He - well, he left. It was\u2013how to put it\u2013odd. She smiled\u2014\u201cYes.\u201d"),

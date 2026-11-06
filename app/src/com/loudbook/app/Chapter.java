@@ -83,8 +83,9 @@ final class Chapter {
     private static final java.util.regex.Pattern WOUND = java.util.regex.Pattern.compile(
         "(?<=\\b(?:I|[Hh]e|[Ss]he|[Ww]e|[Tt]hey|[Yy]ou|[Ii]t|had|have|has|having|was|were|been|tightly|loosely|carefully|slowly|then|[Tt]hen|path|road|river|trail|stream|line|queue|procession)[ \\t])wound(?=[ \\t]+(?:the|a|an|it|them|his|her|my|your|their|its|our|up|around|round|through|down|back|tight|tightly|together|itself|himself|herself|themselves|along|across|between|past|over)\\b)");
     private static final java.util.regex.Pattern BOW = java.util.regex.Pattern.compile(
-        "\\b(?:((?:[Tt]ook|[Tt]ake|[Tt]akes|[Tt]aking|[Gg]ave|[Gg]ive|[Gg]ives|[Gg]iving|[Ss]wept)[ \\t]+(?:a|an|another)[ \\t]+)|((?:deep|slight|low|polite|respectful|curt|quick|formal|shallow|courtly|mocking|theatrical|elaborate|sweeping|graceful|perfunctory|brief|final|exaggerated|stiff)[ \\t]+))bow(s?)\\b"
-        + "|(?<=\\b(?:I|[Yy]ou|[Ww]e|[Tt]hey|to|will|would|must|should|shall|not|and|then|all|[Ee]veryone|[Pp]lease|[Hh]e|[Ss]he|[Ii]t)[ \\t])bow(s?)(?=[ \\t]+(?:to|before|down|low|deeply|slightly|respectfully|politely|(?:his|her|their|your|my|our|its)[ \\t]+heads?)\\b)"
+        "\\b(?:((?:[Tt]ook|[Tt]ake|[Tt]akes|[Tt]aking|[Gg]ave|[Gg]ive|[Gg]ives|[Gg]iving|[Ss]wept)[ \\t]+(?:a|an|another)[ \\t]+)|((?:deep|slight|low|polite|respectful|curt|quick|formal|shallow|courtly|mocking|theatrical|elaborate|sweeping|graceful|perfunctory|brief|final|exaggerated|stiff)[ \\t]+))bow(s?)\\b(?![ \\t]+(?:from|off|out|and[ \\t]+(?:an[ \\t]+)?(?:arrows?|quiver)|string|strings|staff|case)\\b)"
+        + "|(?<!\\b(?:sword|swords|arrows?|quiver|spear|shield|dagger|knife|axe|staff|crossbow|armou?r)[ \\t]and[ \\t])"
+        + "(?<=\\b(?:I|[Yy]ou|[Ww]e|[Tt]hey|to|will|would|must|should|shall|not|and|then|all|[Ee]veryone|[Pp]lease|[Hh]e|[Ss]he|[Ii]t)[ \\t])bow(s?)(?=[ \\t]+(?:to|before|down|low|deeply|slightly|respectfully|politely|(?:his|her|their|your|my|our|its)[ \\t]+heads?)\\b)"
         + "|(?:^|(?<=[.!?\"\u201c] ))Bow(?=[ \\t]+(?:to|before|down|low|deeply|(?:his|her|their|your|my|our|its)[ \\t]+heads?)\\b)");
     // a ship's bow ("the bow of the ship", "the boat's bow", "from bow to stern"): the voice said the archer's "boh" (lab 2026-11-05)
     private static final java.util.regex.Pattern SHIP_BOW = java.util.regex.Pattern.compile(
