@@ -636,6 +636,19 @@ public class UnitTest {
             float[] by = dp == null || dp.get(0) == null ? null : dp.get(0)[dt.indexOf("beyond")];
             check("drop cap: 'beyond' (line 2, beside the cap) placed", by != null && Math.abs(by[0] - 160) < 4 && Math.abs(by[1] - 150) < 4, true);
         }
+        {   // two columns (Kindle in landscape): the left column's words first, then the right's
+            java.util.List<InkLayout.Word> cw = new java.util.ArrayList<>();
+            for (int r = 0; r < 5; r++) for (int k = 0; k < 8; k++) {
+                int cx = (k < 4 ? 40 : 580) + (k % 4) * 110;
+                cw.add(new InkLayout.Word(cx, 100 + r * 50, cx + 90, 130 + r * 50, k == 7));
+            }
+            java.util.List<InkLayout.Word> co = InkLayout.inColumns(cw);
+            check("two columns: the left column first", co.get(4).x0 + "," + co.get(4).y0 + " " + co.get(20).x0 + "," + co.get(20).y0, "40,150 580,100");
+            check("two columns: each column's line ends there", co.get(3).rowEnd && !co.get(2).rowEnd && co.get(39).rowEnd, true);
+            java.util.List<InkLayout.Word> one = new java.util.ArrayList<>();
+            for (int r = 0; r < 5; r++) for (int k = 0; k < 8; k++) one.add(new InkLayout.Word(40 + k * 130, 100 + r * 50, 150 + k * 130, 130 + r * 50, k == 7));
+            check("one column: as it was", InkLayout.inColumns(one) == one, true);
+        }
         // spaces in justified text: loose rows (26-28 px) and tight ones (9-11 px), letters 1-6 px apart
         java.util.List<Integer> gs = new java.util.ArrayList<>();
         int[][] hist = {{1, 29}, {2, 36}, {3, 51}, {4, 13}, {5, 6}, {6, 4}, {9, 1}, {10, 1}, {11, 4}, {13, 4}, {14, 4}, {20, 2}, {26, 3}, {27, 3}, {28, 4}};

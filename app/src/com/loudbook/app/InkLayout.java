@@ -96,6 +96,45 @@ final class InkLayout {
     }
 
     /**
+     * Two columns side by side (Kindle in landscape): the rows of ink run across both, so the words came left line 1, right
+     * line 1, left line 2... while the text goes down one column, then the other, and the highlight landed in the wrong column
+     * (review 2026-11-06). When most rows have a wide gap across the middle, the left column's words are put first.
+     */
+    static List<Word> inColumns(List<Word> ws) {
+        if (ws.size() < 12) return ws;
+        int left = Integer.MAX_VALUE, right = Integer.MIN_VALUE;
+        for (Word q : ws) { left = Math.min(left, q.x0); right = Math.max(right, q.x1); }
+        int mid = (left + right) / 2;
+        List<Integer> gaps = new ArrayList<>();
+        for (int k = 1; k < ws.size(); k++) if (!ws.get(k - 1).rowEnd) gaps.add(ws.get(k).x0 - ws.get(k - 1).x1);
+        if (gaps.isEmpty()) return ws;
+        Collections.sort(gaps);
+        int typicalGap = Math.max(1, gaps.get(gaps.size() / 2));
+        int rows = 0, split = 0;
+        for (int k = 0, s = 0; k < ws.size(); k++) {
+            if (!ws.get(k).rowEnd) continue;
+            if (k - s + 1 >= 3) {
+                rows++;
+                for (int j = s + 1; j <= k; j++) {
+                    Word a = ws.get(j - 1), b = ws.get(j);
+                    if (a.x1 < mid && b.x0 > mid && b.x0 - a.x1 > typicalGap * 1.8) { split++; break; }
+                }
+            }
+            s = k + 1;
+        }
+        if (rows < 4 || split < rows * 0.7) return ws;
+        List<Word> l = new ArrayList<>(), r = new ArrayList<>();
+        for (int k = 0; k < ws.size(); k++) {
+            Word q = ws.get(k);
+            boolean isLeft = (q.x0 + q.x1) / 2 < mid;
+            boolean endsSide = q.rowEnd || k + 1 >= ws.size() || ((ws.get(k + 1).x0 + ws.get(k + 1).x1) / 2 < mid) != isLeft;
+            (isLeft ? l : r).add(new Word(q.x0, q.y0, q.x1, q.y1, endsSide));
+        }
+        l.addAll(r);
+        return l;
+    }
+
+    /**
      * A drop cap (a big first letter beside the chapter's first two or three lines) fills the gaps between those lines, so they
      * came out as one tall row and their words were lost (review 2026-11-06). A band over twice the usual height whose quiet rows
      * (the gaps between lines) have ink only in one narrow place is split again without those columns; the lines after the first
@@ -192,6 +231,7 @@ final class InkLayout {
      * piece gets null if none of its words were found (it isn't on screen).
      */
     static List<float[][]> pageBoxes(List<String> texts, List<Word> boxes) {
+        boxes = inColumns(boxes);
         List<int[]> toks = new ArrayList<>();                          // {piece, start, end} of each word of the text
         for (int p = 0; p < texts.size(); p++) {
             String text = texts.get(p);
