@@ -1290,13 +1290,15 @@ return { parseFixes, makeSayer, tidy, plainLetters };
   function numbersToWords(t) {
     return t
       .replace(/(\d)\s?%/g, '$1 percent')                     // before the digits become words
+      // "$10.5", "$12.345": not cents -> ten point five dollars (was "ten dollars.five")
+      .replace(/\$(\d[\d,]*)\.(\d|\d{3,})\b(?!\.\d)/g, (_, d, p) => digitWords(d.replace(/,/g, '')) + ' point ' + p.split('').map(x => ONES[+x]).join(' ') + ' dollars')
       .replace(/\$(\d[\d,]*)(?:\.(\d{2}))?\b/g, (_, d, c) => { const n = +d.replace(/,/g, ''); if (n === 0 && c && +c) return words(+c) + (+c === 1 ? ' cent' : ' cents');   // $0.99 -> ninety-nine cents
         return digitWords(d.replace(/,/g, '')) + (n === 1 ? ' dollar' : ' dollars') + (c && +c ? ' and ' + words(+c) + ' cents' : ''); })
       // 9:00 -> nine o'clock, 15:00 -> fifteen hundred, but "10:00 o'clock" and "3:00 AM" don't get a second o'clock
       .replace(/\b(\d{1,2}):(\d{2})\b/g, (_, h, m, at, all) => (+h === 0 && +m === 0 ? (/(?:\b(?:at|past|after|until|till|before|by|around|about|since)\s+)$/i.test(all.slice(Math.max(0, at - 9), at)) ? 'midnight' : 'zero zero') : words(+h) + (+m === 0 && +h >= 13 && +h <= 24 ? ' hundred' : +m === 0 ? (/^\s*(o'clock|o’clock|[ap]\.?m\b|[AP]M\b|noon\b|midnight\b)/i.test(all.slice(at + 3 + h.length)) ? '' : " o'clock") : +m < 10 ? ' oh ' + words(+m) : ' ' + words(+m))))
       // British-style times with a dot: "at 7.30" -> seven thirty, "7.30 pm", "from 9.30 to 5.00" (were "seven point three zero").
       // Only after at/by/until/... or before am/pm, and not followed by a word that makes it an amount ("at 2.50 pounds")
-      .replace(/(\b(?:[Aa]t|[Bb]y|[Uu]ntil|[Tt]ill|[Bb]efore|[Aa]fter|[Aa]round|[Ff]rom|[Ss]ince|[Pp]ast|[Bb]etween|[Tt]he)\s+|(?<![\d.,:\/$£€]))([1-9]|1\d|2[0-3])\.([0-5]\d)(?![\d.]\d)(?=(\s*(?:[AP]M|[ap]\.?m\.?)(?![a-z]))|(?:[.,;:!?)"”’\]]|\s*[-–]\s*\d|\s*$)|\s+(?:sharp|exactly|precisely|tonight|tomorrow|today|this|that|every|and|or|in|on|at|o['’]clock|noon|midnight|train|bus|express|from|when|then|so|but|he|she|they|we|I|you|it|until|till|to|the|his|her|their|our|my)\b)/g,
+      .replace(/(\b(?:[Aa]t|[Bb]y|[Uu]ntil|[Tt]ill|[Bb]efore|[Aa]fter|[Aa]round|[Ff]rom|[Ss]ince|[Pp]ast|[Bb]etween|[Tt]he)\s+|(?<![\d.,:\/$£€]))([1-9]|1\d|2[0-3])\.([0-5]\d)(?![\d.]\d)(?=(\s*(?:[AP]M|[ap]\.?m\.?)(?![a-z]))|(?:[.,;:!?)"”’\]]|\s*[-–]\s*\d|\s*$)|\s+(?:sharp|exactly|precisely|now|later|daily|tonight|tomorrow|today|this|that|every|and|or|in|on|at|o['’]clock|noon|midnight|train|bus|express|from|when|then|so|but|he|she|they|we|I|you|it|until|till|to|the|his|her|their|our|my)\b)/g,
         (m, pre, h, mm, ampm, at, all) => {
           if (!pre && !ampm && !/\b(?:[1-9]|1\d|2[0-3])\.[0-5]\d\s*(?:to|until|till|and|-|–)\s*$/.test(all.slice(Math.max(0, at - 16), at))
             && !/^\s*(?:to|until|till|-|–)\s*(?:[1-9]|1\d|2[0-3])\.[0-5]\d(?![\d.]\d)/.test(all.slice(at + m.length))) return m;   // (a bare 7.30 stays a number)
@@ -1307,10 +1309,11 @@ return { parseFixes, makeSayer, tidy, plainLetters };
       .replace(/\b([Yy]ear\s+(?:(?:was|is|of)\s+)?)(10\d\d|2[1-9]\d\d|[3-9]\d\d\d)\b(?![.,]?\d)|\b((?:[Ii]n|[Ss]ince|[Uu]ntil|[Cc]irca|[Bb]y)\s+)(10\d\d)(?=\s*(?:[,;:!?)]|\.(?!\d)|$)|\s+(?:the|a|an|and|or|he|she|they|it|we|I|his|her|their|there|when|after|before)\b)|(?<![\d,.])\b(\d{3,4})(?=\s?(?:AD|BC|BCE|CE|A\.D\.|B\.C\.)(?!\w))|((?:\bAD|\bA\.D\.)\s?)(\d{3,4})\b(?![.,]?\d)/g,
         (m, p1, y1, p2, y2, y3, p4, y4) => { const y = +(y1 || y2 || y3 || y4); return (p1 || p2 || p4 || '') + (y % 1000 === 0 || (y < 1000 && y % 100 === 0) ? words(y) : yearWords(y)); })
       .replace(/\b(1[1-9]\d\d|20\d\d)s?\b/g, (m, y) => { const w = yearWords(+y); return m.endsWith('s') ? (w.endsWith('y') ? w.slice(0, -1) + 'ies' : w + 's') : w; })
-      .replace(/\b(\d)0['’]?s\b/g, (m, d) => (TENS[+d] || 'ten').replace(/y$/, 'ies') + (d === '1' ? 's' : ''))   // the 80s, the 70's
+      .replace(/\b(\d)0['’]?s\b/g, (m, d) => (d === '0' ? 'two thousand' : TENS[+d] || 'ten').replace(/y$/, 'ies') + (d === '1' || d === '0' ? 's' : ''))   // the 80s, the 70's
       .replace(/\b([1-9])s\b/g, (m, d) => ONES[+d] + (d === '6' ? 'es' : 's'))   // two 6s -> two sixes         // the 80s -> the eighties
-      .replace(/\b\d{1,3}(,\d{3})+\b/g, (m) => digitWords(m.replace(/,/g, '')))
-      .replace(/\b(\d+)\.(\d+)\b/g, (_, a, b) => words(+a) + ' point ' + b.split('').map(x => ONES[+x]).join(' '))
+      .replace(/\b\d{1,3}(,\d{3})+\b(?!\.\d)/g, (m) => digitWords(m.replace(/,/g, '')))
+      // (1,234.56 -> one thousand two hundred and thirty-four point five six; the thousands rule above used to take "1,234" first)
+      .replace(/\b(\d{1,3}(?:,\d{3})+|\d+)\.(\d+)\b/g, (_, a, b) => digitWords(a.replace(/,/g, '')) + ' point ' + b.split('').map(x => ONES[+x]).join(' '))
       .replace(/(?<![\d.,:\/$#-])\b0([1-9])([0-5]\d)\b(?![\d.,:\/]\d)/g, (m, h, n) =>   // 0800 -> oh eight hundred (military time)
         'oh ' + ONES[+h] + (n === '00' ? ' hundred' : n[0] === '0' ? ' oh ' + ONES[+n[1]] : ' ' + words(+n)))
       .replace(/\b0\d+\b/g, (m) => m.split('').map(x => (x === '0' ? 'oh' : ONES[+x])).join(' '))   // Agent 007
