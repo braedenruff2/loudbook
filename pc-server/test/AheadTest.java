@@ -33,7 +33,8 @@ public class AheadTest { public static void main(String[] a) throws Exception {
   // sent again: all made already
   r = l.ahead(items, null, 10000);
   System.out.println("sent again: " + r[0] + ", made already " + r[1]);
-  if (r[1] != 13) { bad++; System.out.println("FAIL not kept"); }
+  // (all 13, or 12 when the first one was read live before the PC got to it: it's passed over then)
+  if (r[1] != 13 && !(r[1] == 12 && !"best".equals(first.engine))) { bad++; System.out.println("FAIL not kept"); }
   // a sentence read live while it waits is passed over by the maker
   java.util.List<String[]> more = new java.util.ArrayList<>();
   for (int i = 0; i < 40; i++) more.add(new String[]{"A later sentence, number " + i + ", in the next chapter.", null, "3"});
@@ -43,6 +44,29 @@ public class AheadTest { public static void main(String[] a) throws Exception {
   // a recorded voice that isn't on the PC
   try { l.ahead(items, "abcdefabcdef", 10000); bad++; System.out.println("FAIL unknown voice accepted"); }
   catch (java.io.IOException e) { System.out.println("unknown voice refused: " + e.getMessage()); }
+  // the audiobook (test.job.json): both chapters made, listed, and copied whole
+  java.util.List<PcLink.BookFile> bf = null;
+  long end = System.currentTimeMillis() + 60000;
+  while (System.currentTimeMillis() < end) {
+    bf = l.books(5000);
+    int mp3 = 0; for (PcLink.BookFile f : bf) if (f.path.endsWith(".mp3")) mp3++;
+    if (mp3 == 2) break;
+    Thread.sleep(1000);
+  }
+  System.out.println("audiobook files: " + (bf == null ? 0 : bf.size()));
+  if (bf == null || bf.size() != 4) { bad++; System.out.println("FAIL expected 2 chapters (mp3 + json each)"); }
+  else for (PcLink.BookFile f : bf) {
+    java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+    long n = l.download(f.path, o, 20000);
+    boolean ok = n == f.bytes && o.size() == n && (!f.path.endsWith(".mp3") || n > 1000);
+    if (f.path.endsWith(".json") && !new String(o.toByteArray(), "UTF-8").contains("\"sentences\"")) ok = false;
+    System.out.println("  " + f.path + " " + n + " bytes" + (ok ? "" : " FAIL"));
+    if (!ok) bad++;
+  }
+  for (String p : new String[]{"../state/devices.json", "Test Book/../../x.mp3", "Test Book/0001 - One.part.mp3", "x"}) {
+    try { l.download(p, new java.io.ByteArrayOutputStream(), 5000); bad++; System.out.println("FAIL served " + p); }
+    catch (java.io.IOException e) { }
+  }
   System.out.println(bad == 0 ? "AHEAD TEST OK" : bad + " AHEAD CHECKS FAILED");
   System.exit(bad == 0 ? 0 : 1);
 }}

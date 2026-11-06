@@ -133,6 +133,36 @@ final class PcLink {
         return new Audio(pcm, rate, w == null ? 0 : Integer.parseInt(w), made == null ? speed : Float.parseFloat(made), used == null ? "kokoro" : used);
     }
 
+    // ---------------------------------------------------------------- audiobooks recorded on the PC
+    static final class BookFile { final String path; final long bytes; BookFile(String p, long b) { path = p; bytes = b; } }
+
+    /** Every finished audiobook file on the PC ("book folder/0001 - name.mp3" and its .json). */
+    List<BookFile> books(int timeoutMs) throws IOException {
+        HttpsURLConnection c = open("/v1/books", fp, timeoutMs);
+        c.setRequestProperty("Authorization", "Bearer " + token);
+        String body = readText(c);
+        List<BookFile> out = new ArrayList<>();
+        Matcher m = Pattern.compile("\\{\\s*\"p\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"\\s*,\\s*\"bytes\"\\s*:\\s*(\\d+)\\s*\\}").matcher(body);
+        while (m.find()) out.add(new BookFile(unescape(m.group(1)), Long.parseLong(m.group(2))));
+        return out;
+    }
+
+    /** Copies one of those files from the PC into out. Returns the bytes copied. */
+    long download(String path, OutputStream out, int timeoutMs) throws IOException {
+        HttpsURLConnection c = open("/v1/books/get?p=" + java.net.URLEncoder.encode(path, "UTF-8"), fp, timeoutMs);
+        c.setRequestProperty("Authorization", "Bearer " + token);
+        try {
+            int code = c.getResponseCode();
+            if (code != 200) { String e = errorText(c); throw new IOException(e.isEmpty() ? "PC said " + code : e); }
+            long n = 0;
+            try (InputStream in = c.getInputStream()) {
+                byte[] buf = new byte[65536]; int k;
+                while ((k = in.read(buf)) > 0) { out.write(buf, 0, k); n += k; }
+            }
+            return n;
+        } finally { c.disconnect(); }
+    }
+
     // ---------------------------------------------------------------- recorded voices
     static final class Recorded { final String id, name; Recorded(String i, String n) { id = i; name = n; } }
 

@@ -4,7 +4,12 @@
 set -u
 cd "$(dirname "$0")/../.."
 T=$(mktemp -d)
-export LOUDBOOK_STATE=$T/state LOUDBOOK_PORT=8799 LOUDBOOK_FAKE_BEST=1 LOUDBOOK_FAKE_BEST_SECS=0.3
+export LOUDBOOK_STATE=$T/state LOUDBOOK_PORT=8799 LOUDBOOK_FAKE_BEST=1 LOUDBOOK_FAKE_BEST_SECS=0.3 LOUDBOOK_BOOKS=$T/books
+# (an audiobook job: two short chapters, made while nothing else needs the voice)
+mkdir -p "$T/books/text"
+echo '[["First sentence of the book.", "Another one."], ["A new paragraph."]]' > "$T/books/text/1.json"
+echo '[["Chapter two begins here."]]' > "$T/books/text/2.json"
+echo '{"title": "Test Book", "voice": "phone", "out": "Test Book", "chapters": [{"name": "One", "file": "text/1.json"}, {"name": "Two", "file": "text/2.json", "say_title": false}]}' > "$T/books/test.job.json"
 PY=${PYTHON:-python3}
 javac -nowarn -d "$T/out" app/src/com/loudbook/app/PcLink.java pc-server/test/AheadTest.java || exit 1
 $PY -u pc-server/loudbook_server.py serve --fake > "$T/server.log" 2>&1 &

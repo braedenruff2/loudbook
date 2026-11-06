@@ -1393,6 +1393,22 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 .setNegativeButton("Keep", null).show();
         });
         box.addView(pcVoice); box.addView(pcRecord); box.addView(pcVoiceDel);
+        // audiobooks the PC recorded (a job in its "Loudbook audiobooks" folder): copied here to play with no connection
+        Button pcBooks = smallButton("Copy the PC's finished audiobook chapters to this phone");
+        TextView pcBooksInfo = label("");
+        box.addView(pcBooks); box.addView(pcBooksInfo);
+        pcBooks.setOnClickListener(v -> {
+            PcLink l = new PcLink(prefs.getString("pcHost", ""), prefs.getInt("pcPort", PcLink.PORT), prefs.getString("pcFp", ""), prefs.getString("pcToken", ""));
+            pcBooks.setEnabled(false);
+            pcBooksInfo.setText("Asking your PC\u2026");
+            new Thread(() -> {
+                String r;
+                try { r = BookCopy.copyAll(getApplicationContext(), l, line -> main.post(() -> pcBooksInfo.setText(line))); }
+                catch (Exception e) { Log.w("Loudbook", "audiobooks", e); r = "Couldn't copy from your PC (" + e.getMessage() + "). It needs your home Wi-Fi; anything copied so far is kept."; }
+                final String rr = r;
+                main.post(() -> { pcBooksInfo.setText(rr); pcBooks.setEnabled(true); });
+            }, "lb-books").start();
+        });
         Button pcPair = smallButton(prefs.getString("pcToken", "").isEmpty() ? "Pair with my PC" : "Pair again");
         Button pcForget = smallButton("Forget my PC");
         box.addView(pcPair); box.addView(pcForget);
@@ -1402,6 +1418,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             pcStyle.setVisibility(paired && prefs.getBoolean("pcOn", false) ? View.VISIBLE : View.GONE);
             pcVoice.setVisibility(paired && prefs.getBoolean("pcOn", false) ? View.VISIBLE : View.GONE);
             pcRecord.setVisibility(paired && prefs.getBoolean("pcOn", false) ? View.VISIBLE : View.GONE);
+            pcBooks.setVisibility(paired ? View.VISIBLE : View.GONE);
             if (!(paired && prefs.getBoolean("pcOn", false))) pcVoiceDel.setVisibility(View.GONE);
             pcForget.setVisibility(paired ? View.VISIBLE : View.GONE);
             Voice v = svc != null ? svc.voice() : null;

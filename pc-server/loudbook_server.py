@@ -684,6 +684,32 @@ class Books:
         return done, total
 
     @classmethod
+    def finished(cls):
+        """[{name, files: [{p: path inside BOOKS, bytes}]}] of every finished chapter (MP3 and its .json), by book."""
+        out = []
+        try: dirs = sorted(d for d in os.listdir(BOOKS) if os.path.isdir(os.path.join(BOOKS, d)))
+        except OSError: return out
+        for d in dirs:
+            files = []
+            for f in sorted(os.listdir(os.path.join(BOOKS, d))):
+                full = os.path.join(BOOKS, d, f)
+                if (f.endswith(".mp3") and not f.endswith(".part.mp3")) or (f.endswith(".json") and os.path.exists(full[:-5] + ".mp3")):
+                    files.append({"p": d + "/" + f, "bytes": os.path.getsize(full)})
+            if any(x["p"].endswith(".mp3") for x in files): out.append({"name": d, "files": files})
+        return out
+
+    @classmethod
+    def file_for(cls, p):
+        """The finished file at p (book folder/file name) inside BOOKS, or None (nothing outside it, nothing half-made)."""
+        parts = str(p).replace("\\", "/").split("/")
+        if len(parts) != 2 or any(not x or x in (".", "..") for x in parts): return None
+        if not (parts[1].endswith(".mp3") or parts[1].endswith(".json")) or ".part" in parts[1]: return None
+        f = os.path.join(BOOKS, parts[0], parts[1])
+        root = os.path.realpath(BOOKS)
+        if not os.path.realpath(f).startswith(root + os.sep) or not os.path.isfile(f): return None
+        return f
+
+    @classmethod
     def make_chapter(cls, b, n, job, k):
         """Records chapter k with the best voice into <chapter>.mp3 (+ .json of where each sentence is). False if it
         stopped part-way to let the phone's sentences go first (it's picked up again, sentences made so far kept)."""
@@ -940,6 +966,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                     "bestSpeed": round(b.speed(), 2) if b else 0,
                                     "aheadTotal": a["total"], "aheadWaiting": a["waiting"], "aheadMade": a["made"],
                                     "aheadOdd": a["odd"], "aheadLoading": a["loading"]})
+        if self.path == "/v1/books":
+            # the finished audiobook chapters (for the phone to copy and play with no connection)
+            if not self.authed(): return
+            return self.reply(200, {"books": Books.finished()})
+        if self.path.startswith("/v1/books/get?"):
+            if not self.authed(): return
+            from urllib.parse import parse_qs
+            f = Books.file_for(parse_qs(self.path.split("?", 1)[1]).get("p", [""])[0])
+            if not f: return self.reply(404, {"error": "no such file"})
+            n = os.path.getsize(f)
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/mpeg" if f.endswith(".mp3") else "application/json")
+            self.send_header("Content-Length", str(n))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.connection.settimeout(60)
+            with open(f, "rb") as h:
+                while True:
+                    b = h.read(256 * 1024)
+                    if not b: break
+                    self.wfile.write(b)
+            return
         if self.path == "/v1/voices":
             if not self.authed(): return
             return self.reply(200, {"voices": [{"id": v["id"], "name": str(v.get("name", "")).replace("{", "(").replace("}", ")")} for v in voices()],
