@@ -291,9 +291,11 @@ class NaturalEngine:
             if not os.path.exists(ref):
                 os.makedirs(os.path.dirname(ref), exist_ok=True)
                 x, sr = self.kokoro.samples(REFERENCE_TEXT, sid)
-                with wave.open(ref, "wb") as w:
+                # (written beside it, then put in place: a half-written clip (a restart mid-write) was reused for good)
+                with wave.open(ref + ".part", "wb") as w:
                     w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)
                     w.writeframes((np.clip(x, -1, 1) * 32767).astype("<i2").tobytes())
+                os.replace(ref + ".part", ref)
             self.model.prepare_conditionals(ref)
             self.voices[sid] = self.model.conds
         self.model.conds = self.voices[sid]
@@ -450,7 +452,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not self.gate(): return
         if not Limits.busy.acquire(timeout=5): return self.reply(503, {"error": "busy"})
         try:
-            try: req = self.body()
+            try: req = self.body(); assert isinstance(req, dict)     # (a list or a string as the body: no answer at all before)
             except Exception: return self.reply(400, {"error": "bad request"})
             if self.path == "/v1/pair/start":
                 try: nc = unb64(req["nc"]); assert len(nc) == 16
