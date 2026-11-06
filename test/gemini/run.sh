@@ -9,6 +9,7 @@ adb reverse tcp:8000 tcp:8000
 adb reverse tcp:8001 tcp:8001
 adb install -r build/Loudbook.apk
 adb shell pm grant com.loudbook.app android.permission.POST_NOTIFICATIONS
+adb logcat -G 16M || true
 adb logcat -c
 adb shell am start -n com.loudbook.app/.MainActivity
 sleep 100                                   # the phone voice downloads and loads the first time
