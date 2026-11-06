@@ -318,12 +318,13 @@ class NaturalEngine:
             # a voice with its own settings ("s17@0.85/e0.35/c0.4": Onyx, copied from a slower reading of the passage, calmer)
             base, ref_speed, pitch = st[0], st[1], st[4]
             if (ref_speed == 1.0 and pitch == 0) or not isinstance(base, int): return self._voice_base(base)
-            if sid not in self.voices:
+            key = sid.split("/")[0]                       # (the same voice in every mood: copied once)
+            if key not in self.voices:
                 ref = path(os.path.join("refs", f"{base}@{ref_speed:g}" + (f"^{pitch:+g}" if pitch else "") + ".wav"))
                 self._make_ref(base, ref_speed, ref, pitch)
                 self.model.prepare_conditionals(ref)
-                self.voices[sid] = self.model.conds
-            self.model.conds = self.voices[sid]
+                self.voices[key] = self.model.conds
+            self.model.conds = self.voices[key]
             return
         return self._voice_base(sid)
 
@@ -735,6 +736,24 @@ class Books:
                 print(f"Loudbook PC voice: voices file {vf} can't be read: {e!r}"[:200], flush=True)
         return m
 
+    MOODS = {"calm": "/e0.45", "soft": "/e0.4/c0.45", "whisper": "/e0.3/c0.4", "sad": "/e0.5/c0.3", "tired": "/e0.35/c0.3",
+             "happy": "/e0.95", "excited": "/e1.05/c0.55", "playful": "/e0.95/c0.5", "angry": "/e1.1/c0.4", "shout": "/e1.3/c0.5",
+             "scared": "/e0.95/c0.6", "nervous": "/e0.85/c0.55", "cold": "/e0.4/c0.5", "menacing": "/e1.0/c0.3",
+             "proud": "/e0.9/c0.4", "pleading": "/e1.0/c0.45", "surprised": "/e1.05/c0.55", "neutral": ""}
+
+    @classmethod
+    def moods(cls, job):
+        """Mood -> settings added to the speaker's voice ("/e<exaggeration>/c<cfg>": more or less emotional, slower with a
+        lower cfg). The voices file's "_moods" changes or adds to these."""
+        m = dict(cls.MOODS)
+        vf = job.get("voices_file")
+        if vf:
+            try:
+                with open(vf if os.path.isabs(vf) else os.path.join(BOOKS, vf), encoding="utf-8") as h: d = json.load(h)
+                if isinstance(d.get("_moods"), dict): m.update({k: str(v) for k, v in d["_moods"].items() if not k.startswith("_")})
+            except Exception: pass
+        return m
+
     @classmethod
     def earlier(cls, name):
         """Does a job named before this one have a chapter to make?"""
@@ -813,6 +832,7 @@ class Books:
         f = ch["file"] if os.path.isabs(ch["file"]) else os.path.join(BOOKS, ch["file"])
         with open(f, encoding="utf-8") as h: paras = json.load(h)
         vmap = cls.voice_map(job)
+        moods = cls.moods(job)
         who = cls.who({"voice": vmap["Narrator"]}) if "Narrator" in vmap else cls.who(job)
         dest = cls.chapter_path(job, k)
         os.makedirs(os.path.dirname(dest), exist_ok=True)
@@ -831,6 +851,9 @@ class Books:
                     if len(item) > 1 and item[1] is not None:
                         v = item[1]
                         who_i = cls.who({"voice": vmap.get(v, v) if isinstance(v, str) else v})
+                    # (how the line is said: [sentence, speaker, mood], the mood's settings added to the speaker's voice)
+                    if len(item) > 2 and item[2] and moods.get(item[2]):
+                        who_i = (f"s{who_i}" if isinstance(who_i, int) else str(who_i)) + moods[item[2]]
                 else: text = str(item)
                 text = text.strip()
                 if not text: continue

@@ -32,7 +32,7 @@ final class Chapter {
         + "|(?<=\\b[Ll]et[ \\t](?:me|him|her|them|us|it)[ \\t])close(?=[ \\t]*[.!]|[ \\t]+(?:in|up)\\b)"
         + "|\\b(?<![Aa][ \\t]|[Ss]o[ \\t]|[Vv]ery[ \\t]|[Ww]as[ \\t]|[Ii]s[ \\t])(?<!\\b(?:[Gg]ot|[Gg]et|[Cc]ame|[Ss]tood|[Ss]tay|[Ss]tayed|[Kk]ept|[Ff]ollowed|[Ww]ere|[Aa]re|[Hh]eld|[Ll]ay|[Ss]at|[Pp]ulled|[Mm]oved|[Dd]rew|[Ff]elt)[ \\t])([Cc])lose(?=[ \\t]+in[ \\t]+on\\b)");
     private static final java.util.regex.Pattern EXCUSE = java.util.regex.Pattern.compile(
-        "(?<!\\b(?:[Aa]n|[Tt]he|[Nn]o|[Aa]ny|[Pp]oor|[Gg]ood|[Bb]ad|[Ll]ame|[Pp]erfect|[Ee]very|[Ss]ome|[Aa]nother|[Bb]est|[Oo]nly|[Ff]eeble|[Ff]limsy|[Cc]onvenient|[Mm]y|[Hh]is|[Hh]er|[Yy]our|[Tt]heir|[Oo]ur|[Ii]ts)[ \\t])\\b([Ee])xcuse(?=[ \\t]+(?:me|us|him|her|them|my|our|your|his|their|myself|himself|herself|themselves|yourself|yourselves|ourselves|this|that|the)\\b)");
+        "(?<!\\b(?:[Aa]n|[Tt]he|[Nn]o|[Aa]ny|[Pp]oor|[Gg]ood|[Bb]ad|[Ll]ame|[Pp]erfect|[Ee]very|[Ss]ome|[Aa]nother|[Bb]est|[Oo]nly|[Ff]eeble|[Ff]limsy|[Cc]onvenient|[Mm]y|[Hh]is|[Hh]er|[Yy]our|[Tt]heir|[Oo]ur|[Ii]ts|[Tt]his|[Tt]hat|[Ww]hat|[Ww]hich|[Ww]hose|[Ss]uch|[Ss]ame|[Ww]eak|[Ll]ousy|[Pp]athetic|[Vv]alid|[Rr]eal)[ \\t])\\b([Ee])xcuse(?=[ \\t]+(?:me|us|him|her|them|my|our|your|his|their|myself|himself|herself|themselves|yourself|yourselves|ourselves|this|that|the)\\b)");
     // (at a sentence start only: mid-sentence it says these right)
     private static final java.util.regex.Pattern START_VERB = java.util.regex.Pattern.compile(
         "(?:^|(?<=[.!?]|[.!?][\"\u201d\u2019')]|[\"\u201c\u2018(]))([ \\t]*)(Use|Abuse|Separate|Record|Present|Polish|Tear|Permit|Insult|Increase|Decrease|Estimate|Moderate|Conduct|Project|Object|Protest|Suspect|Convict|Console|Contract|Torment|Escort|Transport|Export|Insert|Desert|Contest)" + OBJ);
@@ -114,7 +114,7 @@ final class Chapter {
     private static final java.util.regex.Pattern LEAD = java.util.regex.Pattern.compile(
         "\\b([Ll])ead(?=-(?:lined|grey|gray|coloured|colored|heavy|tipped|weighted|filled|sheathed)\\b|[ \\t]+(?:pipe|pipes|weight|weights|poisoning|bullet|bullets|shot|paint|ball|balls|sheet|sheets|pencil|pencils|crystal|mine|mines|ore|seal|seals|coffin|apron|plate|plates|slug|slugs|sinker|sinkers|lining|roof|roofs|pellet|pellets|ingot|ingots|casket|shielding|alloy|piping)\\b)"
         + "|(?<=\\b(?:[Mm]olten|[Ll]iquid|[Ss]olid|[Pp]ure|[Mm]elted|[Ss]heet|[Ww]hite|[Rr]ed)[ \\t])(l)ead\\b"
-        + "|(?<=\\b(?:of|like|as)[ \\t])(l)ead(?=[ \\t]*(?:[.,;:!?\"\u201d)]|$)|[ \\t]+(?:and|or|that|which)\\b)");
+        + "|(?<=\\b(?:of|like)[ \\t]|\\b(?:heavy|heavier|grey|gray|dull|dense|cold|sluggish|leaden|slow)[ \\t]as[ \\t])(l)ead(?=[ \\t]*(?:[.,;:!?\"\u201d)]|$)|[ \\t]+(?:and|or|that|which)\\b)");
     // "he moped around" ("mope-ed", the scooter) -> mohpt; "the sow grunted" ("so", the verb) -> sau (lab 2026-11-01)
     private static final java.util.regex.Pattern MOPED = java.util.regex.Pattern.compile(
         "(?<!\\b(?:The|This|That|A|An|His|Her|My|Your|Their|Our|Its|On|By)[ \\t])(?<=\\b(?:I|[Hh]e|[Ss]he|[Ww]e|[Tt]hey|[Yy]ou|[Ii]t|and|had|has|have|been|just|then|still|only|[A-Z][a-z]{1,20})[ \\t])moped\\b(?![-'’])");
@@ -177,7 +177,7 @@ final class Chapter {
     // "resume" the noun it says as the verb ("ri-ZOOM"): "his resume", "an updated resume", "the resumes piled up" -> résumé, which
     // it says right (lab 2026-11-02: ɹˈɛzuːmˌeɪ); not "her resume" ("let her resume her work"), "to resume", "the talks resume".
     private static final java.util.regex.Pattern RESUME = java.util.regex.Pattern.compile(
-        "(?<=\\b(?:[Aa]|[Tt]he|[Hh]is|[Mm]y|[Yy]our|[Tt]heir|[Oo]ur|[Tt]his|[Tt]hat|[Nn]ew|[Uu]pdated|[Ii]mpressive|[Pp]erfect|[Ss]hort|[Pp]added|[Ff]ake|[Oo]ld|[Ff]irst)[ \\t])resume(s?)\\b(?![-'\u2019])");
+        "(?<=\\b(?:[Aa]|[Tt]he|[Hh]is|[Mm]y|[Yy]our|[Tt]heir|[Oo]ur|[Tt]his|[Tt]hat|[Nn]ew|[Uu]pdated|[Ii]mpressive|[Pp]erfect|[Ss]hort|[Pp]added|[Ff]ake|[Oo]ld)[ \\t]|\\b(?:[Aa]|[Tt]he|[Hh]is|[Hh]er|[Mm]y|[Yy]our|[Tt]heir|[Oo]ur)[ \\t]first[ \\t])resume(s?)\\b(?![-'\u2019])");
     // "rebel against" the verb it says as the noun ("REB-el") after a plural noun or at a sentence start ("the peasants rebel against
     // the lord", "Rebel against them!"): -> rebell (lab 2026-11-01: ɹᵻbˈɛl); not after a determiner or an adjective ("a rebel against
     // society", "a lone rebel against the empire").
