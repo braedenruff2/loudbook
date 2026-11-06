@@ -346,7 +346,11 @@ if (!window.LB) {
     const out = [];
     const skipSel = skip ? SKIP_SEL + ', ' + skip : SKIP_SEL;
     if (!lines) {
-      const found = [...root.querySelectorAll(BLOCK_SEL)].filter(el => !el.querySelector(BLOCK_SEL));
+      // (a list item with its own words before a nested list, "Skill: Fire" over "Level 2": its words too, without the list)
+      const LISTS = /^(UL|OL)$/;
+      const ownWords = (el) => el.tagName === 'LI' && [...el.childNodes].some(n => (n.nodeType === 3 && speakable(n.nodeValue)) ||
+        (n.nodeType === 1 && !LISTS.test(n.tagName) && !n.matches(BLOCK_SEL) && !n.querySelector(BLOCK_SEL) && speakable(n.textContent)));
+      const found = [...root.querySelectorAll(BLOCK_SEL)].filter(el => !el.querySelector(BLOCK_SEL) || ownWords(el));
       // (paragraphs inside table cells, a stat table pasted from a document: the row is read as one, "STR — 15")
       const leaves = [];
       for (const el of found) {
@@ -358,7 +362,8 @@ if (!window.LB) {
         if (el.closest(skipSel)) continue;
         if (el.tagName === 'TD' || el.tagName === 'TH') continue;
         if (isHidden(el)) continue;
-        const text = withoutSkipped(textOf(el, (n) => isHidden(n) || (skip && n.matches && n.matches(skip))), skipText);
+        const nested = el.tagName === 'LI' && el.querySelector(BLOCK_SEL);
+        const text = withoutSkipped(textOf(el, (n) => isHidden(n) || (skip && n.matches && n.matches(skip)) || (nested && LISTS.test(n.tagName))), skipText);
         if (speakable(text) && !isNavOnly(text, el)) out.push({ el, text });
       }
       // (a page Loudbook doesn't know: if the paragraphs hold only a small part of the text, e.g. a

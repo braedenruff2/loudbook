@@ -54,6 +54,18 @@
   "last": "Not bad."
  },
  {
+  "page": "royalroad-list.html",
+  "url": "https://www.royalroad.com/fiction/123/the-iron-path/chapter/1006/chapter-6-skills",
+  "site": "royalroad",
+  "count": 6,
+  "has": [
+   "Skill: Fire",
+   "Level 2",
+   "Skill: Ice"
+  ],
+  "last": "Done."
+ },
+ {
   "page": "ao3.html",
   "url": "https://archiveofourown.org/works/555/chapters/1003",
   "site": "ao3",
