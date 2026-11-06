@@ -261,6 +261,38 @@ public class UnitTest {
             check("single quotes over two sentences: still open in the next", Dialogue.openAt(dc, 1), true);
             check("single quotes over two sentences: then the tag", str(Dialogue.split(a2, Dialogue.openAt(dc, 1), Dialogue.singles(dc, 1), Dialogue.after(dc, 1))), "[q:It was hungry,][n:she said.]");
         }
+        // guillemets (translated fiction): French «Oui», German »Hallo«, French with spaces
+        check("guillemets: French", str(Dialogue.split("«Oui», dit-il. «Non.»", false)), "[q:Oui,][n:dit-il.][q:Non.]");
+        check("guillemets: French spaced", str(Dialogue.split("« Non », répondit-elle.", false)), "[q:Non,][n:répondit-elle.]");
+        check("guillemets: German", str(Dialogue.split("»Hallo«, sagte er. »Ja.«", false)), "[q:Hallo,][n:sagte er.][q:Ja.]");
+        check("guillemets: open from before", Dialogue.run("«We ran. Then we hid.", false), true);
+        check("guillemets: closed", Dialogue.run("»Wir liefen.« Er lachte.", false), false);
+        check("guillemets: a nav arrow alone opens nothing", str(Dialogue.split("Next chapter »", false)), "[n:Next chapter »]");
+        // dash dialogue (Spanish / Russian / French translations)
+        check("dashes: a paragraph that uses them", Dialogue.dashes("—No sé —dijo él—. Quizá mañana."), true);
+        check("dashes: English em dashes aren't", Dialogue.dashes("He waited—and then he ran."), false);
+        check("dashes: not with quotation marks", Dialogue.dashes("—Then “go,” he said."), false);
+        check("dashes: tag inside", str(Dialogue.split("—No sé —dijo él—. Quizá mañana.", false, false, "", true)), "[q:No sé][n:dijo él.][q:Quizá mañana.]");
+        check("dashes: tag then a new line of speech", str(Dialogue.split("—Wait —he said. —Now!", false, false, "", true)), "[q:Wait][n:he said.][q:Now!]");
+        check("dashes: spaced, with a tag word", str(Dialogue.split("— Come here — she said.", false, false, "", true)), "[q:Come here][n:she said.]");
+        check("dashes: spaced dash inside speech", str(Dialogue.split("— I was — well — scared.", false, false, "", true)), "[q:I was — well — scared.]");
+        check("dashes: unspaced tag", str(Dialogue.split("\u2014No puedo equivocarme\u2014murmur\u00f3\u2014. Me dijeron.", false, false, "", true)), "[q:No puedo equivocarme][n:murmur\u00f3.][q:Me dijeron.]");
+        check("dashes: tag after an exclamation", str(Dialogue.split("\u2014\u00a1Bonita situaci\u00f3n!\u2014exclam\u00f3 sonriendo.", false, false, "", true)), "[q:\u00a1Bonita situaci\u00f3n!][n:exclam\u00f3 sonriendo.]");
+        check("dashes: unspaced dashes inside speech", str(Dialogue.split("\u2014I was\u2014well\u2014scared.", false, false, "", true)), "[q:I was\u2014well\u2014scared.]");
+        check("dashes: unspaced tag to the end", str(Dialogue.split("\u2014Por aqu\u00ed hay agua\u2014dijo a su compa\u00f1ero.", false, false, "", true)), "[q:Por aqu\u00ed hay agua][n:dijo a su compa\u00f1ero.]");
+        check("dashes: speech goes on after the tag", str(Dialogue.split("\u2014Ese ruido\u2014replic\u00f3 el ciego\u2014y que parece.", false, false, "", true)), "[q:Ese ruido][n:replic\u00f3 el ciego][q:y que parece.]");
+        check("dashes: cut off", str(Dialogue.split("—I was going—", false, false, "", true)), "[q:I was going—]");
+        check("dashes: off, an ordinary paragraph", str(Dialogue.split("He waited—and then he ran.", false, false, "", false)), "[n:He waited—and then he ran.]");
+        {
+            java.util.List<Chapter.Chunk> cs = new java.util.ArrayList<>();
+            String a1 = "—I don’t know.", a2 = "Maybe tomorrow —she said.", a3 = "“Hi,” he said.";
+            cs.add(new Chapter.Chunk(0, a1, a1)); cs.add(new Chapter.Chunk(0, a2, a2)); cs.add(new Chapter.Chunk(1, a3, a3));
+            Chapter dc = new Chapter("u", "", "t", "", cs);
+            check("dashes over two sentences: on", Dialogue.dashes(dc, 1), true);
+            check("dashes over two sentences: still open", Dialogue.openAt(dc, 1), true);
+            check("dashes over two sentences: then the tag", str(Dialogue.split(a2, Dialogue.openAt(dc, 1), Dialogue.singles(dc, 1), Dialogue.after(dc, 1), Dialogue.dashes(dc, 1))), "[q:Maybe tomorrow][n:she said.]");
+            check("dashes: the next paragraph is ordinary", Dialogue.dashes(dc, 2), false);
+        }
         // British-style single quotes (only in a paragraph with no double quotes; apostrophes are not quotes)
         check("single quotes: a paragraph that uses them", Dialogue.singles("\u2018It\u2019s the boys\u2019 dog,\u2019 she said."), true);
         check("single quotes: apostrophes alone aren't", Dialogue.singles("It\u2019s the boys\u2019 dog, and \u2019em too in the \u201890s."), false);
