@@ -23,7 +23,22 @@ final class KindleText {
             int eq = line.indexOf('=');
             if (eq > 0 && eq < line.length() - 1) f.add(new String[]{line.substring(0, eq).trim(), line.substring(eq + 1).trim()});
         }
+        // longest first ("Mr Tavi" before "Tavi"), as the web reader's makeSayer does
+        f.sort((x, y) -> y[0].length() - x[0].length());
         fixes = f.toArray(new String[0][]);
+        fixRes = new Pattern[fixes.length];
+        for (int i = 0; i < fixes.length; i++) fixRes[i] = fixPattern(fixes[i][0]);
+    }
+    private final Pattern[] fixRes;
+    /** A fix's pattern: whole words only where the fix starts/ends with a letter or digit ("Mr.", "C++", "#1" and "$" matched
+     *  nowhere with \b around them, 2026-11-06); any case. */
+    static Pattern fixPattern(String from) {
+        String w = "[\\p{L}\\p{N}_]";
+        boolean pre = !from.isEmpty() && (Character.isLetterOrDigit(from.codePointAt(0)) || from.charAt(0) == '_');
+        int last = from.isEmpty() ? 0 : from.codePointBefore(from.length());
+        boolean post = !from.isEmpty() && (Character.isLetterOrDigit(last) || last == '_');
+        return Pattern.compile((pre ? "(?<!" + w + ")" : "") + Pattern.quote(from) + (post ? "(?!" + w + ")" : ""),
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     }
 
     private static final Pattern SENT = Pattern.compile("(?<=[.!?…][\"'”’)\\]]{0,2})\\s+(?=[\"'“‘(\\[]?[A-Z0-9])");
@@ -33,6 +48,8 @@ final class KindleText {
     private static final Pattern NUMBERED = Pattern.compile("\\b(No|Vol|Ch|lvl|Lv|Lvl)\\.$");
     /** Whether a piece split off at a full stop belongs with the next one ("Mr." | "Hale arrived", "No." | "5 was..."). */
     private static boolean joins(String prev, String next) {
+        // (only the end can match: a long run of joined "A. B. C." was searched whole at every join, seconds for 18k letters)
+        if (prev.length() > 16) prev = prev.substring(prev.length() - 16);
         if (ABBREV.matcher(prev).find()) return true;
         if (!NUMBERED.matcher(prev).find()) return false;
         String n = next.trim();
@@ -68,6 +85,11 @@ final class KindleText {
             if (after >= 0) {
                 String rest0 = s0.substring(after).trim();
                 if (rest0.isEmpty()) { paras.remove(0); cont = -1; } else paras.set(0, rest0);
+                carry = "";
+            } else if (skipOver(paras, skip)) {
+                // (the sentence read over the break ran on past the next page's first paragraph: "I thought we" | "could—”"
+                // then "“Don’t.” She left." - Kindle's nextStart has no paragraph ends. It was read again with the page.)
+                cont = -1;
                 carry = "";
             }
             // (no next page after all, but the sentence over the break was read whole already: not again)
@@ -127,6 +149,28 @@ final class KindleText {
     }
 
     private String skip;
+    /** Drops the letters of head from the start of paras when they run over more than one paragraph; false (paras as they
+     *  were) unless all of head's letters are found there, in order. */
+    static boolean skipOver(List<String> paras, String head) {
+        String h = KindleLayout.normOf(head);
+        if (h.isEmpty()) return false;
+        int k = 0;
+        while (k < paras.size()) {
+            String pl = KindleLayout.normOf(paras.get(k));
+            if (pl.isEmpty()) { k++; continue; }
+            if (h.startsWith(pl)) { h = h.substring(pl.length()); k++; if (h.isEmpty()) break; continue; }
+            if (k == 0) return false;                              // (one paragraph: afterLetters' case, not this)
+            int after = afterLetters(paras.get(k), h);
+            if (after < 0) return false;
+            String rest = paras.get(k).substring(after).trim();
+            if (rest.isEmpty()) k++; else paras.set(k, rest);
+            h = "";
+            break;
+        }
+        if (!h.isEmpty()) return false;
+        for (int i = 0; i < k; i++) paras.remove(0);
+        return true;
+    }
     /**
      * Where s ends up after the letters of head, if s starts with them (marks, spaces and quotes may
      * differ: "said \u201cno.\u201d" and "said \"no.\""); the marks right after them go too. -1 if not.
@@ -356,7 +400,7 @@ final class KindleText {
     }
     private String say(String s) {
         String t = s;
-        for (String[] f : fixes) t = t.replaceAll("(?i)\\b" + Pattern.quote(f[0]) + "\\b", Matcher.quoteReplacement(f[1]));
+        for (int i = 0; i < fixes.length; i++) t = fixRes[i].matcher(t).replaceAll(Matcher.quoteReplacement(fixes[i][1]));
         return t;
     }
 }

@@ -467,6 +467,23 @@ public class UnitTest {
             check("letters at the start: a different start isn't taken", KindleText.afterLetters("and right.", "and left."), -1);
             check("letters at the start: marks after them go too", KindleText.afterLetters("No!\u201d he said.", "\"No!\""), 4);
         }
+        {   // pronunciation fixes on Kindle pages work as on web pages: keys ending in a mark, longest first, whole words
+            KindleText kfx = new KindleText("Tavi=Tah-vee\nMr Tavi=Mister Tah-vee\nMr.=Mister\nC++=C plus plus\ncat=dog");
+            java.util.List<Chapter.Chunk> fc = kfx.chunks(Arrays.asList("Mr. Smith met Mr Tavi and Tavi. He wrote C++ code with a cat, not a catalog."), true);
+            StringBuilder fs = new StringBuilder(); for (Chapter.Chunk c : fc) fs.append(c.say).append(' ');
+            check("Kindle fixes: like the web reader's", fs.toString().trim(), "Mister Smith met Mister Tah-vee and Tah-vee. He wrote C plus plus code with a dog, not a catalog.");
+        }
+        {   // the sentence over the break runs past the next page's first paragraph (Kindle's next start has no paragraph ends):
+            // its words on the next page aren't read again with that page
+            KindleText kq9 = new KindleText("");
+            kq9.startChunks(Arrays.asList("It was late. He looked at her and said, \u201cI thought we"));
+            Chapter.Chunk rb = kq9.bridge("could\u2014\u201d \u201cDon\u2019t.\u201d She left the room.");
+            check("break over two paragraphs: sentence over it", rb.text, "He looked at her and said, \u201cI thought we could\u2014\u201d \u201cDon\u2019t.\u201d");
+            java.util.List<Chapter.Chunk> r2 = kq9.chunks(Arrays.asList("could\u2014\u201d", "\u201cDon\u2019t.\u201d She left the room.", "The end came soon."), false);
+            check("break over two paragraphs: the next page goes on after it", r2.size() + " " + r2.get(0).text, "2 She left the room.");
+            java.util.List<String> spo = new java.util.ArrayList<>(Arrays.asList("could\u2014\u201d", "\u201cWait.\u201d"));
+            check("break over two paragraphs: other words aren't skipped", KindleText.skipOver(spo, "could\u2014\u201d \u201cDon\u2019t.\u201d") + " " + spo.size(), "false 2");
+        }
         // a word hyphenated over the page break comes as two pieces ("there" | "fore"): one word again
         check("split word, no dictionary: two words", KindleText.joinBreak("You must there", "fore allow me"), "You must there fore allow me");
         java.util.Set<String> dict = new java.util.HashSet<>(Arrays.asList("therefore", "attachment", "often", "sand", "fora"));
