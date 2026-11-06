@@ -312,6 +312,33 @@ class NaturalEngine:
         except Exception: pass
 
     def _voice(self, sid):
+        st = style_of(sid)
+        self.cur_style = st
+        if st is not None:
+            # a voice with its own settings ("s17@0.85/e0.35/c0.4": Onyx, copied from a slower reading of the passage, calmer)
+            base, ref_speed = st[0], st[1]
+            if ref_speed == 1.0 or not isinstance(base, int): return self._voice_base(base)
+            if sid not in self.voices:
+                self._make_ref(base, ref_speed, path(os.path.join("refs", f"{base}@{ref_speed:g}.wav")))
+                self.model.prepare_conditionals(path(os.path.join("refs", f"{base}@{ref_speed:g}.wav")))
+                self.voices[sid] = self.model.conds
+            self.model.conds = self.voices[sid]
+            return
+        return self._voice_base(sid)
+
+    def _make_ref(self, sid, speed, ref):
+        import numpy as np, wave
+        if os.path.exists(ref): return
+        os.makedirs(os.path.dirname(ref), exist_ok=True)
+        with self.kokoro.lock:
+            a = self.kokoro.tts.generate(REFERENCE_TEXT, sid=sid, speed=speed)
+        x = np.asarray(a.samples, dtype=np.float32)
+        with wave.open(ref + ".part", "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(a.sample_rate)
+            w.writeframes((np.clip(x, -1, 1) * 32767).astype("<i2").tobytes())
+        os.replace(ref + ".part", ref)
+
+    def _voice_base(self, sid):
         if sid == "builtin" and self.builtin is not None:
             self.model.conds = self.builtin
             return
@@ -399,11 +426,16 @@ class BestEngine(NaturalEngine):
     def label(self): return f"Chatterbox, full model ({self.gpu})"
 
     def generate(self, text):
-        return self.model.generate(text, exaggeration=self.EXAGGERATION, cfg_weight=self.CFG)
+        st = getattr(self, "cur_style", None)
+        ex = st[2] if st and st[2] is not None else self.EXAGGERATION
+        cfg = st[3] if st and st[3] is not None else self.CFG
+        return self.model.generate(text, exaggeration=ex, cfg_weight=cfg)
 
     def expected(self, ktext, sid):
         """How long Kokoro takes to say it, in seconds (speech only): what a good take should be near."""
         import numpy as np
+        st = style_of(sid)
+        if st is not None: sid = st[0]
         try:
             x, sr = self.kokoro.samples(ktext, sid if isinstance(sid, int) else 3)
         except Exception: return 0
@@ -482,6 +514,28 @@ def load_best(kokoro):
         import traceback
         print("Loudbook PC voice: best-quality voice unavailable:", repr(e)[:300], flush=True)
         print("".join(traceback.format_exc().splitlines(True)[-8:]), flush=True)
+        return None
+
+
+def style_of(who):
+    """A voice with its own settings: "s<speaker>[@<speed the passage it copies is read at>][/e<exaggeration>][/c<cfg>]",
+    or "builtin/e0.4", or "<recorded id>/c0.3". Returns (base voice, speed, exaggeration or None, cfg or None), or None."""
+    if not isinstance(who, str) or "/" not in who and not who.startswith("s"): return None
+    parts = who.split("/")
+    head = parts[0]
+    try:
+        if head.startswith("s") and head[1:2].isdigit():
+            sid, _, sp = head[1:].partition("@")
+            base, speed = max(0, min(52, int(sid))), max(0.6, min(1.4, float(sp))) if sp else 1.0
+        elif head == "builtin" or (voice_file(head) and "/" in who):
+            base, speed = head, 1.0
+        else: return None
+        ex = cfg = None
+        for p in parts[1:]:
+            if p[:1] == "e": ex = max(0.0, min(1.5, float(p[1:])))
+            elif p[:1] == "c": cfg = max(0.0, min(1.0, float(p[1:])))
+        return base, speed, ex, cfg
+    except ValueError:
         return None
 
 
@@ -673,7 +727,7 @@ class Books:
     def who(cls, job):
         v = job.get("voice", "phone")
         if v == "phone" or v is None: v = read_json("last-voice.json", {}).get("who", 3)
-        if v == "builtin": return v
+        if v == "builtin" or style_of(v) is not None: return v
         if isinstance(v, str) and not (voice_file(v) and os.path.exists(voice_file(v))):
             try: v = int(v)
             except ValueError: v = 3
@@ -740,16 +794,24 @@ class Books:
         total = sum(len(p) for p in lines)
         done = 0
         for pi, para in enumerate(lines):
-            for si, text in enumerate(para):
-                text = str(text).strip()
+            for si, item in enumerate(para):
+                # (an item is a sentence, or [sentence, voice]: a voice, or a name in the job's "voices", like "female")
+                who_i = who
+                if isinstance(item, list):
+                    text = str(item[0]) if item else ""
+                    if len(item) > 1 and item[1] is not None:
+                        v = item[1]
+                        who_i = cls.who({"voice": (job.get("voices") or {}).get(v, v) if isinstance(v, str) else v})
+                else: text = str(item)
+                text = text.strip()
                 if not text: continue
                 if Ahead.queue or Ahead.live: return False          # (the phone's own reading comes first)
                 if done % 5 == 0 and cls.earlier(n): return False     # (a job named before this one, like voice samples, goes next)
-                key = ahead_key(text, who)
+                key = ahead_key(text, who_i)
                 got = Ahead.get(key)
                 if got is None:
                     t0 = time.time()
-                    pcm, r, sure = b.best_take(text, who) if sum(c.isalpha() for c in text) >= 4 else (*b.speak(text + ".", who), "ok")
+                    pcm, r, sure = b.best_take(text, who_i) if sum(c.isalpha() for c in text) >= 4 else (*b.speak(text + ".", who_i), "ok")
                     Ahead.put(key, pcm, r)
                     got = (pcm, r)
                     cls.secs_work += time.time() - t0
@@ -760,7 +822,7 @@ class Books:
                 # (the take's own silence at the ends cut down; a breath between sentences, longer between paragraphs)
                 loud = np.nonzero(np.abs(x) > 300)[0]
                 if len(loud): x = x[max(0, loud[0] - int(0.05 * rate)): loud[-1] + int(0.1 * rate)]
-                marks.append({"p": pi, "s": si, "start": round(at / rate, 3), "end": round((at + len(x)) / rate, 3), "text": text})
+                marks.append({"p": pi, "s": si, "voice": who_i, "start": round(at / rate, 3), "end": round((at + len(x)) / rate, 3), "text": text})
                 parts.append(x); at += len(x)
                 gap = int((0.75 if si == len(para) - 1 else 0.3) * rate)
                 parts.append(np.zeros(gap, dtype="<i2")); at += gap
