@@ -272,6 +272,7 @@ class NaturalEngine:
         self.device = dev
         self.gpu = torch.cuda.get_device_name(0) if dev == "cuda" else "no graphics card (CPU)"
         self.model = self.load(dev)
+        self.builtin = getattr(self.model, "conds", None)      # (Chatterbox's own voice, from its conds.pt: "builtin")
         self.rate = self.model.sr
         self.kokoro = kokoro
         self.voices = {}                      # sid -> conditionals
@@ -311,6 +312,9 @@ class NaturalEngine:
         except Exception: pass
 
     def _voice(self, sid):
+        if sid == "builtin" and self.builtin is not None:
+            self.model.conds = self.builtin
+            return
         if isinstance(sid, str):                     # a recorded voice
             if sid not in self.voices:
                 self.model.prepare_conditionals(voice_file(sid))
@@ -650,6 +654,14 @@ class Books:
         return os.path.join(BOOKS, cls.safe(job.get("out") or job.get("title") or "book"), f"{k + 1:04d} - {cls.safe(ch.get('name', ''), 70)}")
 
     @classmethod
+    def earlier(cls, name):
+        """Does a job named before this one have a chapter to make?"""
+        for n, j in cls.jobs():
+            if n >= name: return False
+            if any(not os.path.exists(cls.chapter_path(j, k) + ".mp3") for k in range(len(j["chapters"]))): return True
+        return False
+
+    @classmethod
     def next_chapter(cls):
         """(job file, job, chapter index) of the first chapter not made yet, in job-name order; None if all are made."""
         for n, j in cls.jobs():
@@ -661,6 +673,7 @@ class Books:
     def who(cls, job):
         v = job.get("voice", "phone")
         if v == "phone" or v is None: v = read_json("last-voice.json", {}).get("who", 3)
+        if v == "builtin": return v
         if isinstance(v, str) and not (voice_file(v) and os.path.exists(voice_file(v))):
             try: v = int(v)
             except ValueError: v = 3
@@ -731,6 +744,7 @@ class Books:
                 text = str(text).strip()
                 if not text: continue
                 if Ahead.queue or Ahead.live: return False          # (the phone's own reading comes first)
+                if done % 5 == 0 and cls.earlier(n): return False     # (a job named before this one, like voice samples, goes next)
                 key = ahead_key(text, who)
                 got = Ahead.get(key)
                 if got is None:
