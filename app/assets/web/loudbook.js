@@ -346,7 +346,14 @@ if (!window.LB) {
     const out = [];
     const skipSel = skip ? SKIP_SEL + ', ' + skip : SKIP_SEL;
     if (!lines) {
-      const leaves = [...root.querySelectorAll(BLOCK_SEL)].filter(el => !el.querySelector(BLOCK_SEL));
+      const found = [...root.querySelectorAll(BLOCK_SEL)].filter(el => !el.querySelector(BLOCK_SEL));
+      // (paragraphs inside table cells, a stat table pasted from a document: the row is read as one, "STR — 15")
+      const leaves = [];
+      for (const el of found) {
+        const tr = el.tagName !== 'TR' && el.closest('tr');
+        const use = tr && root.contains(tr) && !tr.querySelector('table') ? tr : el;
+        if (!leaves.includes(use)) leaves.push(use);
+      }
       for (const el of leaves) {
         if (el.closest(skipSel)) continue;
         if (el.tagName === 'TD' || el.tagName === 'TH') continue;
