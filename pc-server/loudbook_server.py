@@ -17,6 +17,11 @@ you pair can use it:
   believable length), keeps them in its own folder (LOUDBOOK_AHEAD_GB, 4 GB by default, oldest dropped first) and
   answers from there. Sentences not made yet are read live, as before.
 
+  Audiobooks: a job file (*.job.json) in the "Loudbook audiobooks" folder on the Desktop (LOUDBOOK_BOOKS) lists a book's
+  chapters (each a JSON file of paragraphs of sentences); the PC records them with the best voice whenever nothing else
+  needs the graphics card, one MP3 per chapter (plus each sentence's place in it, <chapter>.json), and writes how far it
+  is to status.txt there. Stopping is safe: it carries on from the chapter it was on.
+
   python loudbook_server.py serve      run the server (the setup script starts it at log-on)
   python loudbook_server.py pair       show a pairing code and wait for the phone
   python loudbook_server.py forget     unpair every phone
@@ -563,7 +568,7 @@ class Ahead:
     def next(cls):
         """The next sentence to make, or None after half a minute with nothing to do."""
         with cls.cond:
-            if not cls.queue: cls.cond.wait(30)
+            if not cls.queue: cls.cond.wait(1 if Books.pending else 30)
             return cls._pop()
 
     @classmethod
@@ -598,9 +603,172 @@ def best_engine():
         return Handler.best
 
 
+# ------------------------------------------------------------------ audiobooks (whole books, recorded on the PC)
+BOOKS = os.environ.get("LOUDBOOK_BOOKS") or os.path.join(os.path.expanduser("~"), "Desktop", "Loudbook audiobooks")
+
+
+class Books:
+    """Job files in BOOKS: {"title", "voice": a speaker number, a recorded voice's id or "phone" (the voice the phone last
+    read with), "out": a folder name, "chapters": [{"name", "file": a JSON file of [[sentence, ...], ...] paragraphs}]}."""
+    idle_until = 0                # (nothing to do, or it failed: look again after this)
+    pending = True                # an audiobook chapter may be waiting to be made (looked at straight away)
+    started = None
+    secs_made = 0.0               # seconds of speech made since the server started, and the work it took
+    secs_work = 0.0
+
+    heard = collections.Counter()
+
+    @classmethod
+    def remember_voice(cls, who):
+        """The voice the phone reads with most (its narrator: quotes in the second voice are fewer), kept for "phone"."""
+        cls.heard[who] += 1
+        if sum(cls.heard.values()) % 20 == 1:
+            top = cls.heard.most_common(1)[0][0]
+            if read_json("last-voice.json", {}).get("who") != top: write_json("last-voice.json", {"who": top})
+
+    @classmethod
+    def jobs(cls):
+        try: names = sorted(n for n in os.listdir(BOOKS) if n.endswith(".job.json"))
+        except OSError: return []
+        out = []
+        for n in names:
+            try:
+                with open(os.path.join(BOOKS, n), encoding="utf-8") as f: j = json.load(f)
+                if isinstance(j, dict) and isinstance(j.get("chapters"), list): out.append((n, j))
+            except Exception as e:
+                print(f"Loudbook PC voice: audiobook job {n} can't be read: {e!r}"[:200], flush=True)
+        return out
+
+    @staticmethod
+    def safe(name, n=80):
+        name = "".join(ch if ch.isalnum() or ch in " -_.,()'&" else " " for ch in str(name))
+        return " ".join(name.split())[:n].strip(" .") or "untitled"
+
+    @classmethod
+    def chapter_path(cls, job, k):
+        ch = job["chapters"][k]
+        return os.path.join(BOOKS, cls.safe(job.get("out") or job.get("title") or "book"), f"{k + 1:04d} - {cls.safe(ch.get('name', ''), 70)}")
+
+    @classmethod
+    def next_chapter(cls):
+        """(job file, job, chapter index) of the first chapter not made yet, in job-name order; None if all are made."""
+        for n, j in cls.jobs():
+            for k in range(len(j["chapters"])):
+                if not os.path.exists(cls.chapter_path(j, k) + ".mp3"): return n, j, k
+        return None
+
+    @classmethod
+    def who(cls, job):
+        v = job.get("voice", "phone")
+        if v == "phone" or v is None: v = read_json("last-voice.json", {}).get("who", 3)
+        if isinstance(v, str) and not (voice_file(v) and os.path.exists(voice_file(v))):
+            try: v = int(v)
+            except ValueError: v = 3
+        return max(0, min(52, v)) if isinstance(v, int) else v
+
+    @classmethod
+    def status(cls, line):
+        try:
+            os.makedirs(BOOKS, exist_ok=True)
+            with open(os.path.join(BOOKS, "status.txt"), "w", encoding="utf-8") as f: f.write(line + "\n")
+        except OSError: pass
+
+    @classmethod
+    def progress(cls):
+        """Done/total chapters and seconds of speech per second of work, over all jobs."""
+        done = total = 0
+        for _, j in cls.jobs():
+            for k in range(len(j["chapters"])):
+                total += 1
+                if os.path.exists(cls.chapter_path(j, k) + ".mp3"): done += 1
+        return done, total
+
+    @classmethod
+    def make_chapter(cls, b, n, job, k):
+        """Records chapter k with the best voice into <chapter>.mp3 (+ .json of where each sentence is). False if it
+        stopped part-way to let the phone's sentences go first (it's picked up again, sentences made so far kept)."""
+        import numpy as np
+        ch = job["chapters"][k]
+        f = ch["file"] if os.path.isabs(ch["file"]) else os.path.join(BOOKS, ch["file"])
+        with open(f, encoding="utf-8") as h: paras = json.load(h)
+        who = cls.who(job)
+        dest = cls.chapter_path(job, k)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        parts, marks, at = [], [], 0
+        rate = b.rate
+        title = str(ch.get("name") or "").strip()
+        lines = ([[title]] if title and ch.get("say_title", True) else []) + [p for p in paras if p]
+        total = sum(len(p) for p in lines)
+        done = 0
+        for pi, para in enumerate(lines):
+            for si, text in enumerate(para):
+                text = str(text).strip()
+                if not text: continue
+                if Ahead.queue or Ahead.live: return False          # (the phone's own reading comes first)
+                key = ahead_key(text, who)
+                got = Ahead.get(key)
+                if got is None:
+                    t0 = time.time()
+                    pcm, r, sure = b.best_take(text, who) if sum(c.isalpha() for c in text) >= 4 else (*b.speak(text + ".", who), "ok")
+                    Ahead.put(key, pcm, r)
+                    got = (pcm, r)
+                    cls.secs_work += time.time() - t0
+                    cls.secs_made += len(pcm) / 2 / r
+                pcm, r = got
+                x = np.frombuffer(pcm, dtype="<i2")
+                if r != rate: x = np.interp(np.arange(0, len(x), r / rate), np.arange(len(x)), x).astype("<i2")
+                # (the take's own silence at the ends cut down; a breath between sentences, longer between paragraphs)
+                loud = np.nonzero(np.abs(x) > 300)[0]
+                if len(loud): x = x[max(0, loud[0] - int(0.05 * rate)): loud[-1] + int(0.1 * rate)]
+                marks.append({"p": pi, "s": si, "start": round(at / rate, 3), "end": round((at + len(x)) / rate, 3), "text": text})
+                parts.append(x); at += len(x)
+                gap = int((0.75 if si == len(para) - 1 else 0.3) * rate)
+                parts.append(np.zeros(gap, dtype="<i2")); at += gap
+                done += 1
+                if done % 10 == 0:
+                    sp = cls.secs_made / cls.secs_work if cls.secs_work > 1 else 0
+                    d, t = cls.progress()
+                    cls.status(f"{job.get('title', n)}: chapter {k + 1} of {len(job['chapters'])} ({ch.get('name', '')}), sentence {done} of {total}. "
+                               f"{d} of {t} chapters done. Recording at {sp:.2f}x reading speed.")
+        import soundfile as sf
+        audio = np.concatenate(parts) if parts else np.zeros(rate, dtype="<i2")
+        with sf.SoundFile(dest + ".part.mp3", "w", rate, 1, format="MP3") as out: out.write(audio.astype(np.int16))
+        with open(dest + ".json.part", "w", encoding="utf-8") as h:
+            json.dump({"title": title, "rate": rate, "seconds": round(at / rate, 2), "sentences": marks}, h, ensure_ascii=False)
+        os.replace(dest + ".json.part", dest + ".json")
+        os.replace(dest + ".part.mp3", dest + ".mp3")
+        d, t = cls.progress()
+        sp = cls.secs_made / cls.secs_work if cls.secs_work > 1 else 0
+        print(f"Loudbook PC voice: audiobook chapter {k + 1} of {job.get('title', n)} done ({at / rate / 60:.0f} min); {d} of {t}", flush=True)
+        cls.status(f"{d} of {t} chapters done. Last: {job.get('title', n)} chapter {k + 1} ({ch.get('name', '')}). "
+                   f"Recording at {sp:.2f}x reading speed." + (" All done." if d == t else ""))
+        return True
+
+    @classmethod
+    def work(cls):
+        """One chapter of an audiobook, if there's one to make. True if it did something."""
+        if time.time() < cls.idle_until: return False
+        nxt = cls.next_chapter()
+        cls.pending = nxt is not None
+        if nxt is None: cls.idle_until = time.time() + 20; return False
+        b = best_engine()
+        if b is None: cls.idle_until = time.time() + 300; cls.status("Waiting: the best-quality voice couldn't be loaded on this PC."); return False
+        Ahead.last_used = time.time()
+        try: cls.make_chapter(b, *nxt)
+        except Exception as e:
+            import traceback
+            print("Loudbook PC voice: audiobook chapter failed:", repr(e)[:300], flush=True)
+            print("".join(traceback.format_exc().splitlines(True)[-6:]), flush=True)
+            cls.status(f"Stopped at {nxt[1].get('title', nxt[0])} chapter {nxt[2] + 1}: {e!r}"[:300])
+            cls.idle_until = time.time() + 60
+        Ahead.last_used = time.time()
+        return True
+
+
 def ahead_worker():
     while True:
         it = Ahead.next()
+        if it is None and Books.work(): continue
         if it is None:
             # (nothing to make for half an hour: the full model gives the card back to Turbo for live reading)
             b = Handler.best
@@ -832,6 +1000,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 try: sid = max(0, min(52, int(req.get("sid", 3)))); speed = max(0.5, min(2.5, float(req.get("speed", 1.0))))
                 except (TypeError, ValueError): return self.reply(400, {"error": "bad request"})
                 if not text.strip(): return self.reply(400, {"error": "no text"})
+                if req.get("engine") in ("best", "natural"): Books.remember_voice(req.get("voice") or sid)   # (for audiobooks "in the phone's voice")
                 t0 = time.time()
                 n = Handler.natural or Handler.best
                 vid = req.get("voice")
