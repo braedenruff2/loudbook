@@ -32,6 +32,11 @@ final class BookCopy {
         SharedPreferences prefs = ctx.getSharedPreferences("lb", Context.MODE_PRIVATE);
         Set<String> done = new HashSet<>(prefs.getStringSet("booksCopied", new HashSet<>()));
         List<PcLink.BookFile> files = l.books(15000);
+        // (copied before but gone from the phone since, deleted in a files app or with Loudbook's data: copied again. It said
+        //  "all on this phone already" for good)
+        Set<String> gone = missing(ctx, files, done);
+        for (String g : gone) done.remove(g);
+        if (!gone.isEmpty()) Log.i(TAG, "audiobook: " + gone.size() + " copied files are gone from the phone, copying them again");
         int todo = 0, copied = 0, mp3s = 0;
         for (PcLink.BookFile f : files) if (!done.contains(f.path + "|" + f.bytes)) todo++;
         for (PcLink.BookFile f : files) if (f.path.endsWith(".mp3")) mp3s++;
@@ -44,13 +49,14 @@ final class BookCopy {
             if (slash <= 0) continue;
             String book = f.path.substring(0, slash), name = f.path.substring(slash + 1);
             p.at("Copying " + (copied + 1) + " of " + todo + ": " + name);
-            if (name.endsWith(".mp3")) saveAudio(ctx, l, f.path, book, name);
+            if (name.endsWith(".mp3")) saveAudio(ctx, l, f, book, name);
             else {
                 File dir = new File(ctx.getExternalFilesDir(null), "books/" + book);
                 if (!dir.isDirectory() && !dir.mkdirs()) throw new java.io.IOException("can't make " + dir);
                 File part = new File(dir, name + ".part");
-                try (OutputStream out = new FileOutputStream(part)) { l.download(f.path, out, 60000); }
-                if (!part.renameTo(new File(dir, name))) throw new java.io.IOException("can't save " + name);
+                try (OutputStream out = new FileOutputStream(part)) { whole(l.download(f.path, out, 60000), f, name); }
+                File to = new File(dir, name);
+                if (to.exists() && !to.delete() || !part.renameTo(to)) throw new java.io.IOException("can't save " + name);
             }
             done.add(key);
             prefs.edit().putStringSet("booksCopied", new HashSet<>(done)).apply();   // (kept as it goes: a dropped Wi-Fi keeps what came)
@@ -62,13 +68,56 @@ final class BookCopy {
             + ". Play them in any audiobook app or in the car, with no connection.";
     }
 
-    private static void saveAudio(Context ctx, PcLink l, String path, String book, String name) throws Exception {
+    /** A copy that came short (the Wi-Fi dropped as it ended) isn't kept as done. */
+    private static void whole(long got, PcLink.BookFile f, String name) throws java.io.IOException {
+        if (f.bytes > 0 && got != f.bytes) throw new java.io.IOException(name + " came short (" + got + " of " + f.bytes + " bytes)");
+    }
+
+    /** The keys of files copied before that aren't on the phone any more (unsure counts as there: never copied twice for nothing). */
+    static Set<String> missing(Context ctx, List<PcLink.BookFile> files, Set<String> done) {
+        Set<String> out = new HashSet<>();
+        java.util.Map<String, Set<String>> shared = new java.util.HashMap<>();   // book -> MP3 names in Audiobooks/<book>/ (null: unsure)
+        for (PcLink.BookFile f : files) {
+            String key = f.path + "|" + f.bytes;
+            if (!done.contains(key)) continue;
+            int slash = f.path.indexOf('/');
+            if (slash <= 0) continue;
+            String book = f.path.substring(0, slash), name = f.path.substring(slash + 1);
+            try {
+                if (!name.endsWith(".mp3")) { if (!new File(ctx.getExternalFilesDir(null), "books/" + book + "/" + name).isFile()) out.add(key); }
+                else if (Build.VERSION.SDK_INT < 29) { if (!new File(new File(ctx.getExternalFilesDir(Environment.DIRECTORY_AUDIOBOOKS), book), name).isFile()) out.add(key); }
+                else {
+                    if (!shared.containsKey(book)) shared.put(book, audioNames(ctx, book));
+                    Set<String> have = shared.get(book);
+                    if (have != null && !have.contains(name)) out.add(key);
+                }
+            } catch (Exception e) { Log.w(TAG, "audiobook: checking " + name, e); }
+        }
+        return out;
+    }
+
+    /** The MP3s Loudbook put in Audiobooks/<book>/, or null if the phone wouldn't say. */
+    private static Set<String> audioNames(Context ctx, String book) {
+        if (Build.VERSION.SDK_INT < 29) return null;
+        Set<String> out = new HashSet<>();
+        Uri coll = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+        try (android.database.Cursor c = ctx.getContentResolver().query(coll, new String[]{MediaStore.MediaColumns.DISPLAY_NAME},
+                MediaStore.MediaColumns.RELATIVE_PATH + "=?", new String[]{Environment.DIRECTORY_AUDIOBOOKS + "/" + book + "/"}, null)) {
+            if (c == null) return null;
+            while (c.moveToNext()) out.add(c.getString(0));
+        } catch (Exception e) { Log.w(TAG, "audiobook: listing " + book, e); return null; }
+        return out;
+    }
+
+    private static void saveAudio(Context ctx, PcLink l, PcLink.BookFile f, String book, String name) throws Exception {
+        String path = f.path;
         if (Build.VERSION.SDK_INT < 29) {                         // (no shared Audiobooks folder without a permission: Loudbook's own)
             File dir = new File(ctx.getExternalFilesDir(Environment.DIRECTORY_AUDIOBOOKS), book);
             if (!dir.isDirectory() && !dir.mkdirs()) throw new java.io.IOException("can't make " + dir);
             File part = new File(dir, name + ".part");
-            try (OutputStream out = new FileOutputStream(part)) { l.download(path, out, 60000); }
-            if (!part.renameTo(new File(dir, name))) throw new java.io.IOException("can't save " + name);
+            try (OutputStream out = new FileOutputStream(part)) { whole(l.download(path, out, 60000), f, name); }
+            File to = new File(dir, name);
+            if (to.exists() && !to.delete() || !part.renameTo(to)) throw new java.io.IOException("can't save " + name);
             return;
         }
         ContentResolver cr = ctx.getContentResolver();
@@ -90,7 +139,7 @@ final class BookCopy {
         try {
             try (OutputStream out = cr.openOutputStream(u)) {
                 if (out == null) throw new java.io.IOException("can't write " + name);
-                l.download(path, out, 60000);
+                whole(l.download(path, out, 60000), f, name);
             }
             ContentValues ok = new ContentValues();
             ok.put(MediaStore.MediaColumns.IS_PENDING, 0);
