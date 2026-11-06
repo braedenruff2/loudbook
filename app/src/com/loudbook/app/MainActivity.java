@@ -352,6 +352,17 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             if (svc != null) svc.cloudChanged();
         }
         if (KindleService.testBuild() && i.getBooleanExtra("audiofail", false) && svc != null) { i.removeExtra("audiofail"); svc.testAudioFail(); }   // (chapter-test)
+        if (KindleService.testBuild() && i.hasExtra("bookplay")) {
+            // (chapter-test: a fake two-chapter audiobook pushed into Loudbook's files, played from its first chapter)
+            String bk = i.getStringExtra("bookplay"); i.removeExtra("bookplay");
+            java.util.List<Books.Chapter> cs = Books.chapters(this, bk);
+            Log.i("LoudbookTest", "book: test book \"" + bk + "\" has " + cs.size() + " chapters, " + Books.audioHere(this, bk).size() + " recordings");
+            if (!cs.isEmpty()) {
+                BookPlayer.play(getApplicationContext(), bk, 0, 0);
+                web.loadUrl(booksUrl() + "&b=" + Uri.encode(bk) + "&f=" + Uri.encode(cs.get(0).json));
+            }
+            return true;
+        }
         if (i.getBooleanExtra("openBooks", false)) { i.removeExtra("openBooks"); web.loadUrl(booksUrl()); return true; }   // (the audiobook's notification)
         if (i.getBooleanExtra("home", false)) { i.removeExtra("home"); web.loadUrl(homeUrl()); return true; }      // (screenshots in CI)
         if (i.getBooleanExtra("settings", false)) { i.removeExtra("settings"); main.postDelayed(this::showSettings, 1500); }   // (screenshots in CI)

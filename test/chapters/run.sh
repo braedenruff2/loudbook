@@ -87,3 +87,29 @@ grep -q "opened again with its first intent" recents-log.txt && ! grep -q "Pelic
   tail -3 logcat.txt | sed 's/^/    (logcat ends) /' >> recents.txt; }
 # the start page gets "Continue listening" from LoudbookNative.home() (only the start page itself may ask, 2026-11-04)
 grep -q "start page: last story there" logcat.txt && ! grep -q "isn't the start page" logcat.txt && echo "start page shows the last story: yes" >> recents.txt || echo "start page shows the last story: NO" >> recents.txt
+# the PC's audiobook played in Loudbook (BookPlayer + book.html, 2026-11-06): two short chapters pushed into Loudbook's files
+# (as BookCopy leaves them, the recordings in its own Audiobooks folder), played from chapter 1, on to chapter 2 by itself
+adb shell log -t LoudbookTest "=== audiobook ==="
+BK=/tmp/lbbook; rm -rf $BK; mkdir -p $BK
+for n in 1 2; do
+  if command -v ffmpeg >/dev/null; then ffmpeg -loglevel error -f lavfi -i "sine=frequency=$((300 * n)):duration=4" -ac 1 -ar 24000 -b:a 48k "$BK/000$n - Part $n.mp3"
+  else python3 -c "import wave,math,sys;w=wave.open(sys.argv[1],'wb');w.setnchannels(1);w.setsampwidth(2);w.setframerate(24000);w.writeframes(b''.join(int(8000*math.sin(i*0.08)).to_bytes(2,'little',signed=True) for i in range(96000)))" "$BK/000$n - Part $n.mp3"; fi
+  echo "{\"title\": \"Part $n\", \"rate\": 24000, \"seconds\": 4.0, \"sentences\": [{\"p\": 0, \"s\": 0, \"start\": 0.0, \"end\": 1.5, \"text\": \"Part $n\"}, {\"p\": 1, \"s\": 0, \"start\": 2.0, \"end\": 3.9, \"text\": \"A test sentence in part $n.\"}]}" > "$BK/000$n - Part $n.json"
+done
+D=/sdcard/Android/data/com.loudbook.app/files
+adb shell mkdir -p "'$D/books/Test Book'" "'$D/Audiobooks/Test Book'"
+for n in 1 2; do adb push "$BK/000$n - Part $n.json" "$D/books/Test Book/" >/dev/null; adb push "$BK/000$n - Part $n.mp3" "$D/Audiobooks/Test Book/" >/dev/null; done
+adb shell input keyevent KEYCODE_WAKEUP; adb shell wm dismiss-keyguard
+adb shell am start -n com.loudbook.app/.MainActivity --es bookplay "'Test Book'"
+sleep 14
+adb shell dumpsys media_session | grep -E "Loudbook audiobook|state=PlaybackState" | head -4 > book-session.txt
+sleep 6
+adb logcat -d > logcat.txt
+sed -n '/=== audiobook ===/,$p' logcat.txt > book-log.txt
+{
+  grep -o 'book: test book .*' book-log.txt | head -1
+  grep -q "book: playing chapter 1 at" book-log.txt && echo "audiobook: chapter 1 plays: yes" || echo "audiobook: chapter 1 plays: NO"
+  grep -q "book: chapter 1 ended" book-log.txt && grep -q "book: playing chapter 2 at" book-log.txt && echo "audiobook: on to chapter 2 by itself: yes" || echo "audiobook: on to chapter 2 by itself: NO"
+  grep -q "Loudbook audiobook" book-session.txt && echo "audiobook: media session there (headphones, car): yes" || echo "audiobook: media session there: NO"
+  grep -E "book: (player error|opening|couldn't)" book-log.txt | head -3
+} > book.txt

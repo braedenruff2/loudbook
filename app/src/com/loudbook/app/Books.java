@@ -97,10 +97,10 @@ final class Books {
 
     /** The chapter's recording on this phone, or null if it isn't here. */
     static Uri audio(Context ctx, String book, Chapter c) {
-        if (Build.VERSION.SDK_INT < 29) {
-            File f = new File(new File(ctx.getExternalFilesDir(Environment.DIRECTORY_AUDIOBOOKS), book), c.mp3);
-            return f.isFile() ? Uri.fromFile(f) : null;
-        }
+        // (Loudbook's own Audiobooks folder: where older phones keep them, and where the emulator test puts them)
+        File own = new File(new File(ctx.getExternalFilesDir(Environment.DIRECTORY_AUDIOBOOKS), book), c.mp3);
+        if (own.isFile()) return Uri.fromFile(own);
+        if (Build.VERSION.SDK_INT < 29) return null;
         Uri coll = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
         try (android.database.Cursor q = ctx.getContentResolver().query(coll, new String[]{MediaStore.MediaColumns._ID},
                 MediaStore.MediaColumns.RELATIVE_PATH + "=? AND " + MediaStore.MediaColumns.DISPLAY_NAME + "=?",
@@ -113,11 +113,9 @@ final class Books {
     /** The recordings of a book that are on this phone (MP3 names). */
     static java.util.Set<String> audioHere(Context ctx, String book) {
         java.util.Set<String> out = new java.util.HashSet<>();
-        if (Build.VERSION.SDK_INT < 29) {
-            String[] n = new File(ctx.getExternalFilesDir(Environment.DIRECTORY_AUDIOBOOKS), book).list();
-            if (n != null) out.addAll(Arrays.asList(n));
-            return out;
-        }
+        String[] own = new File(ctx.getExternalFilesDir(Environment.DIRECTORY_AUDIOBOOKS), book).list();
+        if (own != null) out.addAll(Arrays.asList(own));
+        if (Build.VERSION.SDK_INT < 29) return out;
         Uri coll = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
         try (android.database.Cursor q = ctx.getContentResolver().query(coll, new String[]{MediaStore.MediaColumns.DISPLAY_NAME},
                 MediaStore.MediaColumns.RELATIVE_PATH + "=?", new String[]{Environment.DIRECTORY_AUDIOBOOKS + "/" + book + "/"}, null)) {
