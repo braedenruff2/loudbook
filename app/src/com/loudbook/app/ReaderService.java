@@ -681,7 +681,9 @@ public class ReaderService extends Service {
     }
 
     /** Starts reading the page open in Kindle (from KindleService's button); letter: where on the page to start (0 = the top). */
-    void startKindle(KindleService.Page p, int letter) {
+    void startKindle(KindleService.Page p, int letter) { startKindle(p, letter, null); }
+    /** lead: the sentence paused in, when the page may start with its end (see KindleLayout.leadCover): it's read whole. */
+    void startKindle(KindleService.Page p, int letter, String lead) {
         // (the reading going on now mustn't turn Kindle's page any more: this page is the one to be read. Until the new
         // chapter is set below, the old reading still runs with the new kt, see kindleMore)
         kindleCh = null;
@@ -722,7 +724,22 @@ public class ReaderService extends Service {
                     if (said.size() == q.size()) { first.remove(at); first.addAll(at, said); }
                 }
             }
-            if (at == 0 && letter == 0 && first.size() > 1) {
+            boolean led = false;
+            if (lead != null && letter == 0 && first.size() > 0) {
+                java.util.List<String> texts = new java.util.ArrayList<>();
+                for (Chapter.Chunk c : first) texts.add(c.text);
+                int cover = KindleLayout.leadCover(lead, texts);
+                if (cover > 0) {
+                    java.util.List<Chapter.Chunk> whole = spoken(java.util.Collections.singletonList(new Chapter.Chunk(first.get(0).block, lead, kts.sayOf(lead))));
+                    if (whole.size() == 1) {
+                        for (int k = 0; k < cover; k++) first.remove(0);
+                        first.add(0, whole.get(0));
+                        led = true;
+                        Log.i("LoudbookTest", "kindle: the page starts with the end of the sentence paused in: reading it whole (" + cover + " piece" + (cover == 1 ? "" : "s") + ")");
+                    }
+                }
+            }
+            if (!led && at == 0 && letter == 0 && first.size() > 1) {
                 // the page starts with the end of a word split over the page break ("cumstances which..."): start after it
                 Chapter.Chunk c0 = first.get(0);
                 java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(\\p{Ll}{2,})(?=[\\s,;:.!?])").matcher(c0.text);

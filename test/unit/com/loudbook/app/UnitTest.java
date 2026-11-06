@@ -424,6 +424,15 @@ public class UnitTest {
             check("a page's only sentence, running on, is found by its start", Arrays.toString(one.spans(Arrays.asList(
                 "The road out of the valley was older than the town, and Mara walked it every morning, rain or not.")).get(0)), "[0, 55, 0, 76]");
         }
+        {
+            String lead = "The expression of his face changed, and he looked at her for a long time.";
+            check("leadCover: the page starts with the paused sentence's tail", KindleLayout.leadCover(lead, Arrays.asList("of his face changed, and he looked at her for a long time.", "She said nothing.")), 1);
+            check("leadCover: ... cut into two pieces", KindleLayout.leadCover(lead, Arrays.asList("of his face changed,", "and he looked at her for a long time.", "She said nothing.")), 2);
+            check("leadCover: the whole sentence is there", KindleLayout.leadCover(lead, Arrays.asList(lead, "She said nothing.")), 0);
+            check("leadCover: another sentence", KindleLayout.leadCover(lead, Arrays.asList("She said nothing.")), 0);
+            check("leadCover: too little to be sure", KindleLayout.leadCover(lead, Arrays.asList("a long time.", "She said nothing.")), 0);
+            check("leadCover: no lead", KindleLayout.leadCover(null, Arrays.asList("a long time.")), 0);
+        }
         check("on the next page, the start isn't there", KindleLayout.localFrac(new int[]{0, 15, 34, 49}, 0.5f), -1.0f);
         check("on the next page, its end is", Math.round(KindleLayout.localFrac(new int[]{0, 15, 34, 49}, 0.9f) * 100), 67);
         {   // the page didn't turn after the sentence over the break was read whole: it isn't read again

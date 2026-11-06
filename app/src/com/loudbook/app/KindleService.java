@@ -605,6 +605,7 @@ public class KindleService extends AccessibilityService {
                 // little before or after where it was: if the sentence paused in is on it, go on from there. Reading went back to
                 // the top of the screen, a minute or two heard again (lab c1105n))
                 int from = 0;
+                String lead = null;
                 if (moved) {
                     try {
                         Chapter c = svc.chapter(); int i = svc.pos();
@@ -629,12 +630,15 @@ public class KindleService extends AccessibilityService {
                                 }
                             }
                         }
+                        // (not found whole: the page may start with its end, laid out again from mid-sentence (lab c1106a lost "The
+                        // expression"): then the sentence is read whole first, see startKindle)
+                        if (from == 0 && c != null && i >= 0 && i < c.size()) lead = c.chunks.get(i).text;
                     } catch (Throwable t) { Log.w(TAG, "kindle resume place", t); }
                 }
-                final Page fp = p; final int fromLetter = from;
+                final Page fp = p; final int fromLetter = from; final String fLead = lead;
                 main.post(() -> {
                     busy = false;
-                    if (moved) { Log.i("LoudbookTest", "kindle: a different page since the pause: reading it" + (fromLetter > 0 ? ", from the sentence paused in (letter " + fromLetter + ")" : "")); begin(fp, new boolean[]{needExplore, false}, fromLetter); }
+                    if (moved) { Log.i("LoudbookTest", "kindle: a different page since the pause: reading it" + (fromLetter > 0 ? ", from the sentence paused in (letter " + fromLetter + ")" : "")); begin(fp, new boolean[]{needExplore, false}, fromLetter, fLead); }
                     else svc.play();
                     watch();
                 });
@@ -754,7 +758,8 @@ public class KindleService extends AccessibilityService {
         toast("No book text found in Kindle. What Loudbook sees there is copied: paste it to Claude to get it fixed. (Or the book's publisher doesn't allow screen readers.)");
     }
     /** Starts reading the page from a letter (0: the top). */
-    private void begin(Page p, boolean[] explored, int letter) {
+    private void begin(Page p, boolean[] explored, int letter) { begin(p, explored, letter, null); }
+    private void begin(Page p, boolean[] explored, int letter, String lead) {
         needExplore = explored[0];
         restWhilePaused = false; pausedAt = 0;
         startedAt = System.currentTimeMillis();
@@ -766,7 +771,7 @@ public class KindleService extends AccessibilityService {
                 : "Kindle shares this book's text only with screen readers, so while Loudbook reads Kindle the screen works like one: double-tap to press things, two fingers to turn pages. Leave Kindle (or stay paused for a minute) and the screen goes back to normal.");
         }
         accept(p);
-        svc.startKindle(p, letter);
+        svc.startKindle(p, letter, lead);
         watch();
     }
     private volatile boolean busy;

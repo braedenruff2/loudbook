@@ -41,6 +41,25 @@ final class KindleLayout {
 
     int length() { return norm.length(); }
 
+    /**
+     * How many of a page's first sentences are only the end of the sentence {@code lead} (it began on the page before: Kindle laid
+     * the page out again while paused, starting mid-sentence, lab c1106a "of his face changed..."), or 0. Then the whole of
+     * lead is read in their place, not its tail alone. At least 12 letters must match, and lead must be longer than them.
+     */
+    static int leadCover(String lead, List<String> first) {
+        if (lead == null || first == null) return 0;
+        String nl = normOf(lead);
+        StringBuilder s = new StringBuilder();
+        int best = 0;
+        for (int k = 0; k < first.size() && k < 6; k++) {
+            s.append(normOf(first.get(k)));
+            if (s.length() >= nl.length()) break;
+            if (nl.endsWith(s.toString())) { if (s.length() >= 12) best = k + 1; }
+            else if (!nl.contains(s.toString())) break;
+        }
+        return best;
+    }
+
     /** Where a sentence starts on the page (in its letters, as letterAt counts them), or -1: all of it, or its first 30 letters. */
     int find(String sentence) {
         String n = normOf(sentence);
