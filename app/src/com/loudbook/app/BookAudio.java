@@ -141,6 +141,13 @@ final class BookAudio {
         catch (Exception e) { Log.w(TAG, "book: reading the recording", e); return null; }
     }
 
+    /** A book was deleted: nothing remembered or decoded from before is used again. */
+    static synchronized void forget(Context ctx) {
+        recs.clear(); none.clear();
+        File[] fs = dir(ctx).listFiles();
+        if (fs != null) for (File f : fs) f.delete();
+    }
+
     // ---------------------------------------------------------------- the MP3, decoded once into the cache
 
     private static final LinkedHashMap<String, Long> made = new LinkedHashMap<>();

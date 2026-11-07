@@ -647,6 +647,13 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 web.loadUrl(u);
             });
         }
+        /** Deletes a book (its recordings and text) from this phone; it isn't copied from the PC again. */
+        @JavascriptInterface public String bookDelete(String key, String book) {
+            if (!onStartPage(key)) return "";
+            BookPlayer.pauseIfPlaying();
+            int n = Books.delete(getApplicationContext(), prefs, book);
+            return "Deleted " + book + " from this phone (" + n + " file" + (n == 1 ? "" : "s") + "). \u201cGet chapters from my PC\u201d won't copy it again unless your PC makes it again.";
+        }
         @JavascriptInterface public void bookToggle(String key) {
             if (!onStartPage(key)) return;
             main.post(() -> {

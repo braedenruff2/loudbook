@@ -31,7 +31,10 @@ final class BookCopy {
     static String copyAll(Context ctx, PcLink l, Progress p) throws Exception {
         SharedPreferences prefs = ctx.getSharedPreferences("lb", Context.MODE_PRIVATE);
         Set<String> done = new HashSet<>(prefs.getStringSet("booksCopied", new HashSet<>()));
-        List<PcLink.BookFile> files = l.books(15000);
+        List<PcLink.BookFile> files = new java.util.ArrayList<>();
+        // (deleted on the phone (Books.delete): not copied again, unless the PC makes the file again)
+        Set<String> deleted = prefs.getStringSet("booksDeleted", new HashSet<>());
+        for (PcLink.BookFile f : l.books(15000)) if (!deleted.contains(f.path + "|" + f.bytes)) files.add(f);
         // (copied before but gone from the phone since, deleted in a files app or with Loudbook's data: copied again. It said
         //  "all on this phone already" for good)
         Set<String> gone = missing(ctx, files, done);

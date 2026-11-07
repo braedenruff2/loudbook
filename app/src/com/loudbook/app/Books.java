@@ -131,6 +131,42 @@ final class Books {
         return out;
     }
 
+    /**
+     * Deletes a book from this phone: its recordings (MP3s in Audiobooks/<book>/) and its text. What was deleted isn't
+     * copied from the PC again ("booksDeleted": its files as the PC listed them); a chapter the PC makes again (a new file)
+     * is. Returns how many files went.
+     */
+    static int delete(Context ctx, SharedPreferences prefs, String book) {
+        if (!safe(book)) return 0;
+        java.util.Set<String> del = new java.util.HashSet<>(prefs.getStringSet("booksDeleted", new java.util.HashSet<>()));
+        for (String k : prefs.getStringSet("booksCopied", new java.util.HashSet<>())) if (k.startsWith(book + "/")) del.add(k);
+        int n = 0;
+        File dir = new File(root(ctx), book);
+        String[] fs = dir.list();
+        if (fs != null) for (String f : fs) if (new File(dir, f).delete()) n++;
+        dir.delete();
+        File own = new File(ctx.getExternalFilesDir(Environment.DIRECTORY_AUDIOBOOKS), book);
+        fs = own.list();
+        if (fs != null) for (String f : fs) if (new File(own, f).delete()) n++;
+        own.delete();
+        if (Build.VERSION.SDK_INT >= 29) {
+            Uri coll = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+            List<Long> ids = new ArrayList<>();
+            try (android.database.Cursor q = ctx.getContentResolver().query(coll, new String[]{MediaStore.MediaColumns._ID},
+                    MediaStore.MediaColumns.RELATIVE_PATH + "=?", new String[]{Environment.DIRECTORY_AUDIOBOOKS + "/" + book + "/"}, null)) {
+                while (q != null && q.moveToNext()) ids.add(q.getLong(0));
+            } catch (Exception e) { Log.w(TAG, "book: listing " + book + " to delete", e); }
+            for (long id : ids) {
+                try { if (ctx.getContentResolver().delete(ContentUris.withAppendedId(coll, id), null, null) > 0) n++; }
+                catch (Exception e) { Log.w(TAG, "book: deleting a recording of " + book, e); }
+            }
+        }
+        prefs.edit().putStringSet("booksDeleted", del).remove("bookAt:" + book).apply();
+        BookAudio.forget(ctx);
+        Log.i(TAG, "book: " + book + " deleted from the phone (" + n + " files)");
+        return n;
+    }
+
     // ---------------------------------------------------------------- where each book was left
 
     static Spot spot(SharedPreferences prefs, String book) {

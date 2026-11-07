@@ -146,7 +146,16 @@
         r.onclick = () => { if (c.text) call('bookRead', b.name, c.file); else openChapter(b.name, c.file, i === atIdx); };
         list.appendChild(r);
       });
-      card.append(more, list);
+      // delete from the phone (two taps): the recordings and text; not copied from the PC again
+      const del = document.createElement('button'); del.className = 'btn ghost'; del.textContent = b.text ? 'Delete' : 'Delete recordings';
+      let armed = 0;
+      del.onclick = () => {
+        if (Date.now() - armed > 4000) { armed = Date.now(); del.textContent = 'Tap again to delete'; return; }
+        const line = call('bookDelete', b.name);
+        renderLib();
+        if (line) $('copyMsg').textContent = line;
+      };
+      card.append(more, del, list);
       if (st.book === b.name && st.playing) { gs.textContent = 'Playing now'; }
       box.appendChild(card);
     }
