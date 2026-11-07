@@ -141,6 +141,10 @@ final class Books {
         java.util.Set<String> del = new java.util.HashSet<>(prefs.getStringSet("booksDeleted", new java.util.HashSet<>()));
         for (String k : prefs.getStringSet("booksCopied", new java.util.HashSet<>())) if (k.startsWith(book + "/")) del.add(k);
         int n = 0;
+        // (what was made ahead for its chapters goes too: AheadMaker)
+        List<String> urls = new ArrayList<>();
+        for (Chapter c : chapters(ctx, book)) if (isText(c)) urls.add(BookPages.url(book, c.json));
+        AheadMaker.delete(ctx, urls);
         File dir = new File(root(ctx), book);
         String[] fs = dir.list();
         if (fs != null) for (String f : fs) if (new File(dir, f).delete()) n++;

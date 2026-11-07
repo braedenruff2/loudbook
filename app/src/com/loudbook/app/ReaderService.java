@@ -383,6 +383,7 @@ public class ReaderService extends Service {
         updateMetadata();
         if (listener != null) listener.onSpeaking(chapter, pos);
         if (play) play(); else state();
+        aheadAfter(ch);
     }
 
     void seek(int i) {
@@ -485,11 +486,12 @@ public class ReaderService extends Service {
             final int want = sid; final float sp = speed;
             if (ch == null || i < 0 || i >= ch.size()) return null;
             final String text = ch.chunks.get(i).say;
-            if (BookAudio.covers(this, ch, i)) {
-                // a book chapter the PC recorded (BookPages): this sentence from its recording; the voice if that fails
+            if (BookAudio.covers(this, ch, i, want)) {
+                // made ahead on the phone (AheadMaker), or a book chapter the PC recorded (BookPages): this sentence from
+                // that recording; the voice if that fails
                 final int at = i;
                 f = synth.submit(() -> {
-                    Voice.Clip c = BookAudio.clip(this, ch, at);
+                    Voice.Clip c = BookAudio.clip(this, ch, at, want);
                     return learned(c != null ? c : makeVoiced(ch, at, text, want, sp), want);
                 });
                 clips.put(i, f);
@@ -602,6 +604,21 @@ public class ReaderService extends Service {
         java.util.List<Voice.Clip> clips = new java.util.ArrayList<>();
         for (String[] p : parts) clips.add(makeHere(p[0], "q".equals(p[1]) ? other : want, sp));
         return Voice.join(clips, 0.08);
+    }
+
+    // ---------------------------------------------------------------- made ahead (AheadMaker)
+    final AheadMaker ahead = new AheadMaker(this);
+    /** One sentence for AheadMaker, on the voice thread (after whatever reading is waiting for). */
+    Voice.Clip makeAhead(Chapter ch, int i, int want, float sp) throws Exception {
+        final String text = ch.chunks.get(i).say;
+        return synth.submit(() -> makeVoiced(ch, i, text, want, sp)).get();
+    }
+    /** Making audio ahead runs in the foreground (with the reading notification) so it carries on with the screen off. */
+    void holdForeground() { goForeground(); }
+    /** The setting "Make audio ahead": the next few chapters after this one. */
+    void aheadAfter(Chapter ch) {
+        if (ch == null || !prefs.getBoolean("aheadOn", false) || "kindle".equals(ch.site) || "text".equals(ch.site)) return;
+        ahead.after(ch, prefs.getInt("aheadChapters", 3));
     }
 
     /** A sentence from the PC or the phone (not Gemini). */
@@ -2169,7 +2186,7 @@ public class ReaderService extends Service {
                 final int kk = k;
                 // (a book chapter the PC recorded: its own recording, see clipFor)
                 nextClips.put(k, synth.submit(() -> {
-                    Voice.Clip c = BookAudio.clip(this, n, kk);
+                    Voice.Clip c = BookAudio.clip(this, n, kk, want);
                     return learned(c != null ? c : makeHere(text, want, sp), want);
                 }));
             }

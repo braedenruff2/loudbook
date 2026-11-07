@@ -35,6 +35,8 @@ final class BookAudio {
         final String key; final Uri mp3; final List<String> words = new ArrayList<>(); final List<double[]> times = new ArrayList<>();
         Chapter boundTo; final Map<Integer, Integer> bound = new HashMap<>();
         File pcm; volatile long frames; volatile int rate; volatile boolean done, failed; boolean started;
+        /** Made on the phone ahead (AheadMaker): its voice and the speed it was made at; -1 / 1 for the PC's recordings. */
+        int sid = -1; float madeAt = 1f; String stamp = "";
         Rec(String key, Uri mp3) { this.key = key; this.mp3 = mp3; }
     }
 
@@ -50,16 +52,36 @@ final class BookAudio {
     }
 
     private static synchronized Rec rec(Context ctx, Chapter ch) {
-        String[] bf = BookPages.parse(ch.url);
-        if (bf == null) return null;
         Rec r = recs.get(ch.url);
         if (r != null) return r;
         Long no = none.get(ch.url);
         if (no != null && System.currentTimeMillis() - no < 60_000) return null;
-        r = load(ctx, bf[0], bf[1]);
+        r = made(ctx, ch.url);
+        String[] bf = BookPages.parse(ch.url);
+        if (r == null && bf != null) r = load(ctx, bf[0], bf[1]);
         if (r == null) { none.put(ch.url, System.currentTimeMillis()); return null; }
         recs.put(ch.url, r);
         return r;
+    }
+
+    /** The chapter made ahead on the phone (AheadMaker), or null. */
+    private static Rec made(Context ctx, String url) {
+        File info = AheadMaker.infoFile(ctx, url), audio = AheadMaker.audioFile(ctx, url);
+        if (!info.isFile() || !audio.isFile()) return null;
+        try {
+            JSONObject o = new JSONObject(new String(java.nio.file.Files.readAllBytes(info.toPath()), java.nio.charset.StandardCharsets.UTF_8));
+            JSONArray ss = o.optJSONArray("sentences");
+            if (ss == null || ss.length() == 0) return null;
+            Rec r = new Rec("made:" + AheadMaker.key(url), Uri.fromFile(audio));
+            r.sid = o.optInt("sid", -1); r.madeAt = (float) o.optDouble("speed", 1);
+            r.stamp = audio.length() + "-" + audio.lastModified();
+            for (int i = 0; i < ss.length(); i++) {
+                JSONObject x = ss.getJSONObject(i);
+                r.words.add(words(x.optString("text", "")));
+                r.times.add(new double[]{x.optDouble("start", 0), x.optDouble("end", 0)});
+            }
+            return r;
+        } catch (Exception e) { Log.w(TAG, "ahead: reading what was made for " + url, e); return null; }
     }
 
     private static Rec load(Context ctx, String book, String file) {
@@ -103,19 +125,17 @@ final class BookAudio {
         return r.bound.get(i);
     }
 
-    /** Sentence i of this chapter is in a recording on this phone. */
-    static boolean covers(Context ctx, Chapter ch, int i) {
-        if (!BookPages.isBook(ch.url)) return false;
+    /** Sentence i of this chapter is in a recording on this phone (made ahead with this voice, or the PC's). */
+    static boolean covers(Context ctx, Chapter ch, int i, int sid) {
         Rec r = rec(ctx, ch);
-        return r != null && !r.failed && boundAt(r, ch, i) != null;
+        return r != null && !r.failed && (r.sid < 0 || r.sid == sid) && boundAt(r, ch, i) != null;
     }
 
     /** Sentence i from the recording, or null (not in it, or the recording can't be played): the voice reads it. */
-    static Voice.Clip clip(Context ctx, Chapter ch, int i) {
-        if (!BookPages.isBook(ch.url)) return null;
+    static Voice.Clip clip(Context ctx, Chapter ch, int i, int sid) {
         long t0 = System.currentTimeMillis();
         Rec r = rec(ctx, ch);
-        if (r == null) return null;
+        if (r == null || (r.sid >= 0 && r.sid != sid)) return null;
         Integer at = boundAt(r, ch, i);
         if (at == null) return null;
         decode(ctx, r);
@@ -136,10 +156,13 @@ final class BookAudio {
             try (RandomAccessFile f = new RandomAccessFile(r.pcm, "r")) { f.seek(from * 2); f.readFully(b); }
             ByteBuffer bb = ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN);
             for (int k = 0; k < out.length; k++) out[k] = bb.getShort() / 32768f;
-            return new Voice.Clip(out, rate, 1f, System.currentTimeMillis() - t0);
+            return new Voice.Clip(out, rate, r.madeAt, System.currentTimeMillis() - t0);
         } catch (InterruptedException e) { Thread.currentThread().interrupt(); return null; }
         catch (Exception e) { Log.w(TAG, "book: reading the recording", e); return null; }
     }
+
+    /** This chapter was made again (AheadMaker): looked up afresh next time. */
+    static synchronized void forget(String url) { recs.remove(url); none.remove(url); }
 
     /** A book was deleted: nothing remembered or decoded from before is used again. */
     static synchronized void forget(Context ctx) {
@@ -159,7 +182,7 @@ final class BookAudio {
         r.started = true;
         File d = dir(ctx);
         d.mkdirs();
-        String name = Integer.toHexString(r.key.hashCode()) + "-" + Integer.toHexString(r.mp3.toString().hashCode());
+        String name = Integer.toHexString(r.key.hashCode()) + "-" + Integer.toHexString((r.mp3.toString() + r.stamp).hashCode());
         r.pcm = new File(d, name + ".pcm");
         File ok = new File(d, name + ".ok");
         // (decoded before: its rate is in the .ok file)

@@ -155,7 +155,23 @@
         renderLib();
         if (line) $('copyMsg').textContent = line;
       };
-      card.append(more, del, list);
+      // make the whole book's audio ahead on this phone, so a slow phone plays it straight away (AheadMaker)
+      const make = document.createElement('button'); make.className = 'btn ghost'; make.hidden = !b.text;
+      const aline = document.createElement('p'); aline.className = 'msg'; aline.hidden = true;
+      const showAhead = () => {
+        const a = json(call('aheadState'), {});
+        const mine = a.book === b.name;
+        make.textContent = mine && a.busy ? 'Stop making audio' : 'Make audio now';
+        aline.hidden = !(mine && a.line); aline.textContent = a.line || '';
+        if (mine && a.busy && !$('lib').hidden) setTimeout(showAhead, 2000);
+      };
+      make.onclick = () => {
+        const a = json(call('aheadState'), {});
+        if (a.busy && a.book === b.name) call('aheadStop'); else call('aheadBook', b.name);
+        setTimeout(showAhead, 400);
+      };
+      if (b.text) showAhead();
+      card.append(more, make, del, aline, list);
       if (st.book === b.name && st.playing) { gs.textContent = 'Playing now'; }
       box.appendChild(card);
     }

@@ -654,6 +654,23 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             int n = Books.delete(getApplicationContext(), prefs, book);
             return "Deleted " + book + " from this phone (" + n + " file" + (n == 1 ? "" : "s") + "). \u201cGet chapters from my PC\u201d won't copy it again unless your PC makes it again.";
         }
+        /** Makes a whole book's audio ahead on this phone (AheadMaker), chapter by chapter, with the voice and speed set now. */
+        @JavascriptInterface public void aheadBook(String key, String book) {
+            if (!onStartPage(key) || !Books.safe(book)) return;
+            main.post(() -> {
+                if (svc == null) return;
+                askNotificationPermission();
+                java.util.List<String> urls = new java.util.ArrayList<>();
+                for (Books.Chapter c : Books.chapters(getApplicationContext(), book)) if (Books.isText(c)) urls.add(BookPages.url(book, c.json));
+                svc.ahead.book(book, urls);
+            });
+        }
+        @JavascriptInterface public void aheadStop(String key) { if (onStartPage(key) && svc != null) svc.ahead.cancel(); }
+        @JavascriptInterface public String aheadState(String key) {
+            if (!onStartPage(key) || svc == null) return "{}";
+            try { return new JSONObject().put("busy", svc.ahead.busy()).put("line", svc.ahead.line()).put("book", svc.ahead.bookName()).toString(); }
+            catch (Exception e) { return "{}"; }
+        }
         @JavascriptInterface public void bookToggle(String key) {
             if (!onStartPage(key)) return;
             main.post(() -> {
@@ -1319,6 +1336,10 @@ public class MainActivity extends Activity implements ReaderService.Listener {
 
         Switch auto = toggle("Roll into the next chapter", svc == null || svc.autoNext, (b, on) -> { if (svc != null) svc.setAutoNext(on); });
         box.addView(auto);
+        // (a phone too slow for the voice: the next chapters are made ahead and kept, so they play straight away)
+        box.addView(toggle("Make audio ahead: the next 3 chapters are made while you listen and kept, so a slow phone keeps up"
+                + " (whole books: Audiobooks \u203a Make audio now)", prefs.getBoolean("aheadOn", false),
+            (b, on) -> { prefs.edit().putBoolean("aheadOn", on).apply(); if (svc != null) { if (on) svc.aheadAfter(svc.chapter()); else svc.ahead.cancel(); } }));
         box.addView(toggle("Tell me when a story I've caught up on has a new chapter", prefs.getBoolean("newChapterAlerts", true),
             (b, on) -> prefs.edit().putBoolean("newChapterAlerts", on).apply()));
 
