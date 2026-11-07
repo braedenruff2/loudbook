@@ -895,7 +895,7 @@ class Books:
                 if not text: continue
                 if Ahead.queue or Ahead.live: return False          # (the phone's own reading comes first)
                 if done % 5 == 0 and cls.earlier(n): return False     # (a job named before this one, like voice samples, goes next)
-                key = ahead_key(text, who_i)
+                key = ahead_key(text, ("kokoro:" + str(who_i)) if isinstance(b, KokoroBook) else who_i)
                 got = Ahead.get(key)
                 if got is None:
                     t0 = time.time()
@@ -941,7 +941,11 @@ class Books:
         nxt = cls.next_chapter()
         cls.pending = nxt is not None
         if nxt is None: cls.idle_until = time.time() + 20; return False
-        b = best_engine()
+        if str(nxt[1].get("engine", "")).lower() == "kokoro":
+            # (a job with "engine": "kokoro": the phone's own voice, Kokoro, made here: fast, no graphics card needed)
+            if Handler.engine is None or isinstance(Handler.engine, FakeEngine): cls.idle_until = time.time() + 60; return False
+            b = KokoroBook(Handler.engine)
+        else: b = best_engine()
         if b is None: cls.idle_until = time.time() + 300; cls.status("Waiting: the best-quality voice couldn't be loaded on this PC."); return False
         Ahead.last_used = time.time()
         try: cls.make_chapter(b, *nxt)
@@ -953,6 +957,22 @@ class Books:
             cls.idle_until = time.time() + 60
         Ahead.last_used = time.time()
         return True
+
+
+class KokoroBook:
+    """Kokoro (the phone's voice) for an audiobook job, in the shape make_chapter asks of the best-quality voice."""
+    def __init__(self, k): self.k = k; self.rate = k.rate
+    @staticmethod
+    def sid(who):
+        if isinstance(who, int): return max(0, min(52, who))
+        st = style_of(who)
+        if st and isinstance(st[0], int): return st[0]
+        try: return max(0, min(52, int(who)))
+        except (TypeError, ValueError): return 3
+    def speak(self, text, who): return self.k.speak(text, self.sid(who), 1.0)
+    def best_take(self, text, who, ktext=None, takes=None):
+        pcm, r = self.k.speak(text, self.sid(who), 1.0)
+        return pcm, r, "ok"
 
 
 def ahead_worker():
