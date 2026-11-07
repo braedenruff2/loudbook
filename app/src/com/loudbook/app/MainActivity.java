@@ -1611,8 +1611,11 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                       + (hh.aheadWaiting > 0 ? " Sentences not recorded yet are read live." : "");
             }
             String where = v == null ? "" : v.pcOk ? "Reading on your PC now." + nat : v.pcError.length() > 0 ? "Can't reach it right now (" + v.pcError + "), so the phone reads." : "";
-            pcInfo.setText(!paired ? "Run \u201cSet up PC voice.bat\u201d on your PC (in the Loudbook-android folder), then pair here with the code it shows. Works on your home Wi-Fi; elsewhere the phone reads as usual."
-                : "Paired with " + prefs.getString("pcName", "your PC") + " (" + prefs.getString("pcHost", "") + "). " + (prefs.getBoolean("pcOn", false) ? where : "Off: the phone reads."));
+            String away = prefs.getString("pcAway", "");
+            String awayLine = away.isEmpty() ? " Away from home: run \u201cUse PC voice away from home.bat\u201d on your PC and turn on Tailscale on this phone."
+                : " Away from home it's reached through Tailscale (" + away + ") while Tailscale is on on this phone.";
+            pcInfo.setText(!paired ? "Run \u201cSet up PC voice.bat\u201d on your PC (in the Loudbook-android folder), then pair here with the code it shows (on your home Wi-Fi). To use it away from home too, also run \u201cUse PC voice away from home.bat\u201d."
+                : "Paired with " + prefs.getString("pcName", "your PC") + " (" + prefs.getString("pcHost", "") + "). " + (prefs.getBoolean("pcOn", false) ? where : "Off: the phone reads.") + awayLine);
         };
         showPc.run();
         if (svc != null && svc.voice() != null && "best".equals(prefs.getString("pcEngine", "natural")) && prefs.getBoolean("pcOn", false)) {

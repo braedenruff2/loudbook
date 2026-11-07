@@ -1124,6 +1124,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             b = Handler.best
             a = Ahead.status()
             return self.reply(200, {"engine": Handler.engine.name, "rate": Handler.engine.rate, "host": socket.gethostname()[:40],
+                                    "away": tailscale_address(),
                                     "natural": n.name if n else "", "naturalSpeed": round(n.speed(), 2) if n else 0,
                                     "naturalOk": bool(n and not n.too_slow),
                                     "best": b.name if b else ("" if not Handler.can_best() else "not loaded yet"),
@@ -1358,6 +1359,33 @@ def restart_when_updated():
         if stamp() != first:
             print("Loudbook PC voice: updated, restarting...", flush=True)
             os._exit(3)
+
+
+_ts = [0.0, ""]
+def tailscale_address():
+    """This PC's Tailscale address (100.x.y.z), or "": the phone keeps it and uses it when it's away from home (with
+    Tailscale on, on the phone and here). Looked up at most every 5 minutes."""
+    if time.time() - _ts[0] < 300: return _ts[1]
+    net = ipaddress.ip_network("100.64.0.0/10")
+    found = ""
+    for a in local_addresses():
+        try:
+            if ipaddress.ip_address(a) in net: found = a; break
+        except ValueError: pass
+    if not found:
+        import subprocess
+        for exe in ("tailscale", os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "Tailscale", "tailscale.exe")):
+            try:
+                r = subprocess.run([exe, "ip", "-4"], capture_output=True, text=True, timeout=4,
+                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                for x in r.stdout.split():
+                    try:
+                        if ipaddress.ip_address(x.strip()) in net: found = x.strip(); break
+                    except ValueError: pass
+                if found: break
+            except Exception: pass
+    _ts[0], _ts[1] = time.time(), found
+    return found
 
 
 def local_addresses():

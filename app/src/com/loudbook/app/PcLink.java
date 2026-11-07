@@ -56,6 +56,8 @@ final class PcLink {
         /** The full Chatterbox model ("" if the PC can't run it, "not loaded yet" until something asks for it), and the
          *  sentences it's making ahead: in the phone's last list, still to make, made so far. */
         String best = ""; float bestSpeed; int aheadTotal, aheadWaiting, aheadMade; boolean aheadLoading;
+        /** The PC's Tailscale address ("" without Tailscale): where to reach it away from home. */
+        String away = "";
         Health(String e, String n, boolean ok, float sp) { engine = e; natural = n; naturalOk = ok; naturalSpeed = sp; }
     }
 
@@ -77,6 +79,8 @@ final class PcLink {
             h.aheadMade = (int) Float.parseFloat(num(body, "aheadMade"));
         } catch (NumberFormatException ignored) { }
         h.aheadLoading = body.matches("(?s).*\"aheadLoading\"\\s*:\\s*true.*");
+        String aw = str(body, "away");
+        h.away = aw == null ? "" : aw.trim();
         return h;
     }
 

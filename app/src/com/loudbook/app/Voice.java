@@ -141,7 +141,12 @@ final class Voice {
     boolean checkPc() {
         PcLink l = pcLink();
         if (l == null) { pcOk = false; return false; }
-        try { pcHealth = l.health(3000); pcOk = true; pcError = ""; pcRetryAt = 0; return true; }
+        try {
+            pcHealth = l.health(3000); pcOk = true; pcError = ""; pcRetryAt = 0;
+            // (its Tailscale address, kept for when the phone is away from home: see rediscover)
+            if (!pcHealth.away.isEmpty() && !pcHealth.away.equals(prefs(app).getString("pcAway", ""))) prefs(app).edit().putString("pcAway", pcHealth.away).apply();
+            return true;
+        }
         catch (Exception e) { pcOk = false; pcError = String.valueOf(e.getMessage()); pcRetryAt = System.currentTimeMillis() + 30_000; rediscover(l); return false; }
     }
 
@@ -154,6 +159,17 @@ final class Voice {
                 Log.i(TAG, "PC voice moved to " + f.host);
                 return;
             }
+        }
+        // not on the home network (away from home): through Tailscale, if the PC has it and the phone's Tailscale is on.
+        // (Back home, the search above finds the PC on the Wi-Fi again the first time Tailscale isn't on.)
+        String away = prefs(app).getString("pcAway", "");
+        if (!away.isEmpty() && !away.equals(l.host)) {
+            try {
+                new PcLink(away, l.port, l.fp, l.token).health(5000);
+                prefs(app).edit().putString("pcHost", away).apply();
+                pcRetryAt = 0;
+                Log.i(TAG, "PC voice reached through Tailscale at " + away);
+            } catch (Exception e) { Log.i(TAG, "PC voice: not reachable through Tailscale either (" + e.getMessage() + ")"); }
         }
     }
 

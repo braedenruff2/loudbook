@@ -82,6 +82,12 @@ switches back to the PC on its own.
    pairing code.
 2. On the phone: ⚙ › **Pair with my PC**. It finds the PC by itself; type the code.
 
+**Away from home:** double-click **Use PC voice away from home.bat** once. It installs Tailscale (free; a private,
+encrypted link between your own devices, nothing opened to the internet), has you sign in, and lets the phone in from
+Tailscale's addresses only. On the phone, install Tailscale, sign in with the same account and turn it on. Use the PC
+voice once at home so the phone learns the PC's Tailscale address; after that, when the home Wi-Fi isn't there, it
+reaches the PC through Tailscale by itself (about 170 MB of mobile data an hour). The PC has to be on and awake.
+
 How it stays private:
 
 - **Encrypted:** everything between the phone and the PC goes over HTTPS. The phone remembers the
