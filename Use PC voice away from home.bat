@@ -10,6 +10,8 @@ pause
 exit /b
 #PS_START#
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 # (what Braeden needs is also written to this file on the Desktop, so it can be passed on to him)
 $note = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Loudbook away from home.txt'
 function Say($t) { Write-Host $t; try { Add-Content -Path $note -Value $t } catch { } }
@@ -18,13 +20,17 @@ try {
   $ts = Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'
   # 1. Tailscale on this PC
   if (-not (Test-Path $ts)) {
-    Say '1/3 Installing Tailscale (free)...'
-    try { winget install -e --id Tailscale.Tailscale --accept-package-agreements --accept-source-agreements --silent | Out-Null } catch { }
+    # (the installer itself, with its own window: winget could sit waiting for a hidden prompt for hours)
+    Say '1/3 Downloading Tailscale (free)... A Tailscale installer window will open: click through it (Install), and Yes if Windows asks.'
+    $setup = Join-Path $env:TEMP 'tailscale-setup.exe'
+    Invoke-WebRequest -UseBasicParsing 'https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe' -OutFile $setup
+    Start-Process -FilePath $setup -Wait
+    for ($i = 0; $i -lt 60 -and -not (Test-Path $ts); $i++) { Start-Sleep 1 }
     if (-not (Test-Path $ts)) {
-      Say '    Couldn''t install it by itself. The download page is opening: install it, then run this again.'
-      Start-Process 'https://tailscale.com/download/windows'
+      Say '    Tailscale didn''t install. Run this again and finish the installer window.'
       return
     }
+    Start-Sleep 5
   } else { Say '1/3 Tailscale is installed.' }
   # 2. signed in (the same account goes on the phone)
   function TsIp { try { $x = (& $ts ip -4 2>$null | Select-Object -First 1); if ($x -match '^100\.') { $x.Trim() } } catch { $null } }
