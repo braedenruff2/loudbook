@@ -48,11 +48,11 @@
 
 <div id="lib">
   <h1>Audiobooks</h1>
-  <p class="dim small" id="libTip">Chapters your PC recorded, with their text. They play with no connection.</p>
+  <p class="dim small" id="libTip">Chapters your PC recorded, and books your PC has the text of (one per volume), read by this phone's own voice wherever there's no recording. They play with no connection.</p>
   <div id="books"></div>
   <div class="card" id="getCard">
     <b>From your PC</b>
-    <p class="msg" id="copyMsg">Copies the chapters your PC has finished recording (on your home Wi-Fi). Only new ones are copied.</p>
+    <p class="msg" id="copyMsg">Copies the chapters your PC has finished recording, and its books' text (on your home Wi-Fi). Only new ones are copied.</p>
     <button class="btn" id="copyBtn">Get chapters from my PC</button>
     <h2 id="kindleH" hidden>Kindle books</h2>
     <p class="msg" id="kindleMsg" hidden></p>
@@ -118,7 +118,9 @@
       const withAudio = b.chapters.filter(c => c.audio).length;
       const info = document.createElement('div'); info.className = 'dim small';
       const total = b.chapters.reduce((t, c) => t + (c.seconds || 0), 0);
-      info.textContent = b.chapters.length + ' chapters · ' + LBBook.clock(total) + (withAudio < b.chapters.length ? ' · ' + (b.chapters.length - withAudio) + ' without their recording' : '');
+      info.textContent = b.text
+        ? b.chapters.length + ' chapters · about ' + LBBook.clock(total) + ' · read by the phone\'s voice'
+        : b.chapters.length + ' chapters · ' + LBBook.clock(total) + (withAudio < b.chapters.length ? ' · ' + (b.chapters.length - withAudio) + ' without their recording' : '');
       const bar = document.createElement('div'); bar.className = 'bar';
       const fill = document.createElement('i'); fill.style.width = Math.max(1, Math.round(LBBook.progress(b) * 100)) + '%'; bar.appendChild(fill);
       card.append(name, info, bar);
@@ -129,18 +131,19 @@
       const ci = Math.max(0, atIdx);
       gt.textContent = b.chapters[ci].title + (atIdx >= 0 && b.at.sec > 5 ? ' · ' + LBBook.clock(b.at.sec) : '');
       go.append(gs, gt);
-      go.onclick = () => { openChapter(b.name, b.chapters[ci].file, true); };
+      // (a book that comes as text opens in the reader, which reads it like a web chapter: see BookPages)
+      go.onclick = () => { if (b.text) call('bookRead', b.name, b.chapters[ci].file); else openChapter(b.name, b.chapters[ci].file, true); };
       card.appendChild(go);
       const more = document.createElement('button'); more.className = 'btn ghost'; more.textContent = 'All chapters';
       const list = document.createElement('div'); list.className = 'chs'; list.hidden = store.get('lbOpen:' + b.name, '') !== '1';
       more.onclick = () => { list.hidden = !list.hidden; store.set('lbOpen:' + b.name, list.hidden ? '' : '1'); };
       b.chapters.forEach((c, i) => {
         const r = document.createElement('button');
-        r.className = 'ch' + (i === atIdx ? ' cur' : '') + (c.audio ? '' : ' noaudio');
+        r.className = 'ch' + (i === atIdx ? ' cur' : '') + (c.audio || c.text ? '' : ' noaudio');
         const t = document.createElement('span'); t.textContent = c.title;
-        const d = document.createElement('em'); d.textContent = c.audio ? LBBook.clock(c.seconds) : 'not copied';
+        const d = document.createElement('em'); d.textContent = c.text ? '~' + LBBook.clock(c.seconds) : c.audio ? LBBook.clock(c.seconds) : 'not copied';
         r.append(t, d);
-        r.onclick = () => openChapter(b.name, c.file, i === atIdx);
+        r.onclick = () => { if (c.text) call('bookRead', b.name, c.file); else openChapter(b.name, c.file, i === atIdx); };
         list.appendChild(r);
       });
       card.append(more, list);

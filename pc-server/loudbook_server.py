@@ -828,7 +828,8 @@ class Books:
     @classmethod
     def finished(cls, kindle=False):
         """[{name, files: [{p: path inside BOOKS, bytes}]}] of every finished chapter (MP3 and its .json), by book; with
-        kindle, the book's Kindle books (EPUB) too (asked for apart: older phones copied every file listed)."""
+        kindle, the book's Kindle books (EPUB) too (asked for apart: older phones copied every file listed). A chapter's
+        text alone ("NNNN - name.text.json", from tools\volumes.py) is listed too: the phone reads it with its own voice."""
         out = []
         try: dirs = sorted(d for d in os.listdir(BOOKS) if os.path.isdir(os.path.join(BOOKS, d)))
         except OSError: return out
@@ -836,9 +837,9 @@ class Books:
             files = []
             for f in sorted(os.listdir(os.path.join(BOOKS, d))):
                 full = os.path.join(BOOKS, d, f)
-                if (f.endswith(".mp3") and not f.endswith(".part.mp3")) or (f.endswith(".json") and os.path.exists(full[:-5] + ".mp3")):
+                if (f.endswith(".mp3") and not f.endswith(".part.mp3")) or f.endswith(".text.json") or (f.endswith(".json") and os.path.exists(full[:-5] + ".mp3")):
                     files.append({"p": d + "/" + f, "bytes": os.path.getsize(full)})
-            if any(x["p"].endswith(".mp3") for x in files):
+            if any(x["p"].endswith(".mp3") or x["p"].endswith(".text.json") for x in files):
                 if kindle:
                     for n, full in cls.kindle_files(d): files.append({"p": d + "/" + n, "bytes": os.path.getsize(full)})
                 out.append({"name": d, "files": files})

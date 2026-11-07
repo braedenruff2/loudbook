@@ -485,6 +485,16 @@ public class ReaderService extends Service {
             final int want = sid; final float sp = speed;
             if (ch == null || i < 0 || i >= ch.size()) return null;
             final String text = ch.chunks.get(i).say;
+            if (BookAudio.covers(this, ch, i)) {
+                // a book chapter the PC recorded (BookPages): this sentence from its recording; the voice if that fails
+                final int at = i;
+                f = synth.submit(() -> {
+                    Voice.Clip c = BookAudio.clip(this, ch, at);
+                    return learned(c != null ? c : makeVoiced(ch, at, text, want, sp), want);
+                });
+                clips.put(i, f);
+                return f;
+            }
             if (cloudOn() && !"kindle".equals(ch.site) && !"text".equals(ch.site)) {
                 // Gemini: the chapter is recorded in one request; each sentence is cut from it
                 final int idx = i;
@@ -2156,7 +2166,12 @@ public class ReaderService extends Service {
             final int want = sid; final float sp = speed;
             for (int k = 0; k < Math.min(3, n.size()); k++) {
                 final String text = n.chunks.get(k).say;
-                nextClips.put(k, synth.submit(() -> learned(makeHere(text, want, sp), want)));
+                final int kk = k;
+                // (a book chapter the PC recorded: its own recording, see clipFor)
+                nextClips.put(k, synth.submit(() -> {
+                    Voice.Clip c = BookAudio.clip(this, n, kk);
+                    return learned(c != null ? c : makeHere(text, want, sp), want);
+                }));
             }
         }
         Log.i("LoudbookTest", "making the start of " + n.url + " ahead");

@@ -155,6 +155,10 @@ final class ChapterFetcher {
         web.addJavascriptInterface(new Bridge(), "LoudbookNative");
         web.setWebViewClient(new WebViewClient() {
             @Override public void onPageFinished(WebView v, String url) { if (url != null && url.startsWith("http")) run(); }
+            // (a chapter of a book from the PC, made on the phone from its text: BookPages)
+            @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView v, android.webkit.WebResourceRequest r) {
+                return BookPages.intercept(ctx, r);
+            }
         });
         // a phone-sized page (it's never shown), so the page lays out as it would on screen
         DisplayMetrics dm = ctx.getResources().getDisplayMetrics();

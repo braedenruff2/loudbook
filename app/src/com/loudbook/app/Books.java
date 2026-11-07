@@ -39,15 +39,22 @@ final class Books {
 
     static File root(Context ctx) { return new File(ctx.getExternalFilesDir(null), "books"); }
 
-    /** The books with at least one chapter's text here, by name. */
+    /** The books with at least one chapter's text here, by name. (Only the names are looked at: a book from the PC's text
+     *  has a file per chapter, over a thousand in all, and this is asked for by the start page.) */
     static List<String> list(Context ctx) {
         List<String> out = new ArrayList<>();
         String[] names = root(ctx).list();
         if (names == null) return out;
         Arrays.sort(names);
-        for (String n : names) if (!chapters(ctx, n).isEmpty()) out.add(n);
+        for (String n : names) {
+            String[] fs = new File(root(ctx), n).list();
+            if (fs != null) for (String f : fs) if (f.endsWith(".json")) { out.add(n); break; }
+        }
         return out;
     }
+
+    /** A chapter that comes as text, read by the reader's voice (BookPages), not a recording. */
+    static boolean isText(Chapter c) { return c.json.endsWith(".text.json"); }
 
     private static final Pattern TITLE = Pattern.compile("\"title\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
     private static final Pattern SECONDS = Pattern.compile("\"seconds\"\\s*:\\s*([0-9.]+)");
@@ -142,16 +149,19 @@ final class Books {
         prefs.edit().putString("bookAt:" + book, file + "|" + String.format(java.util.Locale.US, "%.1f", Math.max(0, sec))).apply();
     }
 
-    /** For the book page: [{name, chapters: [{file, title, seconds, audio}], at: {file, sec}}]. */
+    /** For the book page: [{name, chapters: [{file, title, seconds, audio, text}], text, at: {file, sec}}]. text: read by the
+     *  reader's voice (a book from the PC's text, see BookPages). */
     static String listJson(Context ctx, SharedPreferences prefs) {
         org.json.JSONArray a = new org.json.JSONArray();
         try {
             for (String b : list(ctx)) {
-                java.util.Set<String> here = audioHere(ctx, b);
+                List<Chapter> cs = chapters(ctx, b);
+                boolean text = !cs.isEmpty() && isText(cs.get(0));
+                java.util.Set<String> here = text ? new java.util.HashSet<>() : audioHere(ctx, b);
                 org.json.JSONArray chs = new org.json.JSONArray();
-                for (Chapter c : chapters(ctx, b))
-                    chs.put(new org.json.JSONObject().put("file", c.json).put("title", c.title).put("seconds", c.seconds).put("audio", here.contains(c.mp3)));
-                org.json.JSONObject o = new org.json.JSONObject().put("name", b).put("chapters", chs);
+                for (Chapter c : cs)
+                    chs.put(new org.json.JSONObject().put("file", c.json).put("title", c.title).put("seconds", c.seconds).put("audio", here.contains(c.mp3)).put("text", isText(c)));
+                org.json.JSONObject o = new org.json.JSONObject().put("name", b).put("chapters", chs).put("text", text);
                 Spot s = spot(prefs, b);
                 if (s != null) o.put("at", new org.json.JSONObject().put("file", s.file).put("sec", s.sec));
                 a.put(o);

@@ -403,6 +403,10 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 String scheme = r.getUrl().getScheme();
                 return !("http".equals(scheme) || "https".equals(scheme) || "file".equals(scheme));
             }
+            // (a chapter of a book from the PC, made here from its text: BookPages)
+            @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
+                return BookPages.intercept(getApplicationContext(), r);
+            }
             @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap icon) {
                 address.setText(url.startsWith("file:") ? "" : url);
                 // (the audiobook page has its own controls: the reader's would play something else)
@@ -626,6 +630,23 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 BookPlayer.play(getApplicationContext(), book, ch, sec);
             });
         }
+        /** A book that comes as text (BookPages): its chapter opens in the reader and is read from where it was left. */
+        @JavascriptInterface public void bookRead(String key, String book, String file) {
+            if (!onStartPage(key) || !Books.safe(book) || !Books.safe(file)) return;
+            main.post(() -> {
+                BookPlayer.pauseIfPlaying();                                       // (one voice at a time)
+                askNotificationPermission();
+                String u = BookPages.url(book, file);
+                Chapter cur = svc != null ? svc.chapter() : null;
+                if (cur != null && cur.url.equals(u)) {                            // (already the one being read: carry on)
+                    web.loadUrl(u);
+                    if (!svc.isPlaying() || svc.isPaused()) svc.play();
+                    return;
+                }
+                resumeOnLoad = u;
+                web.loadUrl(u);
+            });
+        }
         @JavascriptInterface public void bookToggle(String key) {
             if (!onStartPage(key)) return;
             main.post(() -> {
@@ -723,6 +744,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         if (at > 0) onStatus("Picking up where you left off.", false);
     }
 
+    private String bookSpotUrl;
+
     // ---------------------------------------------------------------- ReaderService.Listener
     @Override public void onState(boolean playing, boolean busy) {
         playBtn.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play);
@@ -731,6 +754,11 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     }
 
     @Override public void onSpeaking(Chapter ch, int pos) {
+        // (a book from the PC read as text: the Audiobooks page's "Continue" goes to this chapter)
+        if (BookPages.isBook(ch.url) && !ch.url.equals(bookSpotUrl)) {
+            String[] bf = BookPages.parse(ch.url);
+            if (bf != null) { Books.saveSpot(prefs, bf[0], bf[1], 0); bookSpotUrl = ch.url; }
+        }
         storyText.setText(ch.fiction);
         chapterText.setText(ch.title);
         if (pos >= 0 && pos < ch.size()) nowText.setText(ch.chunks.get(pos).text);
@@ -797,6 +825,9 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             pre.addJavascriptInterface(new PreBridge(), "LoudbookNative");
             pre.setWebViewClient(new WebViewClient() {
                 @Override public void onPageFinished(WebView v, String u) { if (u != null && u.startsWith("http")) inject(pre, u); }
+                @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
+                    return BookPages.intercept(getApplicationContext(), r);
+                }
             });
             pre.setAlpha(0f);
             ((ViewGroup) web.getParent()).addView(pre, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1));
