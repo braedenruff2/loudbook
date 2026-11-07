@@ -3,13 +3,17 @@ rem Lets your phone use the Loudbook PC voice away from home (mobile data, other
 rem private, encrypted link between your own devices. Nothing is opened to the internet. The PowerShell part is below.
 setlocal
 title Loudbook - PC voice away from home
+set "LB_REPO=%~dp0"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$f=[IO.File]::ReadAllText('%~f0'); $i=$f.LastIndexOf('#PS_START#'); iex $f.Substring($i+10)"
 echo.
 pause
 exit /b
 #PS_START#
 $ErrorActionPreference = 'Stop'
-function Say($t) { Write-Host $t }
+# (what Braeden needs is also written to this file on the Desktop, so it can be passed on to him)
+$note = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Loudbook away from home.txt'
+function Say($t) { Write-Host $t; try { Add-Content -Path $note -Value $t } catch { } }
+Set-Content -Path $note -Value ("Loudbook away from home, " + (Get-Date))
 try {
   $ts = Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'
   # 1. Tailscale on this PC
@@ -26,15 +30,16 @@ try {
   function TsIp { try { $x = (& $ts ip -4 2>$null | Select-Object -First 1); if ($x -match '^100\.') { $x.Trim() } } catch { $null } }
   $ip = TsIp
   if (-not $ip) {
-    Say '2/3 Sign in to Tailscale in the browser window that opens (Google is easiest). Use the same account on your phone.'
+    Say '2/3 Tailscale needs to be signed in to the same account as the phone. Either sign in in the browser window that opens,'
+    Say '    or open the link below on the phone that has Tailscale (it signs this PC in to that account). Waiting up to 30 minutes...'
     $log = Join-Path $env:TEMP 'loudbook-tailscale-login'
     Start-Process -FilePath $ts -ArgumentList 'login' -NoNewWindow -RedirectStandardError "$log.err" -RedirectStandardOutput "$log.out"
     $opened = $false
-    for ($i = 0; $i -lt 300 -and -not $ip; $i++) {
+    for ($i = 0; $i -lt 1800 -and -not $ip; $i++) {
       Start-Sleep 1
       if (-not $opened) {
         $t = (Get-Content "$log.err", "$log.out" -Raw -ErrorAction SilentlyContinue) -join ' '
-        if ($t -match '(https://login\.tailscale\.com/\S+)') { Start-Process $Matches[1]; $opened = $true }
+        if ($t -match '(https://login\.tailscale\.com/\S+)') { Say "    Sign-in link: $($Matches[1])"; Start-Process $Matches[1]; $opened = $true }
       }
       $ip = TsIp
     }
@@ -48,14 +53,18 @@ try {
   } else { Say '3/3 Firewall is set.' }
   Say ''
   Say "Done. This PC's Tailscale address: $ip"
+  # pair the phone now, from anywhere: the address above and the code below go in Loudbook > Settings > Pair with my PC
+  $uv = Join-Path $env:LOCALAPPDATA 'Loudbook\bin\uv.exe'
+  $srv = Join-Path $env:LB_REPO 'pc-server'
+  if ((Test-Path $uv) -and $env:LB_REPO) {
+    Say ''
+    Say "On the phone (Tailscale on): Loudbook > Settings > Pair with my PC. PC address: $ip   Code: below."
+    $env:UV_PROJECT_ENVIRONMENT = Join-Path $env:LOCALAPPDATA 'Loudbook\venv'
+    $ErrorActionPreference = 'Continue'
+    & $uv run --no-sync --project $srv python -u (Join-Path $srv 'loudbook_server.py') pair 2>&1 | ForEach-Object { Say "$_" }
+  }
   Say ''
-  Say 'On your phone:'
-  Say '  1. Install Tailscale from the Play Store and sign in with the same account. Turn it on.'
-  Say '     (In Tailscale''s settings, "Always-on VPN" keeps it on.)'
-  Say '  2. Open Loudbook once while at home, and read a sentence with the PC voice: it learns this address.'
-  Say '  Then, away from home, Loudbook reaches the PC by itself (it takes a few seconds the first time).'
-  Say ''
-  Say 'The PC has to be on and awake. The PC voice uses about 170 MB of mobile data an hour of listening.'
+  Say 'All done. Leave this PC on (it can lock its screen, but it must not sleep or shut down).'
 } catch {
   Write-Host ''
   Write-Host "  Stopped: $($_.Exception.Message)" -ForegroundColor Red
