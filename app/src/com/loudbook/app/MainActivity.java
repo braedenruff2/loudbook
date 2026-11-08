@@ -118,6 +118,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         pageJs = readAsset("web/loudbook.js");
         setContentView(buildUi());
         setupWeb();
+        if (prefs.getBoolean("readingMode", false)) setReadingMode(true);
         ReaderService.start(this);
         NewChapters.schedule(this);
         bindService(new Intent(this, ReaderService.class), conn, BIND_AUTO_CREATE);
@@ -410,7 +411,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             @Override public void onPageStarted(WebView v, String url, android.graphics.Bitmap icon) {
                 address.setText(url.startsWith("file:") ? "" : url);
                 // (the audiobook page has its own controls: the reader's would play something else)
-                if (playerPanel != null) playerPanel.setVisibility(url.startsWith(BOOKS) ? View.GONE : View.VISIBLE);
+                if (playerPanel != null) playerPanel.setVisibility(url.startsWith(BOOKS) || readingMode ? View.GONE : View.VISIBLE);
                 pageChapter = null;
                 readThisBtn.setVisibility(View.GONE);
             }
@@ -640,7 +641,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 Chapter cur = svc != null ? svc.chapter() : null;
                 if (cur != null && cur.url.equals(u)) {                            // (already the one being read: carry on)
                     web.loadUrl(u);
-                    if (!svc.isPlaying() || svc.isPaused()) svc.play();
+                    if (!readingMode && (!svc.isPlaying() || svc.isPaused())) svc.play();
                     return;
                 }
                 resumeOnLoad = u;
@@ -751,7 +752,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 onStatus(ReaderService.caughtUpLine(ch), false);
                 return;
             }
-            svc.setChapter(ch, at, true);
+            svc.setChapter(ch, at, !readingMode);           // (reading mode: opened where it was left, not read aloud)
             return;
         }
         offer(ch);
@@ -935,6 +936,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
 
     @Override public boolean onKeyDown(int code, KeyEvent e) {
         if (code == KeyEvent.KEYCODE_BACK) {
+            if (readingMode) { setReadingMode(false); return true; }
             if (web.canGoBack()) { web.goBack(); return true; }
             moveTaskToBack(true);           // keep reading in the background instead of closing
             return true;
@@ -1748,10 +1750,18 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         address.setPadding(dp(10), dp(6), dp(10), dp(6));
         address.setOnEditorActionListener((v, a, e) -> { go(address.getText().toString()); return true; });
         top.addView(address, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        // text only, full screen: no voice, nothing but the page (readingMode)
+        TextView readBtn = text(15, C_DIM, true);
+        readBtn.setText("Aa");
+        readBtn.setContentDescription("Read the page myself, full screen, with no voice");
+        readBtn.setPadding(dp(10), dp(6), dp(6), dp(6));
+        readBtn.setOnClickListener(v -> setReadingMode(true));
+        top.addView(readBtn);
         View menu = imageButton(R.drawable.ic_settings, C_DIM, 0);
         menu.setOnClickListener(v -> showSettings());
         top.addView(menu);
         root.addView(top);
+        topBar = top;
 
         web = new WebView(this);
         root.addView(web, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
@@ -1834,7 +1844,70 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         player.addView(ctl);
         root.addView(player);
         renderNow();
-        return root;
+        // reading mode's own small controls, over the page: text size and the way out
+        android.widget.FrameLayout frame = new android.widget.FrameLayout(this);
+        frame.addView(root);
+        LinearLayout rc = hbox(dp(4), dp(2));
+        rc.setBackground(round(0xCC1E1B17, dp(18), C_LINE));
+        for (String[] b : new String[][]{{"A\u2212", "Smaller text"}, {"A+", "Bigger text"}, {"\u2715", "Leave reading mode"}}) {
+            TextView t = text(15, C_INK, true);
+            t.setText(b[0]); t.setContentDescription(b[1]);
+            t.setPadding(dp(12), dp(8), dp(12), dp(8));
+            t.setOnClickListener(v -> {
+                if (b[0].equals("A+")) zoomText(10);
+                else if (b[0].startsWith("A")) zoomText(-10);
+                else setReadingMode(false);
+            });
+            rc.addView(t);
+        }
+        android.widget.FrameLayout.LayoutParams lp = new android.widget.FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);
+        lp.setMargins(0, dp(10), dp(10), 0);
+        rc.setVisibility(View.GONE);
+        frame.addView(rc, lp);
+        readingControls = rc;
+        return frame;
+    }
+
+    // ---------------------------------------------------------------- reading mode: text only, full screen
+    private View topBar, readingControls;
+    private boolean readingMode;
+
+    /** On: the voice stops, the address bar and player go, the page fills the screen (the bars come back with a swipe),
+     *  and the screen stays on. Chapters opened meanwhile aren't read aloud. Back or \u2715 leaves it. */
+    void setReadingMode(boolean on) {
+        readingMode = on;
+        prefs.edit().putBoolean("readingMode", on).apply();
+        if (on) {
+            if (svc != null && svc.isPlaying() && !svc.isPaused()) svc.pause();
+            BookPlayer.pauseIfPlaying();
+        }
+        topBar.setVisibility(on ? View.GONE : View.VISIBLE);
+        String u = web.getUrl();
+        playerPanel.setVisibility(on || (u != null && u.startsWith(BOOKS)) ? View.GONE : View.VISIBLE);
+        readingControls.setVisibility(on ? View.VISIBLE : View.GONE);
+        if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if (Build.VERSION.SDK_INT >= 30) {
+            android.view.WindowInsetsController c = getWindow().getInsetsController();
+            if (c != null) {
+                if (on) {
+                    c.setSystemBarsBehavior(android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                    c.hide(android.view.WindowInsets.Type.systemBars());
+                } else c.show(android.view.WindowInsets.Type.systemBars());
+            }
+        } else {
+            getWindow().getDecorView().setSystemUiVisibility(on
+                ? View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                : 0);
+        }
+        web.getSettings().setTextZoom(on ? prefs.getInt("readZoom", 100) : 100);
+    }
+
+    private void zoomText(int d) {
+        int z = Math.max(60, Math.min(250, prefs.getInt("readZoom", 100) + d));
+        prefs.edit().putInt("readZoom", z).apply();
+        web.getSettings().setTextZoom(z);
     }
 
     // small view helpers

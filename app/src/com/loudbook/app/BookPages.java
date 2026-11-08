@@ -97,11 +97,17 @@ final class BookPages {
         h.append("<title>").append(TextUtils.htmlEncode(title)).append("</title><style>")
             .append("html,body{background:#14120F;color:#EDE6DA}body{font:19px/1.65 Georgia,'Noto Serif',serif;margin:0 auto;padding:12px 18px 40px;max-width:720px;overflow-wrap:break-word}")
             .append("h1{font-size:1.35em;line-height:1.3;margin:.3em 0 .8em}.lb-note{font:13px/1.4 system-ui,sans-serif;color:#A79E90;letter-spacing:.06em;text-transform:uppercase}")
-            .append("p{margin:0 0 .8em}</style></head><body>");
+            .append("p{margin:0 0 .8em}.lb-nav{display:flex;justify-content:space-between;gap:12px;margin:2em 0 1em;font:16px/1.4 system-ui,sans-serif}")
+            .append(".lb-nav a{color:#E8AA46;text-decoration:none;border:1px solid #2E2A24;border-radius:18px;padding:10px 16px}</style></head><body>");
         h.append("<div class=\"lb-note\">").append(TextUtils.htmlEncode(o.optString("book", "") + " · " + vol))
             .append(at >= 0 ? " · chapter " + (at + 1) + " of " + chs.size() : "").append("</div>");
         h.append("<h1>").append(TextUtils.htmlEncode(title)).append("</h1>");
         for (int i = 0; i < blocks.length(); i++) h.append("<p data-lb-block>").append(TextUtils.htmlEncode(blocks.optString(i, ""))).append("</p>");
+        // (for reading it yourself: the chapters before and after; not read aloud, only the paragraphs are)
+        h.append("<div class=\"lb-nav\">")
+            .append(prev.isEmpty() ? "<span></span>" : "<a href=\"" + TextUtils.htmlEncode(prev) + "\">\u2190 Previous chapter</a>")
+            .append(next.isEmpty() ? "<span></span>" : "<a href=\"" + TextUtils.htmlEncode(next) + "\">Next chapter \u2192</a>")
+            .append("</div>");
         h.append("</body></html>");
         return h.toString();
     }
