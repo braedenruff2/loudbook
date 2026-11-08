@@ -153,7 +153,9 @@ public class ReaderService extends Service {
         ch.setShowBadge(false);
         nm.createNotificationChannel(ch);
         voice.attach(this);
-        warmUp();
+        // (reading mode, text only: the voice isn't loaded until something is read aloud; see setQuiet)
+        quiet = prefs.getBoolean("readingMode", false);
+        if (!quiet) warmUp();
         // headphones unplugged or Bluetooth dropped: pause instead of carrying on out loud
         android.content.IntentFilter noisy = new android.content.IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(noisyReceiver, noisy, Context.RECEIVER_NOT_EXPORTED);
@@ -396,9 +398,21 @@ public class ReaderService extends Service {
         if (was) play(); else state();
     }
 
+    // ---------------------------------------------------------------- reading mode (text only)
+    /** Reading mode: nothing runs that isn't needed to show the page: no voice loading, no listening for voice commands,
+     *  nothing made ahead. Reading aloud (a headset button, say) still works: it loads the voice then. */
+    private volatile boolean quiet;
+    void setQuiet(boolean on) {
+        quiet = on;
+        if (on) { if (playing && !paused) pause(); ahead.cancel(); }
+        else warmUp();
+        updateListening();
+    }
+
     // ---------------------------------------------------------------- playing
     void play() {
         if (chapter == null) { resumeLast(); return; }
+        if (!voice.localReady() && voice.pcLink() == null) warmUp();   // (not loaded yet after reading mode; nothing if it's ready)
         if (track != null) { try { track.setVolume(1f); } catch (Exception ignored) { } }       // (after a sleep-timer fade)
         // (resume only if the player is still there: the sleep timer pauses and ends it, and play then gave the half second
         // left in the speaker's buffer, then silence, still showing "playing")
@@ -617,7 +631,7 @@ public class ReaderService extends Service {
     void holdForeground() { goForeground(); }
     /** The setting "Make audio ahead": the next few chapters after this one. */
     void aheadAfter(Chapter ch) {
-        if (ch == null || !prefs.getBoolean("aheadOn", false) || "kindle".equals(ch.site) || "text".equals(ch.site)) return;
+        if (ch == null || quiet || !prefs.getBoolean("aheadOn", false) || "kindle".equals(ch.site) || "text".equals(ch.site)) return;
         ahead.after(ch, prefs.getInt("aheadChapters", 3));
     }
 
@@ -2370,7 +2384,7 @@ public class ReaderService extends Service {
 
     /** Listens while Loudbook is on screen, or while it's reading (or paused) in the background. */
     void updateListening() {
-        boolean want = System.currentTimeMillis() >= micHeldUntil && commandsOn() && micAllowed() && VoiceCommands.downloaded(this) && VoiceCommands.profile(this) != null
+        boolean want = !quiet && System.currentTimeMillis() >= micHeldUntil && commandsOn() && micAllowed() && VoiceCommands.downloaded(this) && VoiceCommands.profile(this) != null
             && (appVisible || (foreground && (micInForeground || Build.VERSION.SDK_INT < 30)));
         cmdThread.submit(() -> {
             try {

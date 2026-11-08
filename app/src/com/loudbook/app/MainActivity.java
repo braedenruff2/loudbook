@@ -89,6 +89,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         @Override public void onServiceConnected(ComponentName n, IBinder b) {
             svc = ((ReaderService.LocalBinder) b).service();
             svc.setListener(MainActivity.this);
+            if (readingMode) svc.setQuiet(true);
             svc.setAppVisible(visible);
             runSelfTest();
             speedBtn.setText(fmtSpeed(svc.speed()));
@@ -433,6 +434,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         // long-press a paragraph: read from there
         web.setOnTouchListener((v, e) -> { if (e.getAction() == MotionEvent.ACTION_DOWN) { lastTouchX = e.getX(); lastTouchY = e.getY(); } return false; });
         web.setOnLongClickListener(v -> {
+            // (reading mode: a long press while scrolling does nothing: no reading from there, no text selected)
+            if (readingMode) return true;
             final Chapter pc = pageChapter;              // (it can be cleared before the page answers: that was a crash)
             if (pc == null) return false;
             float d = getResources().getDisplayMetrics().density;
@@ -793,7 +796,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             pageWarned = cur + "|" + ch.url;
             svc.trail("page: the page shown (" + cur + ") isn't the chapter being read (" + ch.url + "): no highlight on it");
         }
-        if (cur != null && ch.url.equals(cur) && pos < ch.size()) {
+        if (cur != null && ch.url.equals(cur) && pos < ch.size() && !readingMode) {
             Chapter.Chunk c = ch.chunks.get(pos);
             final int fpos = pos, fblock = c.block;
             // (the page says which paragraph it marked, and whether it found the sentence's words there, for the trail)
@@ -1879,9 +1882,10 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         readingMode = on;
         prefs.edit().putBoolean("readingMode", on).apply();
         if (on) {
-            if (svc != null && svc.isPlaying() && !svc.isPaused()) svc.pause();
             BookPlayer.pauseIfPlaying();
+            web.evaluateJavascript("window.LB && LB.clear()", null);     // (no sentence lit up on the page)
         }
+        if (svc != null) svc.setQuiet(on);
         topBar.setVisibility(on ? View.GONE : View.VISIBLE);
         String u = web.getUrl();
         playerPanel.setVisibility(on || (u != null && u.startsWith(BOOKS)) ? View.GONE : View.VISIBLE);
