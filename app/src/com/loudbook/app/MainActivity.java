@@ -89,7 +89,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         @Override public void onServiceConnected(ComponentName n, IBinder b) {
             svc = ((ReaderService.LocalBinder) b).service();
             svc.setListener(MainActivity.this);
-            if (readingMode) svc.setQuiet(true);
+            if (readingMode || svc.isQuiet()) svc.setQuiet(readingMode);   // (left while not connected: the service stayed quiet)
             svc.setAppVisible(visible);
             runSelfTest();
             speedBtn.setText(fmtSpeed(svc.speed()));
@@ -655,6 +655,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         @JavascriptInterface public String bookDelete(String key, String book) {
             if (!onStartPage(key)) return "";
             BookPlayer.pauseIfPlaying();
+            // (making this book's audio stops first: it went on writing chapters for the deleted book)
+            if (svc != null && book.equals(svc.ahead.bookName())) svc.ahead.cancel();
             int n = Books.delete(getApplicationContext(), prefs, book);
             return "Deleted " + book + " from this phone (" + n + " file" + (n == 1 ? "" : "s") + "). \u201cGet chapters from my PC\u201d won't copy it again unless your PC makes it again.";
         }

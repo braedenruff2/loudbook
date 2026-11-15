@@ -43,7 +43,7 @@ final class AheadMaker {
     private volatile String line = "";
     private volatile String book = "";
     private ChapterFetcher fetcher;
-    private int done, total;
+    private int done, total, failed;
 
     AheadMaker(ReaderService svc) { this.svc = svc; }
 
@@ -123,7 +123,26 @@ final class AheadMaker {
                 if (ch == null) { line = "Couldn't open a chapter to make it ahead (" + url + ")."; continue; }
                 done++;
                 int sid = svc.voiceId(); float speed = svc.speed();
-                if (!have(svc, url, sid, speed)) makeChapter(ch, sid, speed);
+                // (a chapter with nothing to say, e.g. the "not on this phone" page of a book just deleted: nothing kept)
+                if (ch.size() == 0 || BookAudio.recordedOnPc(svc, ch)) continue;
+                if (!have(svc, url, sid, speed)) {
+                    int r;
+                    try { r = makeChapter(ch, sid, speed); }
+                    catch (InterruptedException e) { throw e; }
+                    catch (Exception e) {
+                        // (one chapter failing, e.g. the PC dropping out twice, no longer ends the whole book's job)
+                        Log.w(TAG, "ahead: " + ch.title + " failed", e);
+                        if (++failed >= 3) throw e;
+                        line = "Couldn't make " + ch.title + " (" + e.getMessage() + "): going on with the next.";
+                        r = 1;
+                    }
+                    if (r == 0) { failed = 0; }
+                    else if (r == 2 && !stop) {                       // (voice or speed changed: this chapter again, with the new one)
+                        done--;
+                        synchronized (this) { todo.addFirst(new Object[]{url, more}); }
+                        continue;
+                    }
+                }
                 if (stop) break;
                 if (more > 0 && ch.nextUrl != null) synchronized (this) { todo.addFirst(new Object[]{ch.nextUrl, more - 1}); }
             }
@@ -133,7 +152,8 @@ final class AheadMaker {
             line = "Making audio ahead stopped: " + t.getMessage();
         } finally {
             try { if (wake.isHeld()) wake.release(); } catch (Exception ignored) { }
-            main.post(() -> { if (fetcher != null) { fetcher = null; } });
+            // (the hidden background browser is closed: one leaked with every job)
+            main.post(() -> { if (fetcher != null) { fetcher.destroy(); fetcher = null; } });
         }
     }
 
@@ -149,16 +169,25 @@ final class AheadMaker {
         return got[0];
     }
 
-    private void makeChapter(Chapter ch, int sid, float speed) throws Exception {
+    /** 0 made, 1 stopped, 2 the voice or speed changed meanwhile (to be made again). The part file never stays behind. */
+    private int makeChapter(Chapter ch, int sid, float speed) throws Exception {
+        File part = new File(dir(svc), key(ch.url) + ".part.m4a");
+        try {
+            int r = makeChapterTo(part, ch, sid, speed);
+            if (r != 0) part.delete();
+            return r;
+        } catch (Exception e) { part.delete(); throw e; }
+    }
+
+    private int makeChapterTo(File part, Chapter ch, int sid, float speed) throws Exception {
         File d = dir(svc);
         d.mkdirs();
-        File part = new File(d, key(ch.url) + ".part.m4a");
         JSONArray marks = new JSONArray();
         long t0 = System.currentTimeMillis();
         try (Aac out = new Aac(part)) {
             short[] pad = new short[(int) (0.12 * RATE)];
             for (int i = 0; i < ch.size() && !stop; i++) {
-                if (svc.voiceId() != sid || Math.abs(svc.speed() - speed) > 0.01) { line = "The voice or speed changed: making it again."; return; }
+                if (svc.voiceId() != sid || Math.abs(svc.speed() - speed) > 0.01) { line = "The voice or speed changed: making it again."; return 2; }
                 Chapter.Chunk c = ch.chunks.get(i);
                 line = "Making ahead" + (book.isEmpty() ? "" : " (" + book + ")") + ": chapter " + done + " of " + total + ", " + ch.title
                     + " — sentence " + (i + 1) + " of " + ch.size();
@@ -174,7 +203,7 @@ final class AheadMaker {
                 marks.put(new JSONObject().put("text", c.say).put("start", Math.max(0, start - 0.08)).put("end", end + 0.08));
             }
         }
-        if (stop) { part.delete(); return; }
+        if (stop) return 1;
         JSONObject o = new JSONObject().put("url", ch.url).put("title", ch.title).put("sid", sid).put("speed", (double) speed)
             .put("rate", RATE).put("sentences", marks);
         File info = infoFile(svc, ch.url), audio = audioFile(svc, ch.url);
@@ -184,6 +213,7 @@ final class AheadMaker {
         BookAudio.forget(ch.url);
         Log.i(TAG, "ahead: " + ch.title + " made (" + ch.size() + " sentences in " + (System.currentTimeMillis() - t0) / 1000 + " s)");
         trim(d);
+        return 0;
     }
 
     /** Float samples at any rate -> 16-bit at 24 kHz. */

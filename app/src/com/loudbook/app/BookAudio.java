@@ -56,12 +56,20 @@ final class BookAudio {
         if (r != null) return r;
         Long no = none.get(ch.url);
         if (no != null && System.currentTimeMillis() - no < 60_000) return null;
-        r = made(ctx, ch.url);
+        // (the PC's recording first: made ahead on the phone was looked at first and kept, so a book the PC had recorded
+        // played in the phone's voice from then on, or, made with another voice, was read live with the PC's never tried)
         String[] bf = BookPages.parse(ch.url);
-        if (r == null && bf != null) r = load(ctx, bf[0], bf[1]);
+        if (bf != null) r = load(ctx, bf[0], bf[1]);
+        if (r == null) r = made(ctx, ch.url);
         if (r == null) { none.put(ch.url, System.currentTimeMillis()); return null; }
         recs.put(ch.url, r);
         return r;
+    }
+
+    /** The PC recorded this chapter and the recording is on the phone: nothing to make ahead for it. */
+    static boolean recordedOnPc(Context ctx, Chapter ch) {
+        Rec r = rec(ctx, ch);
+        return r != null && r.sid < 0 && !r.failed;
     }
 
     /** The chapter made ahead on the phone (AheadMaker), or null. */

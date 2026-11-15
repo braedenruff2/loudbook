@@ -205,6 +205,7 @@ public class ReaderService extends Service {
         kindleThread.shutdownNow();
         asrThread.shutdownNow();
         if (fetcher != null) fetcher.destroy();
+        ahead.cancel();
         if (sayer != null) sayer.destroy();
         waiters.shutdownNow();
         if (beeper != null) beeper.release();
@@ -402,9 +403,11 @@ public class ReaderService extends Service {
     /** Reading mode: nothing runs that isn't needed to show the page: no voice loading, no listening for voice commands,
      *  nothing made ahead. Reading aloud (a headset button, say) still works: it loads the voice then. */
     private volatile boolean quiet;
+    boolean isQuiet() { return quiet; }
     void setQuiet(boolean on) {
         quiet = on;
-        if (on) { if (playing && !paused) pause(); ahead.cancel(); }
+        // (only the automatic next-chapters job stops: a whole book asked for on the Audiobooks page carries on)
+        if (on) { if (playing && !paused) pause(); if (ahead.bookName().isEmpty()) ahead.cancel(); }
         else warmUp();
         updateListening();
     }
@@ -625,6 +628,16 @@ public class ReaderService extends Service {
     /** One sentence for AheadMaker, on the voice thread (after whatever reading is waiting for). */
     Voice.Clip makeAhead(Chapter ch, int i, int want, float sp) throws Exception {
         final String text = ch.chunks.get(i).say;
+        // (the voice may not be loaded: reading mode, or nothing read yet. Waited for here, not on the voice thread, where
+        // makeHere's wait had no end and held the reader's own sentences up behind it)
+        if (!voice.ready()) {
+            main.post(this::warmUp);
+            long until = System.currentTimeMillis() + 10 * 60_000L;
+            while (!voice.ready()) {
+                if (System.currentTimeMillis() > until) throw new java.io.IOException("the voice didn't load");
+                Thread.sleep(250);
+            }
+        }
         return synth.submit(() -> makeVoiced(ch, i, text, want, sp)).get();
     }
     /** Making audio ahead runs in the foreground (with the reading notification) so it carries on with the screen off. */
