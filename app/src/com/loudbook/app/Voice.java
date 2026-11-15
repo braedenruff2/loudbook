@@ -36,6 +36,11 @@ final class Voice {
         {"24", "Daniel — UK male · D"}, {"20", "Alice — UK female · D"}, {"23", "Lily — UK female · D"},
         {"11", "Adam — US male · F+"},
     };
+    /** A voice's name ("Heart"), or "voice N". */
+    static String name(int sid) {
+        for (String[] v : VOICES) if (Integer.parseInt(v[0]) == sid) return v[1].split(" — ")[0];
+        return "voice " + sid;
+    }
 
     private OfflineTts tts;
     int sampleRate = 24000;

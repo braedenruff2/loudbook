@@ -38,6 +38,7 @@ jobs:
           java -cp gb-out:"$ANDROID_JAR" com.loudbook.app.GeminiBookTest
           python3 -m pip install --quiet --break-system-packages cryptography numpy soundfile
           bash pc-server/test/ahead.sh
+          python3 pc-server/test/studio_test.py
       - name: Build the APK
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}

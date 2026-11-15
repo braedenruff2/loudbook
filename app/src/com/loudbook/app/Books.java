@@ -29,6 +29,8 @@ final class Books {
 
     static final class Chapter {
         final String json, mp3, title; final double seconds;
+        /** A chapter that comes as text: the PC's recording of it ("<book>/<NNNN - name>"), or "". */
+        String recording = "";
         Chapter(String json, String title, double seconds) {
             this.json = json; this.mp3 = json.substring(0, json.length() - 5) + ".mp3"; this.title = title; this.seconds = seconds;
         }
@@ -53,11 +55,26 @@ final class Books {
         return out;
     }
 
+    /** Chapters made ahead on this phone (AheadMaker), by the voice they were made with. */
+    static java.util.Map<Integer, Integer> madeByVoice(Context ctx) {
+        java.util.Map<Integer, Integer> out = new java.util.HashMap<>();
+        File[] fs = AheadMaker.dir(ctx).listFiles();
+        if (fs == null) return out;
+        for (File f : fs) {
+            if (!f.getName().endsWith(".json")) continue;
+            Matcher m = SID.matcher(head(f));
+            if (m.find()) { int sid = Integer.parseInt(m.group(1)); out.put(sid, out.getOrDefault(sid, 0) + 1); }
+        }
+        return out;
+    }
+
     /** A chapter that comes as text, read by the reader's voice (BookPages), not a recording. */
     static boolean isText(Chapter c) { return c.json.endsWith(".text.json"); }
 
     private static final Pattern TITLE = Pattern.compile("\"title\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
     private static final Pattern SECONDS = Pattern.compile("\"seconds\"\\s*:\\s*([0-9.]+)");
+    private static final Pattern RECORDING = Pattern.compile("\"recording\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
+    private static final Pattern SID = Pattern.compile("\"sid\"\\s*:\\s*(-?\\d+)");
 
     /** A book's chapters in order (the file names start with the chapter's number). */
     static List<Chapter> chapters(Context ctx, String book) {
@@ -74,7 +91,10 @@ final class Books {
             String title = t.find() ? PcLink.unescape(t.group(1)) : n.replaceFirst("^\\d+ - ", "").replaceFirst("\\.json$", "");
             double sec = 0;
             try { if (s.find()) sec = Double.parseDouble(s.group(1)); } catch (NumberFormatException ignored) { }
-            out.add(new Chapter(n, title, sec));
+            Chapter c = new Chapter(n, title, sec);
+            Matcher r = RECORDING.matcher(head);
+            if (r.find()) c.recording = PcLink.unescape(r.group(1));
+            out.add(c);
         }
         return out;
     }
@@ -193,14 +213,42 @@ final class Books {
      *  reader's voice (a book from the PC's text, see BookPages). */
     static String listJson(Context ctx, SharedPreferences prefs) {
         org.json.JSONArray a = new org.json.JSONArray();
+        java.util.Map<String, java.util.Set<String>> recHere = new java.util.HashMap<>();   // (recordings on the phone, by book)
         try {
             for (String b : list(ctx)) {
                 List<Chapter> cs = chapters(ctx, b);
                 boolean text = !cs.isEmpty() && isText(cs.get(0));
                 java.util.Set<String> here = text ? new java.util.HashSet<>() : audioHere(ctx, b);
                 org.json.JSONArray chs = new org.json.JSONArray();
-                for (Chapter c : cs)
-                    chs.put(new org.json.JSONObject().put("file", c.json).put("title", c.title).put("seconds", c.seconds).put("audio", here.contains(c.mp3)).put("text", isText(c)));
+                for (Chapter c : cs) {
+                    org.json.JSONObject o = new org.json.JSONObject().put("file", c.json).put("title", c.title).put("seconds", c.seconds)
+                        .put("audio", here.contains(c.mp3)).put("text", isText(c));
+                    // (a text chapter: what it plays with. "pc": the PC's recording is on the phone; "phone": made ahead
+                    //  here (AheadMaker) with that voice; neither: the reader's voice reads it as it goes)
+                    if (isText(c)) {
+                        String rec = "";
+                        int slash = c.recording.indexOf('/');
+                        if (slash > 0) {
+                            String rb = c.recording.substring(0, slash), stem = c.recording.substring(slash + 1);
+                            if (safe(rb) && safe(stem) && new File(new File(root(ctx), rb), stem + ".json").isFile()) {
+                                java.util.Set<String> h = recHere.get(rb);
+                                if (h == null) { h = audioHere(ctx, rb); recHere.put(rb, h); }
+                                if (h.contains(stem + ".mp3")) rec = "pc";
+                            }
+                        }
+                        if (rec.isEmpty()) {
+                            String url = BookPages.url(b, c.json);
+                            File info = AheadMaker.infoFile(ctx, url);
+                            if (info.isFile() && AheadMaker.audioFile(ctx, url).isFile()) {
+                                rec = "phone";
+                                Matcher m = SID.matcher(head(info));
+                                if (m.find()) o.put("voice", Voice.name(Integer.parseInt(m.group(1))));
+                            }
+                        }
+                        o.put("rec", rec);
+                    }
+                    chs.put(o);
+                }
                 org.json.JSONObject o = new org.json.JSONObject().put("name", b).put("chapters", chs).put("text", text);
                 Spot s = spot(prefs, b);
                 if (s != null) o.put("at", new org.json.JSONObject().put("file", s.file).put("sec", s.sec));

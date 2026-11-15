@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Loudbook audiobook studio</title>
+<style>
+  :root{--bg:#14120f;--panel:#1e1b17;--line:#2e2a24;--ink:#ede6da;--dim:#a79e90;--amber:#e8aa46;--green:#7fbf7a;--red:#e07a6a}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
+  header{display:flex;align-items:baseline;gap:16px;padding:14px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:2}
+  header h1{font:600 20px/1.2 Georgia,serif;margin:0}
+  #status{color:var(--dim);font-size:13px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  main{display:grid;grid-template-columns:300px 1fr;min-height:calc(100vh - 54px)}
+  nav{border-right:1px solid var(--line);padding:12px;overflow-y:auto;max-height:calc(100vh - 54px);position:sticky;top:54px}
+  nav h2,section h2{font:600 12px/1.2 system-ui;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:14px 4px 8px}
+  .book{display:block;width:100%;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 6px;color:var(--ink);cursor:pointer;font:inherit}
+  .book.on{border-color:var(--amber)}
+  .book b{display:block;font:600 14px/1.3 Georgia,serif}
+  .book span{display:block;color:var(--dim);font-size:12px}
+  .bar{height:3px;background:var(--line);border-radius:2px;margin-top:6px}.bar i{display:block;height:3px;background:var(--amber);border-radius:2px}
+  section{padding:16px 24px 60px;max-width:980px}
+  h3{font:600 22px/1.3 Georgia,serif;margin:4px 0 10px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 16px}
+  .row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+  select,textarea{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px 9px;font:inherit}
+  textarea{width:100%;min-height:60px}
+  button.b{background:var(--line);color:var(--ink);border:0;border-radius:16px;padding:6px 14px;cursor:pointer;font:inherit;font-size:13px}
+  button.b:hover{background:#3a352d}
+  button.go{background:var(--amber);color:#1b1712;font-weight:600}
+  .dim{color:var(--dim);font-size:13px}
+  .chip{display:inline-block;font-size:11px;border-radius:10px;padding:1px 8px;border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+  .chip.ok{color:var(--green);border-color:#3c5a39}.chip.now{color:var(--amber);border-color:#6b5228}.chip.bad{color:var(--red);border-color:#6b3a33}
+  table{width:100%;border-collapse:collapse}
+  td{padding:6px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr.ch{cursor:pointer}tr.ch:hover td{background:#1a1814}
+  .sent{display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-items:start;padding:7px 4px;border-bottom:1px solid var(--line)}
+  .sent.play{background:#2a2419}
+  .sent .t{white-space:pre-wrap}
+  .sent .tools{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+  .pb{width:30px;height:30px;border-radius:15px;border:1px solid var(--line);background:none;color:var(--amber);cursor:pointer;font-size:13px}
+  .samples{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px}
+  .sample{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  .sample div{flex:1;min-width:0}.sample b{display:block;font-size:13px}.sample span{display:block;color:var(--dim);font-size:11px}
+  #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--amber);border-radius:12px;padding:10px 16px;display:none;z-index:5}
+  audio{width:100%}
+  @media (max-width:760px){main{grid-template-columns:1fr}nav{position:static;max-height:none;border-right:0;border-bottom:1px solid var(--line)}}
+</style></head><body>
+<header><h1>Audiobook studio</h1><div id="status"></div></header>
+<main>
+  <nav><h2>Books</h2><div id="books"></div></nav>
+  <section id="view"><p class="dim">Pick a book on the left: what's recorded, what's still to record, its voice, and any sentence recorded again.</p></section>
+</main>
+<div id="toast"></div>
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const fmt = (s) => { if (s == null) return ''; s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); };
+async function get(u) { const r = await fetch(u); const d = await r.json(); if (!r.ok) throw new Error(d.error || r.status); return d; }
+async function post(u, body) {
+  const r = await fetch(u, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Loudbook': 'studio'}, body: JSON.stringify(body)});
+  const d = await r.json(); if (!r.ok) throw new Error(d.error || r.status); return d;
+}
+function toast(t) { const e = $('#toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = 'none', 4000); }
+
+let lib = null, cur = {job: null, k: null}, sampleAudio = new Audio();
+
+async function loadBooks() {
+  lib = await get('/api/books');
+  $('#status').textContent = lib.status || '';
+  const box = $('#books'); box.innerHTML = '';
+  for (const b of lib.books.filter(b => !b.sample)) {
+    const el = document.createElement('button'); el.className = 'book' + (b.job === cur.job ? ' on' : '');
+    el.innerHTML = `<b>${esc(b.title)}</b><span>${b.done} of ${b.total} chapters recorded · ${esc(b.voiceName)}${b.engine === 'kokoro' ? ' · Kokoro' : ''}</span><div class="bar"><i style="width:${b.total ? 100 * b.done / b.total : 0}%"></i></div>`;
+    el.onclick = () => { cur = {job: b.job, k: null}; render(); };
+    box.appendChild(el);
+  }
+  const s = lib.books.filter(b => b.sample).length;
+  if (s) { const h = document.createElement('p'); h.className = 'dim'; h.style.margin = '12px 4px'; h.textContent = s + (s === 1 ? ' voice sample' : ' voice samples') + ': open a book to hear and compare them.'; box.appendChild(h); }
+}
+
+function voiceOptions(sel) {
+  const o = (v, n) => `<option value="${esc(v)}"${String(v) === String(sel) ? ' selected' : ''}>${esc(n)}</option>`;
+  let h = o('phone', "The phone's voice (whatever it reads with)") + o('builtin', "Chatterbox's own voice");
+  h += '<optgroup label="Copies of the phone voices">' + lib.kokoro.map(v => o(v.id, v.name)).join('') + '</optgroup>';
+  if (lib.recorded.length) h += '<optgroup label="Recorded voices">' + lib.recorded.map(v => o(v.id, v.name)).join('') + '</optgroup>';
+  const known = new Set(['phone', 'builtin', ...lib.kokoro.map(v => String(v.id)), ...lib.recorded.map(v => v.id)]);
+  const extra = lib.samples.filter(x => x.voice != null && !known.has(String(x.voice)));
+  if (extra.length) h += '<optgroup label="From the voice samples">' + extra.map(x => o(x.voice, x.name.replace(/^\d+ - /, ''))).join('') + '</optgroup>';
+  if (!known.has(String(sel)) && !extra.some(x => String(x.voice) === String(sel))) h += o(sel, String(sel));
+  return h;
+}
+
+async function render() {
+  await loadBooks();
+  if (cur.k != null) return renderChapter();
+  const v = $('#view');
+  const c = await get('/api/chapters?job=' + encodeURIComponent(cur.job));
+  const book = lib.books.find(b => b.job === cur.job) || {};
+  v.innerHTML = `<h3>${esc(c.title)}</h3>
+    <div class="panel"><h2 style="margin-top:0">Voice</h2>
+      <div class="row"><select id="voice">${voiceOptions(c.voice)}</select><button class="b go" id="setVoice">Use for this book</button>
+      <span class="dim">Chapters not recorded yet use it. To change a recorded one, record it again below.</span></div>
+      ${lib.samples.length ? `<h2>Compare the voice samples</h2><div class="samples">${lib.samples.map((s, i) => `
+        <div class="sample"><button class="pb" data-s="${i}" ${s.recorded ? '' : 'disabled'}>▶</button><div><b>${esc(s.name.replace(/^\d+ - /, ''))}</b><span>${s.recorded ? esc(s.voiceName) : 'not recorded yet'}</span></div>
+        <button class="b" data-use="${i}">Use</button></div>`).join('')}</div>` : ''}
+    </div>
+    <div class="panel"><h2 style="margin-top:0">Chapters · ${book.done} of ${book.total} recorded</h2>
+      <table>${c.chapters.map(ch => `<tr class="ch" data-k="${ch.k}"><td class="dim">${ch.k + 1}</td><td>${esc(ch.name)}</td>
+        <td style="text-align:right">${ch.recorded ? `<span class="chip ok">recorded · ${fmt(ch.seconds)}</span>` : ch.making ? '<span class="chip now">recording next</span>' : '<span class="chip">not yet</span>'}</td></tr>`).join('')}</table>
+    </div>`;
+  $('#setVoice').onclick = async () => { try { await post('/api/voice', {job: cur.job, voice: $('#voice').value}); toast('Voice set for ' + c.title); render(); } catch (e) { toast(e.message); } };
+  v.querySelectorAll('[data-s]').forEach(b => b.onclick = () => {
+    const s = lib.samples[+b.dataset.s];
+    if (b.textContent === '■') { sampleAudio.pause(); b.textContent = '▶'; return; }
+    v.querySelectorAll('[data-s]').forEach(x => x.textContent = '▶');
+    sampleAudio.src = '/audio?job=' + encodeURIComponent(s.job) + '&k=0'; sampleAudio.play(); b.textContent = '■';
+    sampleAudio.onended = () => b.textContent = '▶';
+  });
+  v.querySelectorAll('[data-use]').forEach(b => b.onclick = () => {
+    const s = lib.samples[+b.dataset.use]; const sel = $('#voice');
+    sel.value = String(s.voice); if (sel.value !== String(s.voice)) sel.innerHTML = voiceOptions(s.voice);
+    toast('Picked ' + s.name.replace(/^\d+ - /, '') + ': press "Use for this book" to keep it.');
+  });
+  v.querySelectorAll('tr.ch').forEach(tr => tr.onclick = () => { cur.k = +tr.dataset.k; render(); });
+}
+
+let audio = null, stopAt = null, playing = -1;
+async function renderChapter() {
+  const v = $('#view');
+  const c = await get('/api/chapter?job=' + encodeURIComponent(cur.job) + '&k=' + cur.k);
+  const t = audio ? audio.currentTime : 0;
+  v.innerHTML = `<p><button class="b" id="back">← All chapters</button></p><h3>${esc(c.name)}</h3>
+    ${c.recorded ? `<div class="panel"><audio id="au" controls preload="metadata" src="/audio?job=${encodeURIComponent(cur.job)}&k=${cur.k}&v=${Date.now()}"></audio>
+      <div class="row" style="margin-top:8px"><span class="dim">${c.sentences.length} sentences · ${fmt(c.seconds)}. ▶ plays one sentence; “Again” records it again (a new take); “Edit” lets you change the words first (spell a name the way it should sound).</span>
+      <span style="flex:1"></span><button class="b" id="redoAll">${c.chapterBusy ? 'Chapter waiting…' : 'Record the whole chapter again'}</button></div></div>
+      <div id="sents">${c.sentences.map(s => `<div class="sent" data-i="${s.i}"><button class="pb" data-p="${s.i}">▶</button>
+        <div><div class="t">${esc(s.text)}</div><span class="dim">${fmt(s.start)} · ${esc(s.voice)}</span></div>
+        <div class="tools">${s.busy ? `<span class="chip now">${s.busy === 'making' ? 'recording…' : 'waiting…'}</span>` : s.redone ? '<span class="chip ok">recorded again</span>' : ''}
+          <button class="b" data-a="${s.i}">Again</button><button class="b" data-e="${s.i}">Edit</button></div></div>`).join('')}</div>`
+    : '<div class="panel">Not recorded yet. It\'s recorded in order, whenever the graphics card is free (status at the top).</div>'}`;
+  $('#back').onclick = () => { cur.k = null; if (audio) audio.pause(); audio = null; render(); };
+  if (!c.recorded) return;
+  audio = $('#au'); if (t) audio.currentTime = t;
+  const rows = [...v.querySelectorAll('.sent')];
+  audio.ontimeupdate = () => {
+    const now = audio.currentTime;
+    if (stopAt != null && now >= stopAt) { audio.pause(); stopAt = null; }
+    const i = c.sentences.findIndex(s => now >= s.start && now < s.end + 0.3);
+    if (i !== playing) { rows.forEach(r => r.classList.remove('play')); if (i >= 0) rows[i].classList.add('play'); playing = i; }
+  };
+  v.querySelectorAll('[data-p]').forEach(b => b.onclick = () => { const s = c.sentences[+b.dataset.p]; audio.currentTime = s.start; stopAt = s.end; audio.play(); });
+  const redo = async (i, text) => {
+    try { await post('/api/redo', {job: cur.job, k: cur.k, i, text}); toast('Recording it again…'); watch(); renderChapter(); } catch (e) { toast(e.message); }
+  };
+  v.querySelectorAll('[data-a]').forEach(b => b.onclick = () => redo(+b.dataset.a));
+  v.querySelectorAll('[data-e]').forEach(b => b.onclick = () => {
+    const s = c.sentences[+b.dataset.e]; const row = rows[s.i]; const td = $('.t', row);
+    td.innerHTML = `<textarea>${esc(s.text)}</textarea><div class="row" style="margin-top:6px"><button class="b go">Record with these words</button><button class="b">Cancel</button></div>`;
+    const [ok, cancel] = td.querySelectorAll('button');
+    ok.onclick = () => redo(s.i, $('textarea', td).value);
+    cancel.onclick = () => renderChapter();
+  });
+  $('#redoAll').onclick = async () => {
+    if (!confirm('Record the whole chapter again with the book\'s voice now? The old recording is kept in the "_replaced" folder.')) return;
+    try { await post('/api/redo-chapter', {job: cur.job, k: cur.k}); toast('The chapter is recorded again next.'); cur.k = null; render(); } catch (e) { toast(e.message); }
+  };
+}
+
+let watching = false;
+async function watch() {
+  if (watching) return; watching = true;
+  let seen = {};
+  try { seen = (await get('/api/tasks')).tasks; } catch (e) { }
+  const tick = async () => {
+    try {
+      const t = (await get('/api/tasks')).tasks;
+      let busy = false, changed = false;
+      for (const [id, x] of Object.entries(t)) {
+        if (x.state === 'waiting' || x.state === 'making') busy = true;
+        if (!seen[id] || seen[id].state !== x.state) {
+          changed = true;
+          if (x.state === 'done') toast('Done: ' + x.msg); else if (x.state === 'failed') toast('Couldn\'t: ' + x.msg);
+        }
+      }
+      seen = t;
+      if (changed && cur.k != null) await renderChapter();
+      if (!busy) { watching = false; return; }
+    } catch (e) { }
+    setTimeout(tick, 2000);
+  };
+  setTimeout(tick, 1500);
+}
+
+loadBooks().then(() => { const first = lib.books.find(b => !b.sample); if (first) { cur.job = first.job; render(); } }).catch(e => toast(e.message));
+setInterval(() => get('/api/books').then(d => { $('#status').textContent = d.status || ''; }).catch(() => {}), 15000);
+</script>
+</body></html>

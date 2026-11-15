@@ -24,6 +24,7 @@
   .ch{display:flex;gap:10px;align-items:baseline;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--line);padding:10px 2px}
   .ch span{flex:1;min-width:0}.ch em{font-style:normal;color:var(--dim);font-size:12px;white-space:nowrap}
   .ch.cur span{color:var(--amber)} .ch.noaudio{opacity:.45}
+  .ch em.rec-pc{color:#7fbf7a}.ch em.rec-phone{color:var(--amber)}
   .msg{color:var(--dim);font-size:13px;margin:6px 0}
   /* reader */
   #reader{padding:0 0 170px}
@@ -119,7 +120,7 @@
       const info = document.createElement('div'); info.className = 'dim small';
       const total = b.chapters.reduce((t, c) => t + (c.seconds || 0), 0);
       info.textContent = b.text
-        ? b.chapters.length + ' chapters · about ' + LBBook.clock(total) + ' · read by the phone\'s voice'
+        ? b.chapters.length + ' chapters · about ' + LBBook.clock(total) + ' · ' + LBBook.recSummary(b.chapters)
         : b.chapters.length + ' chapters · ' + LBBook.clock(total) + (withAudio < b.chapters.length ? ' · ' + (b.chapters.length - withAudio) + ' without their recording' : '');
       const bar = document.createElement('div'); bar.className = 'bar';
       const fill = document.createElement('i'); fill.style.width = Math.max(1, Math.round(LBBook.progress(b) * 100)) + '%'; bar.appendChild(fill);
@@ -141,7 +142,8 @@
         const r = document.createElement('button');
         r.className = 'ch' + (i === atIdx ? ' cur' : '') + (c.audio || c.text ? '' : ' noaudio');
         const t = document.createElement('span'); t.textContent = c.title;
-        const d = document.createElement('em'); d.textContent = c.text ? '~' + LBBook.clock(c.seconds) : c.audio ? LBBook.clock(c.seconds) : 'not copied';
+        const d = document.createElement('em'); d.textContent = c.text ? LBBook.recLabel(c) : c.audio ? LBBook.clock(c.seconds) : 'not copied';
+        if (c.rec) d.className = 'rec-' + c.rec;
         r.append(t, d);
         r.onclick = () => { if (c.text) call('bookRead', b.name, c.file); else openChapter(b.name, c.file, i === atIdx); };
         list.appendChild(r);

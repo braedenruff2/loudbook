@@ -107,6 +107,8 @@ final class BookAudio {
             JSONArray ss = new JSONObject(json).optJSONArray("sentences");
             if (ss == null || ss.length() == 0) return null;
             Rec r = new Rec(rp, mp3);
+            // (recorded again on the PC (its studio) and copied again: decoded afresh, not the old take from the cache)
+            r.stamp = json.length() + "-" + json.hashCode();
             for (int i = 0; i < ss.length(); i++) {
                 JSONObject s = ss.getJSONObject(i);
                 r.words.add(words(s.optString("text", "")));
@@ -174,6 +176,10 @@ final class BookAudio {
 
     /** This chapter was made again (AheadMaker): looked up afresh next time. */
     static synchronized void forget(String url) { recs.remove(url); none.remove(url); }
+
+    /** New files came from the PC (BookCopy): every chapter is looked up afresh (a recording copied again has new
+     *  timings and a new place on the phone; the old one was kept until Loudbook restarted). */
+    static synchronized void forgetAll() { recs.clear(); none.clear(); }
 
     /** A book was deleted: nothing remembered or decoded from before is used again. */
     static synchronized void forget(Context ctx) {

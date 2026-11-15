@@ -22,6 +22,9 @@ you pair can use it:
   needs the graphics card, one MP3 per chapter (plus each sentence's place in it, <chapter>.json), and writes how far it
   is to status.txt there. Stopping is safe: it carries on from the chapter it was on.
 
+  Audiobook studio ("Open audiobook studio.bat", http://127.0.0.1:8772/ on this PC only): each book's chapters, recorded or
+  not, its voice (and the voice samples to compare), and any sentence (with new words if you like) or chapter recorded again.
+
   python loudbook_server.py serve      run the server (the setup script starts it at log-on)
   python loudbook_server.py pair       show a pairing code and wait for the phone
   python loudbook_server.py forget     unpair every phone
@@ -893,7 +896,7 @@ class Books:
                 else: text = str(item)
                 text = text.strip()
                 if not text: continue
-                if Ahead.queue or Ahead.live: return False          # (the phone's own reading comes first)
+                if Ahead.queue or Ahead.live or Studio.queue: return False   # (the phone's reading, and the studio, come first)
                 if done % 5 == 0 and cls.earlier(n): return False     # (a job named before this one, like voice samples, goes next)
                 key = ahead_key(text, ("kokoro:" + str(who_i)) if isinstance(b, KokoroBook) else who_i)
                 got = Ahead.get(key)
@@ -905,11 +908,7 @@ class Books:
                     cls.secs_work += time.time() - t0
                     cls.secs_made += len(pcm) / 2 / r
                 pcm, r = got
-                x = np.frombuffer(pcm, dtype="<i2")
-                if r != rate: x = np.interp(np.arange(0, len(x), r / rate), np.arange(len(x)), x).astype("<i2")
-                # (the take's own silence at the ends cut down; a breath between sentences, longer between paragraphs)
-                loud = np.nonzero(np.abs(x) > 300)[0]
-                if len(loud): x = x[max(0, loud[0] - int(0.05 * rate)): loud[-1] + int(0.1 * rate)]
+                x = take_samples(pcm, r, rate)
                 marks.append({"p": pi, "s": si, "voice": who_i, "start": round(at / rate, 3), "end": round((at + len(x)) / rate, 3), "text": text})
                 parts.append(x); at += len(x)
                 gap = int((0.75 if si == len(para) - 1 else 0.3) * rate)
@@ -975,8 +974,381 @@ class KokoroBook:
         return pcm, r, "ok"
 
 
+def take_samples(pcm, r, rate):
+    """A take as samples at the book's rate, the take's own silence at the ends cut down (a breath is added between
+    sentences, longer between paragraphs)."""
+    import numpy as np
+    x = np.frombuffer(pcm, dtype="<i2")
+    if r != rate: x = np.interp(np.arange(0, len(x), r / rate), np.arange(len(x)), x).astype("<i2")
+    loud = np.nonzero(np.abs(x) > 300)[0]
+    if len(loud): x = x[max(0, loud[0] - int(0.05 * rate)): loud[-1] + int(0.1 * rate)]
+    return x
+
+
+# ------------------------------------------------------------------ the audiobook studio (a page on this PC only)
+STUDIO_PORT = int(os.environ.get("LOUDBOOK_STUDIO_PORT", str(PORT + 2)))
+
+
+class Studio:
+    """"Open audiobook studio.bat": every book the PC records, what's recorded and what's still to make, its voice (with
+    the voice samples to compare), and a sentence or a chapter recorded again. Only this PC can open it (127.0.0.1)."""
+    cond = threading.Condition()
+    queue = collections.deque()           # (id, kind, job file, chapter, sentence, text)
+    tasks = {}                            # id -> {"state": waiting|making|done|failed, "msg", "job", "k", "i"}
+    n = 0
+
+    @staticmethod
+    def job(name):
+        """(file, job) for a job file name in BOOKS, or (None, None)."""
+        if not isinstance(name, str) or "/" in name or "\\" in name or not name.endswith(".job.json"): return None, None
+        for n, j in Books.jobs():
+            if n == name: return n, j
+        return None, None
+
+    @staticmethod
+    def voice_name(v):
+        if v in (None, "phone"): return "the phone's voice"
+        if v == "builtin": return "Chatterbox's own voice"
+        st = style_of(v) if isinstance(v, str) else None
+        base = st[0] if st else v
+        if isinstance(base, str) and base.isdigit(): base = int(base)
+        name = KOKORO_NAMES.get(base) if isinstance(base, int) else None
+        if name is None and isinstance(base, str):
+            name = next((str(x.get("name", "")) for x in voices() if x.get("id") == base), None)
+            if base == "builtin": name = "Chatterbox's own voice"
+        name = name or str(base)
+        return name + (" (" + str(v).split("/", 1)[1].replace("/", ", ") + ")" if isinstance(v, str) and "/" in v else "")
+
+    @classmethod
+    def books(cls):
+        out = []
+        for n, j in Books.jobs():
+            chs = j["chapters"]
+            done = sum(1 for k in range(len(chs)) if os.path.exists(Books.chapter_path(j, k) + ".mp3"))
+            out.append({"job": n, "title": j.get("title", n), "out": j.get("out", ""), "voice": j.get("voice", "phone"),
+                        "voiceName": cls.voice_name(j.get("voice", "phone")), "engine": j.get("engine", "best"),
+                        "done": done, "total": len(chs), "sample": j.get("out") == "Voice samples"})
+        return out
+
+    @classmethod
+    def chapters(cls, name):
+        n, j = cls.job(name)
+        if not j: return None
+        nxt = Books.next_chapter()
+        out = []
+        for k, ch in enumerate(j["chapters"]):
+            dest = Books.chapter_path(j, k)
+            secs = None
+            if os.path.exists(dest + ".mp3"):
+                try:
+                    with open(dest + ".json", encoding="utf-8") as h: secs = json.load(h).get("seconds")
+                except Exception: pass
+            out.append({"k": k, "name": ch.get("name", ""), "recorded": os.path.exists(dest + ".mp3"), "seconds": secs,
+                        "making": bool(nxt and nxt[0] == n and nxt[2] == k)})
+        return {"job": n, "title": j.get("title", n), "voice": j.get("voice", "phone"), "voiceName": cls.voice_name(j.get("voice", "phone")),
+                "chapters": out}
+
+    @classmethod
+    def chapter(cls, name, k):
+        n, j = cls.job(name)
+        if not j or not (0 <= k < len(j["chapters"])): return None
+        dest = Books.chapter_path(j, k)
+        try:
+            with open(dest + ".json", encoding="utf-8") as h: info = json.load(h)
+        except Exception: info = None
+        busy = {t["i"]: t["state"] for t in cls.tasks.values() if t["job"] == n and t["k"] == k and t["state"] in ("waiting", "making")}
+        sents = []
+        if info:
+            for i, m in enumerate(info.get("sentences", [])):
+                sents.append({"i": i, "p": m.get("p"), "text": m.get("text", ""), "start": m.get("start"), "end": m.get("end"),
+                              "voice": cls.voice_name(m.get("voice")), "redone": m.get("redone", 0), "busy": busy.get(i, "")})
+        return {"job": n, "k": k, "name": j["chapters"][k].get("name", ""), "recorded": info is not None and os.path.exists(dest + ".mp3"),
+                "seconds": (info or {}).get("seconds"), "sentences": sents, "chapterBusy": busy.get(-1, "")}
+
+    @classmethod
+    def samples(cls):
+        """The voice samples (the "Voice samples" jobs): each one's name, voice and recording."""
+        out = []
+        for n, j in Books.jobs():
+            if j.get("out") != "Voice samples" or not j["chapters"]: continue
+            dest = Books.chapter_path(j, 0)
+            out.append({"job": n, "name": j["chapters"][0].get("name", n), "voice": j.get("voice"),
+                        "voiceName": cls.voice_name(j.get("voice")), "recorded": os.path.exists(dest + ".mp3")})
+        out.sort(key=lambda x: [int(t) if t.isdigit() else t for t in x["name"].split(" ")[:1]] + [x["name"]])
+        return out
+
+    @classmethod
+    def set_voice(cls, name, v):
+        """The book's voice from now on (chapters already recorded keep theirs: record them again to change them)."""
+        n, j = cls.job(name)
+        if not j: raise ValueError("no such book")
+        if isinstance(v, str) and v.strip().lstrip("-").isdigit(): v = int(v)
+        if not (v in ("phone", "builtin") or isinstance(v, int) and 0 <= v <= 52 or isinstance(v, str) and (style_of(v) or voice_file(v))):
+            raise ValueError("unknown voice")
+        f = os.path.join(BOOKS, n)
+        with open(f, encoding="utf-8") as h: raw = json.load(h)
+        raw["voice"] = v
+        with open(f + ".part", "w", encoding="utf-8") as h: json.dump(raw, h, ensure_ascii=False, indent=1)
+        os.replace(f + ".part", f)
+        Books.idle_until = 0
+
+    @classmethod
+    def add(cls, kind, name, k, i=-1, text=None):
+        n, j = cls.job(name)
+        if not j or not (0 <= k < len(j["chapters"])): raise ValueError("no such chapter")
+        if not os.path.exists(Books.chapter_path(j, k) + ".mp3"): raise ValueError("that chapter isn't recorded yet")
+        if text is not None and (not isinstance(text, str) or not text.strip() or len(text) > MAX_TEXT): raise ValueError("bad text")
+        with cls.cond:
+            cls.n += 1
+            tid = str(cls.n)
+            cls.tasks[tid] = {"state": "waiting", "msg": "", "job": n, "k": k, "i": i if kind == "sentence" else -1}
+            cls.queue.append((tid, kind, n, k, i, text))
+        with Ahead.cond: Ahead.cond.notify_all()          # (the worker may be waiting for something to do)
+        return tid
+
+    @classmethod
+    def work(cls):
+        """One waiting re-recording, if any. True if it did something."""
+        with cls.cond:
+            if not cls.queue: return False
+            tid, kind, n, k, i, text = cls.queue.popleft()
+        t = cls.tasks[tid]
+        t["state"] = "making"
+        try:
+            if kind == "sentence": t["msg"] = cls.redo_sentence(n, k, i, text)
+            else: t["msg"] = cls.redo_chapter(n, k)
+            t["state"] = "done"
+        except Exception as e:
+            t["state"] = "failed"; t["msg"] = str(e)[:200]
+            print("Loudbook PC voice: studio:", repr(e)[:200], flush=True)
+        return True
+
+    @staticmethod
+    def engine_for(j):
+        if str(j.get("engine", "")).lower() == "kokoro":
+            if Handler.engine is None: raise RuntimeError("the voice isn't loaded")
+            return KokoroBook(Handler.engine)
+        b = best_engine()
+        if b is None: raise RuntimeError("the best-quality voice couldn't be loaded on this PC")
+        return b
+
+    @classmethod
+    def redo_sentence(cls, name, k, i, text=None):
+        """Records sentence i of a chapter again (a new take; with new words if text is given) and puts it in the chapter's
+        MP3 in place of the old one; the sentences after it move to match."""
+        import numpy as np, soundfile as sf
+        n, j = cls.job(name)
+        if not j: raise ValueError("no such book")
+        dest = Books.chapter_path(j, k)
+        with open(dest + ".json", encoding="utf-8") as h: info = json.load(h)
+        marks = info.get("sentences", [])
+        if not (0 <= i < len(marks)): raise ValueError("no such sentence")
+        m = marks[i]
+        who = m.get("voice")
+        old_text = m.get("text", "")
+        text = " ".join((text or old_text).split())
+        b = cls.engine_for(j)
+        while Ahead.live > 0: time.sleep(0.2)          # (a sentence the phone is waiting for comes first)
+        pcm, r, sure = b.best_take(text, who) if sum(c.isalpha() for c in text) >= 4 else (*b.speak(text + ".", who), "ok")
+        Ahead.put(ahead_key(text, ("kokoro:" + str(who)) if isinstance(b, KokoroBook) else who), pcm, r)
+        audio, rate = sf.read(dest + ".mp3", dtype="int16")
+        if audio.ndim > 1: audio = audio[:, 0]
+        x = take_samples(pcm, r, rate)
+        a, e = int(round(m["start"] * rate)), min(len(audio), int(round(m["end"] * rate)))
+        new = np.concatenate([audio[:a], x, audio[e:]]).astype(np.int16)
+        delta = (len(x) - (e - a)) / rate
+        m["end"] = round(m["start"] + len(x) / rate, 3)
+        m["text"] = text
+        m["redone"] = int(time.time())
+        for later in marks[i + 1:]:
+            later["start"] = round(later["start"] + delta, 3); later["end"] = round(later["end"] + delta, 3)
+        info["seconds"] = round(len(new) / rate, 2)
+        with sf.SoundFile(dest + ".part.mp3", "w", rate, 1, format="MP3") as out: out.write(new)
+        with open(dest + ".json.part", "w", encoding="utf-8") as h: json.dump(info, h, ensure_ascii=False)
+        os.replace(dest + ".json.part", dest + ".json")
+        os.replace(dest + ".part.mp3", dest + ".mp3")
+        if text != " ".join(old_text.split()): cls.fix_text(j, k, m, old_text, text)
+        return "recorded again" + ("" if sure == "ok" else " (the take's length looked off: listen to it)")
+
+    @staticmethod
+    def fix_text(j, k, m, old, text):
+        """New words for a sentence go into the chapter's text too, so recording the chapter again keeps them."""
+        ch = j["chapters"][k]
+        f = ch["file"] if os.path.isabs(ch["file"]) else os.path.join(BOOKS, ch["file"])
+        try:
+            with open(f, encoding="utf-8") as h: paras = json.load(h)
+            title = str(ch.get("name") or "").strip()
+            pi = m.get("p", -1) - (1 if title and ch.get("say_title", True) else 0)
+            lines = [p for p in paras if p]
+            if not (0 <= pi < len(lines)): return
+            para = lines[pi]
+            si = m.get("s", -1)
+            if not (0 <= si < len(para)): return
+            item = para[si]
+            if isinstance(item, list) and item and " ".join(str(item[0]).split()) == " ".join(old.split()): item[0] = text
+            elif isinstance(item, str) and " ".join(item.split()) == " ".join(old.split()): para[si] = text
+            else: return
+            with open(f + ".part", "w", encoding="utf-8") as h: json.dump(paras, h, ensure_ascii=False)
+            os.replace(f + ".part", f)
+        except Exception as e:
+            print("Loudbook PC voice: studio: the chapter's text couldn't be changed:", repr(e)[:200], flush=True)
+
+    @classmethod
+    def redo_chapter(cls, name, k):
+        """Records a whole chapter again with the book's voice now: the old recording is kept in "_replaced" beside it,
+        its sentences' takes are forgotten (or they'd be used again), and the chapter is made next."""
+        n, j = cls.job(name)
+        if not j: raise ValueError("no such book")
+        dest = Books.chapter_path(j, k)
+        try:
+            with open(dest + ".json", encoding="utf-8") as h: info = json.load(h)
+            kok = str(j.get("engine", "")).lower() == "kokoro"
+            for m in info.get("sentences", []):
+                who = m.get("voice")
+                f = Ahead.file(ahead_key(m.get("text", ""), ("kokoro:" + str(who)) if kok else who))
+                if os.path.exists(f): os.remove(f)
+        except Exception: pass
+        keep = os.path.join(os.path.dirname(dest), "_replaced", time.strftime("%Y-%m-%d %H%M%S"))
+        os.makedirs(keep, exist_ok=True)
+        for ext in (".mp3", ".json"):
+            if os.path.exists(dest + ext): os.replace(dest + ext, os.path.join(keep, os.path.basename(dest) + ext))
+        Books.idle_until = 0; Books.pending = True
+        return "the old recording is in _replaced; the chapter is recorded again next"
+
+
+KOKORO_NAMES = {}
+def load_kokoro_names():
+    """The phone's voice names (app/src/.../Voice.java), for the studio's voice list."""
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        import re
+        with open(os.path.join(here, "..", "app", "src", "com", "loudbook", "app", "Voice.java"), encoding="utf-8") as h: src = h.read()
+        for sid, name in re.findall(r'\{"(\d+)", "([^"]+)"\}', src): KOKORO_NAMES[int(sid)] = name.split(" \u00b7 ")[0]
+    except Exception: pass
+
+
+class StudioHandler(http.server.BaseHTTPRequestHandler):
+    server_version = "Loudbook"
+    sys_version = ""
+    protocol_version = "HTTP/1.1"
+    timeout = 30
+
+    def log_message(self, fmt, *args): pass
+
+    def reply(self, code, body=b"", ctype="application/json"):
+        if isinstance(body, (dict, list)): body = json.dumps(body).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Frame-Options", "DENY")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def ok_host(self):
+        # (only this PC, and only by its own name: another website can't reach it through a name pointing at 127.0.0.1)
+        h = self.headers.get("Host", "")
+        if self.client_address[0] not in ("127.0.0.1", "::1") or h not in (f"127.0.0.1:{STUDIO_PORT}", f"localhost:{STUDIO_PORT}"):
+            self.reply(403, {"error": "this page only opens on this PC"}); return False
+        return True
+
+    def do_GET(self):
+        if not self.ok_host(): return
+        from urllib.parse import urlparse, parse_qs
+        u = urlparse(self.path); q = {a: b[0] for a, b in parse_qs(u.query).items()}
+        try:
+            if u.path in ("/", "/index.html"):
+                with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "studio.html"), "rb") as h:
+                    return self.reply(200, h.read(), "text/html; charset=utf-8")
+            if u.path == "/api/books":
+                status = ""
+                try:
+                    with open(os.path.join(BOOKS, "status.txt"), encoding="utf-8") as h: status = h.read().strip()
+                except OSError: pass
+                vs = [{"id": sid, "name": nm} for sid, nm in sorted(KOKORO_NAMES.items(), key=lambda x: x[1])]
+                rec = [{"id": v["id"], "name": str(v.get("name", ""))} for v in voices()]
+                return self.reply(200, {"books": Studio.books(), "status": status, "kokoro": vs, "recorded": rec,
+                                        "samples": Studio.samples(), "folder": BOOKS})
+            if u.path == "/api/chapters":
+                c = Studio.chapters(q.get("job", ""))
+                return self.reply(200, c) if c else self.reply(404, {"error": "no such book"})
+            if u.path == "/api/chapter":
+                c = Studio.chapter(q.get("job", ""), int(q.get("k", "-1")))
+                return self.reply(200, c) if c else self.reply(404, {"error": "no such chapter"})
+            if u.path == "/api/tasks":
+                return self.reply(200, {"tasks": Studio.tasks})
+            if u.path == "/audio":
+                n, j = Studio.job(q.get("job", ""))
+                k = int(q.get("k", "-1"))
+                if not j or not (0 <= k < len(j["chapters"])): return self.reply(404, {"error": "no such chapter"})
+                return self.file(Books.chapter_path(j, k) + ".mp3")
+        except (ValueError, KeyError) as e:
+            return self.reply(400, {"error": str(e)[:200]})
+        self.reply(404, {"error": "no such thing"})
+
+    def file(self, f):
+        try: size = os.path.getsize(f)
+        except OSError: return self.reply(404, {"error": "not recorded"})
+        a, e = 0, size - 1
+        rng = self.headers.get("Range", "")
+        if rng.startswith("bytes="):
+            x, _, y = rng[6:].split(",")[0].partition("-")
+            try:
+                if x: a = int(x); e = int(y) if y else size - 1
+                elif y: a = max(0, size - int(y))
+            except ValueError: pass
+            e = min(e, size - 1)
+            if a > e: self.send_response(416); self.send_header("Content-Range", f"bytes */{size}"); self.send_header("Content-Length", "0"); self.end_headers(); return
+            self.send_response(206); self.send_header("Content-Range", f"bytes {a}-{e}/{size}")
+        else: self.send_response(200)
+        self.send_header("Content-Type", "audio/mpeg")
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(e - a + 1))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        with open(f, "rb") as h:
+            h.seek(a); left = e - a + 1
+            while left > 0:
+                b = h.read(min(left, 256 * 1024))
+                if not b: break
+                self.wfile.write(b); left -= len(b)
+
+    def do_POST(self):
+        if not self.ok_host(): return
+        # (a page on another site can't send this header without asking first, and nothing here says yes)
+        if self.headers.get("X-Loudbook") != "studio" or not self.headers.get("Content-Type", "").startswith("application/json"):
+            return self.reply(403, {"error": "not from the studio page"})
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            if n < 0 or n > MAX_BODY: raise ValueError("too big")
+            d = json.loads(self.rfile.read(n) or b"{}")
+            if self.path == "/api/voice":
+                Studio.set_voice(d.get("job"), d.get("voice")); return self.reply(200, {"ok": True})
+            if self.path == "/api/redo":
+                t = d.get("text")
+                tid = Studio.add("sentence", d.get("job"), int(d.get("k", -1)), int(d.get("i", -1)), t if t else None)
+                return self.reply(200, {"task": tid})
+            if self.path == "/api/redo-chapter":
+                return self.reply(200, {"task": Studio.add("chapter", d.get("job"), int(d.get("k", -1)))})
+        except (ValueError, TypeError, KeyError) as e:
+            return self.reply(400, {"error": str(e)[:200]})
+        self.reply(404, {"error": "no such thing"})
+
+
+def studio_serve():
+    load_kokoro_names()
+    try:
+        httpd = http.server.ThreadingHTTPServer(("127.0.0.1", STUDIO_PORT), StudioHandler)
+        httpd.daemon_threads = True
+    except OSError as e:
+        print(f"Loudbook PC voice: the audiobook studio couldn't start on port {STUDIO_PORT}: {e!r}"[:200], flush=True); return
+    print(f"Loudbook PC voice: audiobook studio on http://127.0.0.1:{STUDIO_PORT}/", flush=True)
+    httpd.serve_forever()
+
+
 def ahead_worker():
     while True:
+        if Studio.work(): continue                  # (he's waiting at the studio page)
         it = Ahead.next()
         if it is None and Books.work(): continue
         if it is None:
@@ -1353,6 +1725,7 @@ def serve(fake=False):
     if not fake: Handler.natural = load_natural(Handler.engine)
     elif os.environ.get("LOUDBOOK_FAKE_BEST"): Handler.fake_best = True; Handler.best = FakeBest()
     threading.Thread(target=ahead_worker, daemon=True, name="ahead").start()
+    threading.Thread(target=studio_serve, daemon=True, name="studio").start()
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.minimum_version = ssl.TLSVersion.TLSv1_2
     ctx.load_cert_chain(cert, key)

@@ -67,6 +67,7 @@ final class BookCopy {
             copied++;
             books.add(book);
         }
+        if (copied > 0) BookAudio.forgetAll();
         String where = Build.VERSION.SDK_INT >= 29 ? "the phone's Audiobooks folder" : "Loudbook's files";
         return "Copied " + copied + " file" + (copied == 1 ? "" : "s") + " (" + String.join(", ", books) + ") to " + where
             + ". Play them in any audiobook app or in the car, with no connection.";

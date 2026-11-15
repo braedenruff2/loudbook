@@ -50,6 +50,24 @@
       if (!book.at || !seen) done = 0;
       return total > 0 ? done / total : 0;
     },
+    /** A text chapter's line in the list: what it plays with ("PC voice", "made on this phone · Heart", or read live). */
+    recLabel(c) {
+      const t = '~' + LBBook.clock(c.seconds);
+      if (c.rec === 'pc') return 'PC recording \u00b7 ' + t;
+      if (c.rec === 'phone') return 'made on phone' + (c.voice ? ' \u00b7 ' + c.voice : '') + ' \u00b7 ' + t;
+      return t + ' \u00b7 read live';
+    },
+    /** A text book's line: how many chapters have the PC's recording, how many were made on the phone. */
+    recSummary(chapters) {
+      const pc = chapters.filter(c => c.rec === 'pc').length, ph = chapters.filter(c => c.rec === 'phone').length;
+      if (!pc && !ph) return 'read live by the phone\'s voice';
+      const parts = [];
+      if (pc) parts.push(pc === chapters.length ? 'all recorded by your PC' : pc + ' recorded by your PC');
+      if (ph) parts.push(ph + ' made on this phone');
+      const rest = chapters.length - pc - ph;
+      if (rest) parts.push(rest + ' read live');
+      return parts.join(', ');
+    },
   };
   if (typeof module !== 'undefined') module.exports = LBBook;
   root.LBBook = LBBook;

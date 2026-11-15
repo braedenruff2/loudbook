@@ -88,6 +88,13 @@ Tailscale's addresses only. On the phone, install Tailscale, sign in with the sa
 voice once at home so the phone learns the PC's Tailscale address; after that, when the home Wi-Fi isn't there, it
 reaches the PC through Tailscale by itself (about 170 MB of mobile data an hour). The PC has to be on and awake.
 
+**Audiobook studio:** double-click **Open audiobook studio.bat** (the PC voice has to be running). It opens a page in
+your browser, on this PC only: every book the PC records, which chapters are recorded and which are still to come, the
+book's voice (play the voice samples side by side and pick one), and each chapter's sentences: play one, record it again
+(a new take), or change its words first (spell a name the way it should sound) and record it. A whole chapter can be
+recorded again too; the old recording is kept in a `_replaced` folder beside it. The phone picks up the changes the next
+time you tap "Get chapters from my PC".
+
 How it stays private:
 
 - **Encrypted:** everything between the phone and the PC goes over HTTPS. The phone remembers the

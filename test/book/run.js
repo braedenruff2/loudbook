@@ -49,6 +49,14 @@ check('progress', () => {
   assert.strictEqual(B.progress({ chapters: book.chapters, at: { file: 'gone', sec: 5 } }), 0);
   assert.strictEqual(B.progress({ chapters: [] }), 0);
 });
+check('what each text chapter plays with', () => {
+  assert.strictEqual(B.recLabel({ seconds: 600, rec: 'pc' }), 'PC recording \u00b7 ~10:00');
+  assert.strictEqual(B.recLabel({ seconds: 600, rec: 'phone', voice: 'Heart' }), 'made on phone \u00b7 Heart \u00b7 ~10:00');
+  assert.strictEqual(B.recLabel({ seconds: 600, rec: '' }), '~10:00 \u00b7 read live');
+  assert.strictEqual(B.recSummary([{ rec: 'pc' }, { rec: 'pc' }]), 'all recorded by your PC');
+  assert.strictEqual(B.recSummary([{ rec: 'pc' }, { rec: 'phone' }, { rec: '' }]), '1 recorded by your PC, 1 made on this phone, 1 read live');
+  assert.strictEqual(B.recSummary([{ rec: '' }]), "read live by the phone's voice");
+});
 
 // ---------------------------------------------------------------- the page
 let JSDOM;

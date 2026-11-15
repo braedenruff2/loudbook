@@ -1281,6 +1281,26 @@ public class MainActivity extends Activity implements ReaderService.Listener {
 
     // ---------------------------------------------------------------- settings
     private Runnable settingsSave;
+    /** The voices in a list: a tap chooses one and says a line in it; chapters made ahead with each are counted (they
+     *  play straight away only in that voice). */
+    private void pickVoice(Spinner voices) {
+        java.util.Map<Integer, Integer> made = Books.madeByVoice(getApplicationContext());
+        String[] names = new String[Voice.VOICES.length];
+        int sel = voices.getSelectedItemPosition();
+        for (int i = 0; i < names.length; i++) {
+            Integer n = made.get(Integer.parseInt(Voice.VOICES[i][0]));
+            names[i] = Voice.VOICES[i][1] + (n != null && n > 0 ? "  \u00b7 " + n + (n == 1 ? " chapter" : " chapters") + " made" : "");
+        }
+        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Tap a voice to hear it")
+            .setSingleChoiceItems(names, sel, (d, i) -> {
+                voices.setSelection(i);
+                if (svc != null) { svc.setVoice(Integer.parseInt(Voice.VOICES[i][0])); svc.preview(); }
+            })
+            .setPositiveButton("Use this voice", null)
+            .show();
+    }
+
     private void showSettings() {
         LinearLayout box = vbox(dp(20), dp(8));
         box.addView(header("Voice"));
@@ -1294,6 +1314,10 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         Button hear = smallButton("Hear this voice");
         hear.setOnClickListener(v -> { if (svc != null) { svc.setVoice(Integer.parseInt(Voice.VOICES[voices.getSelectedItemPosition()][0])); svc.preview(); } });
         box.addView(hear);
+        // (every voice in one list: tap one to hear it, with how many chapters were made ahead with it on this phone)
+        Button pick = smallButton("Listen and pick a voice");
+        pick.setOnClickListener(v -> pickVoice(voices));
+        box.addView(pick);
         // what characters say ("in quotes") in a second voice, like a two-person audiobook
         Spinner dlg = new Spinner(this);
         String[] dnames = new String[Voice.VOICES.length];
