@@ -290,6 +290,10 @@ final class Dialogue {
             } else if (Character.isLowerCase(next) && (spaceBefore ? !spaceAfter || tagWord(t, n)
                        : !spaceAfter && (",.!?…;:".indexOf(t.charAt(c - 1)) >= 0 || tagWord(t, n) || tagEnds(t, n)))) {
                 m[c] = -1; open = false; tagged = true;
+            } else if (Character.isUpperCase(next) && nameThenSay(t, n)) {
+                // (English tags start with the speaker's name: "—Hello, garden —Tom said quietly—. Is it open?"; the
+                // capital kept it all speech, chapter-test "second voice, dashes" NO since 2026-11-06)
+                m[c] = -1; open = false; tagged = true;
             }
         }
         return m;
@@ -301,6 +305,18 @@ final class Dialogue {
         String w = t.substring(c, e);
         return TAG_WORDS.contains(w) || SAY_WORDS.contains(w) || w.length() >= 5 && w.endsWith("ó");   // (Spanish: preguntó, contestó)
     }
+    /** A name, then a saying word: "Tom said", "Ana asked", "María dijo" (a dash before it ends the speech). */
+    private static boolean nameThenSay(String t, int c) {
+        int e = c;
+        while (e < t.length() && Character.isLetter(t.charAt(e))) e++;
+        if (e == c || e >= t.length() || t.charAt(e) != ' ') return false;
+        int f = e + 1, g = f;
+        while (g < t.length() && Character.isLetter(t.charAt(g))) g++;
+        String w = t.substring(f, g);
+        return SAY_WORDS.contains(w) || NAME_SAYS.contains(w) || w.length() >= 5 && w.endsWith("ó");
+    }
+    private static final java.util.Set<String> NAME_SAYS = new java.util.HashSet<>(java.util.Arrays.asList(
+        "said", "asked", "replied", "called", "shouted", "whispered", "says", "told", "began", "went"));
     /** Words that start a dialogue tag in translated fiction (the dash before them ends the speech). */
     private static final java.util.Set<String> SAY_WORDS = new java.util.HashSet<>(java.util.Arrays.asList(
         "dijo", "dice", "decía", "pregunta", "responde", "exclama", "murmura", "grita", "añade", "dit", "répondit", "demanda",

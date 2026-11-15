@@ -316,6 +316,8 @@ public class UnitTest {
         check("dashes: unspaced dashes inside speech", str(Dialogue.split("\u2014I was\u2014well\u2014scared.", false, false, "", true)), "[q:I was\u2014well\u2014scared.]");
         check("dashes: unspaced tag to the end", str(Dialogue.split("\u2014Por aqu\u00ed hay agua\u2014dijo a su compa\u00f1ero.", false, false, "", true)), "[q:Por aqu\u00ed hay agua][n:dijo a su compa\u00f1ero.]");
         check("dashes: speech goes on after the tag", str(Dialogue.split("\u2014Ese ruido\u2014replic\u00f3 el ciego\u2014y que parece.", false, false, "", true)), "[q:Ese ruido][n:replic\u00f3 el ciego][q:y que parece.]");
+        check("dashes: a tag starting with the speaker's name", str(Dialogue.split("\u2014Hello, garden \u2014Tom said quietly\u2014. Is the gate always open?", false, false, "", true)), "[q:Hello, garden][n:Tom said quietly.][q:Is the gate always open?]");
+        check("dashes: a name after a spaced dash, not saying anything, stays speech", str(Dialogue.split("\u2014Ask \u2014Tom knows. Go.", false, false, "", true)), "[q:Ask \u2014Tom knows. Go.]");
         check("dashes: cut off", str(Dialogue.split("—I was going—", false, false, "", true)), "[q:I was going—]");
         check("dashes: off, an ordinary paragraph", str(Dialogue.split("He waited—and then he ran.", false, false, "", false)), "[n:He waited—and then he ran.]");
         {

@@ -663,11 +663,13 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         /** Makes a whole book's audio ahead on this phone (AheadMaker), chapter by chapter, with the voice and speed set now. */
         @JavascriptInterface public void aheadBook(String key, String book) {
             if (!onStartPage(key) || !Books.safe(book)) return;
+            // (the book's chapters are listed here, on the page's own thread: on the main thread a book of 1000+ chapter
+            // files froze the screen)
+            java.util.List<String> urls = new java.util.ArrayList<>();
+            for (Books.Chapter c : Books.chapters(getApplicationContext(), book)) if (Books.isText(c)) urls.add(BookPages.url(book, c.json));
             main.post(() -> {
                 if (svc == null) return;
                 askNotificationPermission();
-                java.util.List<String> urls = new java.util.ArrayList<>();
-                for (Books.Chapter c : Books.chapters(getApplicationContext(), book)) if (Books.isText(c)) urls.add(BookPages.url(book, c.json));
                 svc.ahead.book(book, urls);
             });
         }

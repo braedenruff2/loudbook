@@ -150,9 +150,12 @@ final class BookAudio {
         double[] t = r.times.get(at);
         try {
             // (the decoding runs ahead from the start: wait until it has got this far)
-            long until = System.currentTimeMillis() + 90_000;
+            // (a decoder that stops moving for 6 s gives way to the voice at once: each sentence waited the whole 90 s)
+            long until = System.currentTimeMillis() + 90_000, seen = -1, moved = System.currentTimeMillis();
             while (!r.failed && (r.rate == 0 || (!r.done && r.frames < (long) (t[1] * r.rate)))) {
-                if (System.currentTimeMillis() > until) return null;
+                long now = System.currentTimeMillis(), f = r.frames;
+                if (f != seen) { seen = f; moved = now; }
+                if (now > until || now - moved > 6_000) { Log.w(TAG, "book: the recording's decoding is stuck or slow: the voice reads sentence " + i); return null; }
                 Thread.sleep(40);
             }
             if (r.failed) return null;
