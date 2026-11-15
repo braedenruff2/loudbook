@@ -395,7 +395,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         if (i.getBooleanExtra("settings", false)) { i.removeExtra("settings"); main.postDelayed(this::showSettings, 1500); }   // (screenshots in CI)
         if (url == null) return false;
         go(url);
-        if (i.getBooleanExtra("play", false)) resumeOnLoad = url;     // "open and read" (used by the tests)
+        if (i.getBooleanExtra("play", false)) askResume(url);     // "open and read" (used by the tests)
         return true;
     }
 
@@ -697,7 +697,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                     .put("news", newsToShow()).toString();
             } catch (Exception e) { return "{}"; }
         }
-        @JavascriptInterface public void resume(String key, String url) { if (onStartPage(key)) main.post(() -> { resumeOnLoad = url; web.loadUrl(url); }); }
+        @JavascriptInterface public void resume(String key, String url) { if (onStartPage(key)) main.post(() -> { askResume(url); web.loadUrl(url); }); }
         /** "What's new" was read: don't show it again until there's something newer. */
         @JavascriptInterface public void newsSeen(String key) {
             if (!onStartPage(key)) return;
@@ -728,7 +728,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                     if (!readingMode && (!svc.isPlaying() || svc.isPaused())) svc.play();
                     return;
                 }
-                resumeOnLoad = u;
+                askResume(u);
                 web.loadUrl(u);
             });
         }
@@ -798,7 +798,10 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             });
         }
     }
-    private String resumeOnLoad = null;
+    private String resumeOnLoad = null, resumeFrom;
+    private long resumeAt;
+    /** Read this address when it has loaded (or where it redirects to: see gotChapter). */
+    private void askResume(String u) { resumeOnLoad = u; resumeAt = System.currentTimeMillis(); resumeFrom = web == null ? null : web.getUrl(); }
     private View playerPanel;
 
     private void gotChapter(Chapter ch) {
@@ -825,14 +828,25 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             if (!go) onStatus("Stopped at the end of the chapter. The next one is ready.", false);
             return;
         }
-        if (resumeOnLoad != null && ch.url.equals(resumeOnLoad)) {
+        // (the address asked for may redirect (http -> https, a new slug, an age check): the first chapter from the same site
+        //  within a minute is it. Anything else, or later, isn't: it stayed set and a later visit started reading by itself)
+        String asked = resumeOnLoad;
+        if (asked != null && !ch.url.equals(asked)) {
+            String ha = Uri.parse(asked).getHost(), hc = Uri.parse(ch.url).getHost();
+            boolean same = ha != null && hc != null && ha.replaceFirst("^(www|m)\\.", "").equalsIgnoreCase(hc.replaceFirst("^(www|m)\\.", ""));
+            if (ch.url.equals(resumeFrom)) asked = null;                  // (a late answer from the page it was asked on: still waiting)
+            else if (same && System.currentTimeMillis() - resumeAt < 60_000) Log.i("LoudbookTest", "page: " + asked + " opened as " + ch.url + ": read as asked");
+            else { resumeOnLoad = null; asked = null; }
+        }
+        if (asked != null) {
             resumeOnLoad = null;
             if (svc == null) return;
             int at = svc.savedPos(ch.url);
+            if (at <= 0 && !ch.url.equals(asked)) at = svc.savedPos(asked);
             if (ch.size() > 0 && at >= ch.size()) {                    // read to the end last time
                 if (ch.nextUrl != null) {                               // there's a chapter after it now: go on to that
                     onStatus("On to the next chapter\u2026", false);
-                    resumeOnLoad = ch.nextUrl;
+                    askResume(ch.nextUrl);
                     web.loadUrl(ch.nextUrl);
                     return;
                 }
