@@ -596,6 +596,9 @@ const ROMAN = /^M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$/;
 const COUNTED = /^(chapter|book|part|volume|vol\.?|act|arc|season|episode|tier|rank|class|grade|level|stage|phase|type|mark|mk\.?|model|gen|generation|war|floor|circle|realm|step|star|bowl|ch\.?)$/i;
 // titles numbered like sequels, said as plain numbers ("Final Fantasy VII" is "seven", not "the seventh")
 const SEQUEL = /^(?:Fantasy|Rocky|Creed|Frozen|Diablo|Civilization|Hearts|Fighter|Kombat|Scrolls|Auto|Solid|Trek|Quest|Tekken|Doom|Halo|Shock|Cry|Souls|Evil|Heroes|Godfather|Rambo|Gladiator|Starcraft|StarCraft|Warcraft|Sims|Rising|Crusade|Wars)$/;
+// a skill's or spell's level in LitRPG: "Fire Bolt II", "Swordsmanship III", "Mana Manipulation IV" -> two, three, four (was
+// "Fire Bolt the second", read as a king)
+const SKILL = /^(?:[A-Z][a-z]+(?:ship|tion|sion|ment|ism|ness|ology|ing)|Bolt|Ball|Strike|Slash|Shield|Wall|Arrow|Arrows|Lance|Spear|Blade|Blades|Heal|Cure|Blast|Storm|Nova|Wave|Burst|Barrier|Armor|Armour|Aura|Step|Dash|Punch|Kick|Smash|Boost|Sense|Skin|Fist|Shot|Bullet|Missile|Ray|Beam|Spike|Bind|Chain|Swap|Shift|Cut|Stab|Thrust|Cleave|Sight|Vision|Strength|Speed|Agility|Endurance|Vitality|Toughness|Recovery|Resistance|Regeneration|Mastery|Affinity|Detection|Tier|Rank|Level|Grade|Class|Stage|Floor|Volume|Book|Part|Act|Phase|Mk)$/;
 // words that aren't names, so the capitals after them aren't a king's number ("The MC" was "the the 1100th")
 const NOT_NAME = /^(?:The|A|An|His|Her|Its|My|Our|Their|Your|This|That|These|Those|And|But|Or|If|When|While|Then|So|No|Every|Each|Some|Any|Of|In|On|At|To|For|With|From|By|As|Is|Was|Not|Like|Than|Mr|Mrs|Ms|Dr|Miss|Sir|Lady|Lord|Dear|Hey|Oh|Yes|Our|Its|Big|Old|New|Young)$/;
 function romanValue(r) {
@@ -627,6 +630,7 @@ function romans(t) {
     // a game or film sequel: "Final Fantasy VII" -> seven, "Rocky II" -> two (was "the seventh"), "Grand Theft Auto V"
     if (SEQUEL.test(before) && (r.length >= 2 || /^[VX]$/.test(r)) && all[at + m.length] !== '-') return before + sp + romanValue(r);
     // after a name: a king, a pope, a ship. Only two letters or more ("Henry V" stays, "I" is a word).
+    if (SKILL.test(before) && r !== 'I' && all[at + m.length] !== '-') return before + sp + romanValue(r);   // ("Whispering I love you": a word)
     if (r.length >= 2 && /^[A-Z][a-z]+$/.test(before) && !NOT_NAME.test(before) && romanValue(r) <= 40) return before + sp + 'the ' + romanValue(r) + ord(romanValue(r));
     return m;
   });
