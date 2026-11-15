@@ -506,7 +506,7 @@ public class ReaderService extends Service {
         AudioTrack t = track;
         if (t != null) { try { t.pause(); t.flush(); } catch (Exception ignored) {} framesWritten = 0; }
         Thread p = player;
-        if (p != null) p.interrupt();
+        if (p != null) { p.interrupt(); prevPlayer = p; }
         player = null;
         if (wake.isHeld()) wake.release();
         state();
@@ -1656,7 +1656,7 @@ public class ReaderService extends Service {
                     if (paused) { sleep(40); continue; }
                     int w = t.write(x, off, Math.min(2048, x.length - off), AudioTrack.WRITE_BLOCKING);
                     if (w < 0) { audioFailed(w, myGen); return -1; }
-                    off += w; framesWritten += w; at += w; starved = false;
+                    off += w; if (gen == myGen) framesWritten += w; at += w; starved = false;
                     heard(ch, marks, myGen);
                 }
                 continue;
@@ -1693,8 +1693,22 @@ public class ReaderService extends Service {
      * for one to finish before the next goes in: that is what keeps paragraphs flowing without a
      * gap. Which sentence is being heard is worked out from the track's playback position.
      */
+    private volatile Thread prevPlayer;
+    /** The player stopped last (a seek, a new chapter): it may be inside a blocking write, which finishes into the flushed
+     *  track after stopPlayback (up to 2048 frames of the old sentence heard first). Wait for it, then flush that out. */
+    private void afterPrevPlayer(int myGen) {
+        Thread pp = prevPlayer;
+        if (pp == null || pp == Thread.currentThread()) return;
+        try { pp.join(300); } catch (InterruptedException e) { return; }
+        if (pp.isAlive()) return;
+        if (prevPlayer == pp) prevPlayer = null;
+        AudioTrack t = track;
+        if (t != null && gen == myGen && framesWritten == 0) { try { t.pause(); t.flush(); } catch (Exception ignored) { } }
+    }
+
     private void loop(int myGen) {
         java.util.ArrayDeque<long[]> marks = new java.util.ArrayDeque<>();   // {first frame, sentence}
+        afterPrevPlayer(myGen);
         try {
             final Chapter ch = chapter;
             if (ch == null) return;
@@ -1924,7 +1938,7 @@ public class ReaderService extends Service {
             if (failNextWrite) { failNextWrite = false; n = AudioTrack.ERROR_DEAD_OBJECT; }
             if (n < 0) { audioFailed(n, myGen); return false; }
             off += n;
-            framesWritten += n;
+            if (gen == myGen) framesWritten += n;          // (an old player's last write, after a seek: not the new one's frames)
             heard(ch, marks, myGen);
         }
         return gen == myGen;
@@ -1962,7 +1976,7 @@ public class ReaderService extends Service {
             if (paused) { sleep(40); continue; }
             int n = t.write(z, 0, Math.min(z.length, frames), AudioTrack.WRITE_BLOCKING);
             if (n < 0) { audioFailed(n, myGen); return false; }
-            frames -= n; framesWritten += n;
+            frames -= n; if (gen == myGen) framesWritten += n;
             heard(ch, marks, myGen);
         }
         return gen == myGen;
