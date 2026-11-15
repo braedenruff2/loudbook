@@ -88,6 +88,8 @@ public class ReaderService extends Service {
     private Thread player;
     private AudioTrack track;
     private long framesWritten = 0;
+    /** The madeAt of the last clip queued on the track (stream). */
+    private float rateMadeAt = 1f;
     private float speed = 1f;
     private int sid = 3;
     boolean autoNext = true;
@@ -1868,6 +1870,19 @@ public class ReaderService extends Service {
 
     /** Queues one sentence's audio behind whatever is already playing. false = interrupted. */
     private boolean stream(AudioTrack t, Voice.Clip c, int myGen, Chapter ch, java.util.ArrayDeque<long[]> marks) {
+        // (a clip made at another speed than the last one (a chapter made ahead at 1x, read at 1.5x: its sentences and the
+        //  ones the voice makes now): the track's rate changes only once what's queued has played, or the end of the last
+        //  sentence (about half a second) came at the new one's rate)
+        if (Math.abs(c.madeAt - rateMadeAt) > 0.001) {
+            long until = System.currentTimeMillis() + 3000;
+            while (gen == myGen && System.currentTimeMillis() < until && t.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
+                if (paused) { sleep(40); until += 40; continue; }
+                if ((t.getPlaybackHeadPosition() & 0xffffffffL) >= framesWritten - 32) break;
+                sleep(10);
+            }
+            if (gen != myGen) return false;
+            rateMadeAt = c.madeAt;
+        }
         applyRate(t, c);
         float[] s = c.samples;
         int off = 0;

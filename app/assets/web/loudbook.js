@@ -623,6 +623,8 @@ function romans(t) {
   // a single I/V/X after a monarch's name with the title: "King Henry V", "Queen Elizabeth I", "Emperor Charles V"
   t = t.replace(/\b(King|Queen|Pope|Emperor|Empress|Tsar|Czar|Tsarina|Pharaoh|Kaiser|Sultan|Shah|Prince|Princess|Duke|Duchess)(\s+[A-Z][a-z]+)\s+([IVX])\b(?![''’\w])(?!\s+(?:am|think|guess|mean|know|suppose|said|say)\b)/g,
     (m, title, name, r) => title + name + ' the ' + romanValue(r) + ord(romanValue(r)));
+  // "Class-IV", "Tier-III": a counted word's Roman number after a hyphen (was left as letters)
+  t = t.replace(/\b([A-Za-z]+\.?)-([IVX]{1,5})\b(?![-'’\w])/g, (m, w, r) => COUNTED.test(w) && ROMAN.test(r) ? w + ' ' + romanValue(r) : m);
   return t.replace(/\b([A-Z][\w.]*)(\s+)([IVXLCDM]+)\b(?![''’](?![sS]\b)\w)/g, (m, before, sp, r, at, all) => {
     if (!ROMAN.test(r)) return m;
     if (/^[LCDM]$/.test(r)) return m;   // "Rank C", "Grade D", "Class M" are letters (was "Rank one hundred")
@@ -669,7 +671,7 @@ const UNITS = { km: ['kilometer', 'kilometers'], cm: ['centimeter', 'centimeters
   kmh: ['kilometer per hour', 'kilometers per hour'], pts: ['point', 'points'], L: ['liter', 'liters'], ml: ['milliliter', 'milliliters'], mL: ['milliliter', 'milliliters'],
   KB: ['kilobyte', 'kilobytes'], MB: ['megabyte', 'megabytes'], GB: ['gigabyte', 'gigabytes'], TB: ['terabyte', 'terabytes'], PB: ['petabyte', 'petabytes'],
   Hz: ['hertz', 'hertz'], kHz: ['kilohertz', 'kilohertz'], MHz: ['megahertz', 'megahertz'], GHz: ['gigahertz', 'gigahertz'],
-  Mbps: ['megabit per second', 'megabits per second'], Gbps: ['gigabit per second', 'gigabits per second'], kW: ['kilowatt', 'kilowatts'], kWh: ['kilowatt-hour', 'kilowatt-hours'],
+  Mbps: ['megabit per second', 'megabits per second'], Gbps: ['gigabit per second', 'gigabits per second'], kW: ['kilowatt', 'kilowatts'], kJ: ['kilojoule', 'kilojoules'], MJ: ['megajoule', 'megajoules'], kWh: ['kilowatt-hour', 'kilowatt-hours'],
   MW: ['megawatt', 'megawatts'], ly: ['light-year', 'light-years'], kV: ['kilovolt', 'kilovolts'], mAh: ['milliamp-hour', 'milliamp-hours'], V: ['volt', 'volts'], W: ['watt', 'watts'] };
 
 const GRUNTS = [[/^[Hh](m+p+h|m+f|r+m+p+h)$/, 'humph'], [/^[Hh]mn?$/, 'hmm'], [/^([Mm]hm+|[Mm]m-?hm+|[Mm]m+-hm+)$/, 'um-hum'], [/^[Mm]m+$/, 'hmm'],
@@ -931,7 +933,7 @@ function tidy(t) {
     .replace(/(\b(?:[Aa]n?|[Tt]he|[Hh]is|[Hh]er|[Tt]heir|[Mm]y|[Yy]our|[Oo]ur|[Ii]ts)\s)(\d+(?:\.\d+)?)\s?(?:(km|cm|mm|m|ft|yds?|mi)\s?)?(?:[x×]|by)\s?(\d+(?:\.\d+)?)\s?(km|cm|mm|m|ft|yds?|mi)\b(?=\s+(?!(?:away|long|tall|wide|high|deep|thick|of|from|to|and|or|per|in|on|at|by|for|across|apart|area|space)\b)\p{Ll})/gu,
       (m, pre, a, u1, b, u) => u1 && u1 !== u ? pre + a + '-' + ({ yds: 'yard' }[u1] || UNITS[u1][0]) + ' by ' + b + '-' + ({ yds: 'yard' }[u] || UNITS[u][0])   // a 2 m x 3 ft rug -> a two-meter by three-foot rug
         : pre + a + ' by ' + b + ' ' + ({ yds: 'yard' }[u] || UNITS[u][0]))
-    .replace(/(^|[^$\w,])((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|wpm|ft\/s|ft|yds|yd|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|ms|m\/s|m|g|L|KB|MB|GB|TB|PB|kHz|MHz|GHz|Hz|Mbps|Gbps|kWh|kW|MW|kV|mAh|ly|V|W)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
+    .replace(/(^|[^$\w,])((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|wpm|ft\/s|ft|yds|yd|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|ms|m\/s|m|g|L|KB|MB|GB|TB|PB|kHz|MHz|GHz|Hz|Mbps|Gbps|kWh|kW|MW|kV|kJ|MJ|mAh|ly|V|W)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
       (m, pre, n, u, at, all) => {
         // "a 10 km run", "the 5 kg bag" -> ten-kilometer run (the adjective form takes the singular)
         const next = /^\s+(\p{Ll}+)/u.exec(all.slice(at + m.length));
