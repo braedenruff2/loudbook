@@ -330,6 +330,10 @@ public class UnitTest {
             rec3.addAll(java.util.Arrays.asList("x", "y"));
             check("rec match: a long stretch the reader hasn't doesn't stop the rest", java.util.Arrays.toString(RecMatch.align(java.util.Arrays.asList("title", "x", "", "y"), rec3)), "[0, 13, -1, 14]");
             check("rec match: nothing", RecMatch.align(new java.util.ArrayList<>(), rec).length, 0);
+            check("aac shift: priming kept (2048 + 700 padding)", RecMatch.shift(240000, 240000 + 2048 + 700, 24000), 2236L);
+            check("aac shift: priming dropped by the decoder", RecMatch.shift(240000, 240000 + 300, 24000), 0L);
+            check("aac shift: unknown (older files)", RecMatch.shift(0, 240000, 24000), 0L);
+            check("aac shift: odd (a second more) ignored", RecMatch.shift(240000, 264000 + 600, 24000), 0L);
         }
         // "What's new": one change at a time, and each shown only once
         {

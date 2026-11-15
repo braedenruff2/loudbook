@@ -183,7 +183,7 @@ final class AheadMaker {
         File d = dir(svc);
         d.mkdirs();
         JSONArray marks = new JSONArray();
-        long t0 = System.currentTimeMillis();
+        long t0 = System.currentTimeMillis(), written = 0;
         try (Aac out = new Aac(part)) {
             short[] pad = new short[(int) (0.12 * RATE)];
             for (int i = 0; i < ch.size() && !stop; i++) {
@@ -202,10 +202,11 @@ final class AheadMaker {
                 // (a little of the pause on each side: the decoder may start a few hundredths of a second later)
                 marks.put(new JSONObject().put("text", c.say).put("start", Math.max(0, start - 0.08)).put("end", end + 0.08));
             }
+            written = out.frames;
         }
         if (stop) return 1;
         JSONObject o = new JSONObject().put("sid", sid).put("speed", (double) speed).put("url", ch.url).put("title", ch.title)
-            .put("rate", RATE).put("sentences", marks);
+            .put("rate", RATE).put("frames", written).put("sentences", marks);   // (frames: BookAudio finds the AAC encoder's delay)
         File info = infoFile(svc, ch.url), audio = audioFile(svc, ch.url);
         java.nio.file.Files.write(info.toPath(), o.toString().getBytes(StandardCharsets.UTF_8));
         audio.delete();

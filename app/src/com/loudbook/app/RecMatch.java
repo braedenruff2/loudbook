@@ -49,5 +49,15 @@ final class RecMatch {
         return out;
     }
 
+    /** A chapter made on the phone (AAC): the decoder's extra samples at the start, from what came out beyond what went
+     *  in, less half an AAC frame (the end is padded up to a whole frame too, 0-1023 samples), so within ~25 ms either
+     *  way. AAC encoders put ~2048 samples of priming in front, which some decoders keep: every sentence then came later
+     *  than its times, by more than their 80 ms margin. 0 if unknown or odd (over half a second). */
+    static long shift(long written, long decoded, int rate) {
+        if (written <= 0 || rate <= 0) return 0;
+        long extra = decoded - written - 512;
+        return extra > 0 && extra < rate / 2 ? extra : 0;
+    }
+
     private RecMatch() { }
 }
