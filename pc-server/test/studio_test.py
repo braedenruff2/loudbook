@@ -83,7 +83,30 @@ try:
     check("POST without the studio header refused", call("/api/voice", {"job": "test.job.json", "voice": 3}, headers={"X-Loudbook": "x"})[0] == 403)
     check("other host name refused", call("/api/books", host="evil.example:%d" % STUDIO)[0] == 403)
     check("job outside the folder refused", call("/api/chapter?job=../x.job.json&k=0")[0] == 404)
-    check("re-record of a missing sentence fails cleanly", call("/api/redo", {"job": "test.job.json", "k": 0, "i": 99})[0] == 200)
+    t = js("/api/redo", {"job": "test.job.json", "k": 0, "i": 99})
+    check("re-record of a missing sentence fails cleanly", wait(lambda: js("/api/tasks")["tasks"][t["task"]]["state"] == "failed", 30)
+          and "no such sentence" in js("/api/tasks")["tasks"][t["task"]]["msg"])
+    # a file held open on Windows (the page streaming the MP3): os.replace fails for a while; swap_in waits for it
+    sys.path.insert(0, os.path.join(here, ".."))
+    os.environ.setdefault("LOUDBOOK_STATE", T + "/state2")
+    import loudbook_server as ls
+    real, tries = os.replace, []
+    def held(a, b):
+        tries.append(1)
+        if len(tries) <= 3: raise PermissionError(13, "in use")
+        real(a, b)
+    with open(T + "/x.part", "w") as f: f.write("new")
+    ls.os.replace = held
+    try:
+        ls.swap_in(T + "/x.part", T + "/x", wait=5)
+        check("swap_in waits for a held file", open(T + "/x").read() == "new" and len(tries) == 4)
+        with open(T + "/y.part", "w") as f: f.write("new")
+        def always(a, b): raise PermissionError(13, "in use")
+        ls.os.replace = always
+        try: ls.swap_in(T + "/y.part", T + "/y", wait=0.6); check("swap_in gives up", False)
+        except PermissionError: check("swap_in gives up and removes its part file", not os.path.exists(T + "/y.part"))
+    finally:
+        ls.os.replace = real
 finally:
     srv.kill()
 if fails:

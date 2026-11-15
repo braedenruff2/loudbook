@@ -70,7 +70,23 @@ voices_lock = threading.Lock()                         # (two voice changes at o
 def write_json(name, data):
     tmp = path(name + ".tmp." + str(threading.get_ident()))
     with open(tmp, "w", encoding="utf-8") as f: json.dump(data, f, indent=1)
-    os.replace(tmp, path(name))
+    swap_in(tmp, path(name))
+
+
+def swap_in(part, dest, wait=40.0):
+    """os.replace, but on Windows a file someone has open (the studio page or the phone streaming the MP3, the worker
+    reading a job file) can't be replaced for a moment: try again for a while instead of failing. The part file is
+    deleted if it still can't be."""
+    t0 = time.time()
+    while True:
+        try:
+            os.replace(part, dest); return
+        except PermissionError:
+            if time.time() - t0 > wait:
+                try: os.remove(part)
+                except OSError: pass
+                raise
+            time.sleep(0.25)
 
 
 # ------------------------------------------------------------------ certificate
@@ -924,8 +940,9 @@ class Books:
         with sf.SoundFile(dest + ".part.mp3", "w", rate, 1, format="MP3") as out: out.write(audio.astype(np.int16))
         with open(dest + ".json.part", "w", encoding="utf-8") as h:
             json.dump({"title": title, "rate": rate, "seconds": round(at / rate, 2), "sentences": marks}, h, ensure_ascii=False)
-        os.replace(dest + ".json.part", dest + ".json")
-        os.replace(dest + ".part.mp3", dest + ".mp3")
+        # (the timings first: a chapter counts as recorded once its MP3 is there, and the phone copies it then)
+        swap_in(dest + ".json.part", dest + ".json")
+        swap_in(dest + ".part.mp3", dest + ".mp3")
         d, t = cls.progress()
         sp = cls.secs_made / cls.secs_work if cls.secs_work > 1 else 0
         print(f"Loudbook PC voice: audiobook chapter {k + 1} of {job.get('title', n)} done ({at / rate / 60:.0f} min); {d} of {t}", flush=True)
@@ -1056,7 +1073,7 @@ class Studio:
         try:
             with open(dest + ".json", encoding="utf-8") as h: info = json.load(h)
         except Exception: info = None
-        busy = {t["i"]: t["state"] for t in cls.tasks.values() if t["job"] == n and t["k"] == k and t["state"] in ("waiting", "making")}
+        busy = {t["i"]: t["state"] for t in list(cls.tasks.values()) if t["job"] == n and t["k"] == k and t["state"] in ("waiting", "making")}
         sents = []
         if info:
             for i, m in enumerate(info.get("sentences", [])):
@@ -1089,7 +1106,7 @@ class Studio:
         with open(f, encoding="utf-8") as h: raw = json.load(h)
         raw["voice"] = v
         with open(f + ".part", "w", encoding="utf-8") as h: json.dump(raw, h, ensure_ascii=False, indent=1)
-        os.replace(f + ".part", f)
+        swap_in(f + ".part", f)
         Books.idle_until = 0
 
     @classmethod
@@ -1165,14 +1182,22 @@ class Studio:
         info["seconds"] = round(len(new) / rate, 2)
         with sf.SoundFile(dest + ".part.mp3", "w", rate, 1, format="MP3") as out: out.write(new)
         with open(dest + ".json.part", "w", encoding="utf-8") as h: json.dump(info, h, ensure_ascii=False)
-        os.replace(dest + ".json.part", dest + ".json")
-        os.replace(dest + ".part.mp3", dest + ".mp3")
-        if text != " ".join(old_text.split()): cls.fix_text(j, k, m, old_text, text)
-        return "recorded again" + ("" if sure == "ok" else " (the take's length looked off: listen to it)")
+        # (the MP3 first: it's the one a player may hold open; timings without their new audio would be wrong for every
+        # sentence after this one, and the next re-record would cut the old MP3 at the new places)
+        try: swap_in(dest + ".part.mp3", dest + ".mp3")
+        except OSError:
+            try: os.remove(dest + ".json.part")
+            except OSError: pass
+            raise
+        swap_in(dest + ".json.part", dest + ".json")
+        kept = cls.fix_text(j, k, m, old_text, text) if text != " ".join(old_text.split()) else True
+        return ("recorded again" + ("" if sure == "ok" else " (the take's length looked off: listen to it)")
+                + ("" if kept else " (the chapter's text file couldn't be changed: recording the whole chapter again brings the old words back)"))
 
     @staticmethod
     def fix_text(j, k, m, old, text):
-        """New words for a sentence go into the chapter's text too, so recording the chapter again keeps them."""
+        """New words for a sentence go into the chapter's text too, so recording the chapter again keeps them. False if
+        they couldn't be."""
         ch = j["chapters"][k]
         f = ch["file"] if os.path.isabs(ch["file"]) else os.path.join(BOOKS, ch["file"])
         try:
@@ -1180,18 +1205,20 @@ class Studio:
             title = str(ch.get("name") or "").strip()
             pi = m.get("p", -1) - (1 if title and ch.get("say_title", True) else 0)
             lines = [p for p in paras if p]
-            if not (0 <= pi < len(lines)): return
+            if not (0 <= pi < len(lines)): return False
             para = lines[pi]
             si = m.get("s", -1)
-            if not (0 <= si < len(para)): return
+            if not (0 <= si < len(para)): return False
             item = para[si]
             if isinstance(item, list) and item and " ".join(str(item[0]).split()) == " ".join(old.split()): item[0] = text
             elif isinstance(item, str) and " ".join(item.split()) == " ".join(old.split()): para[si] = text
-            else: return
+            else: return False
             with open(f + ".part", "w", encoding="utf-8") as h: json.dump(paras, h, ensure_ascii=False)
-            os.replace(f + ".part", f)
+            swap_in(f + ".part", f)
+            return True
         except Exception as e:
             print("Loudbook PC voice: studio: the chapter's text couldn't be changed:", repr(e)[:200], flush=True)
+            return False
 
     @classmethod
     def redo_chapter(cls, name, k):
@@ -1332,6 +1359,8 @@ class StudioHandler(http.server.BaseHTTPRequestHandler):
                 return self.reply(200, {"task": Studio.add("chapter", d.get("job"), int(d.get("k", -1)))})
         except (ValueError, TypeError, KeyError) as e:
             return self.reply(400, {"error": str(e)[:200]})
+        except OSError as e:                              # (a file held open on Windows for too long, a full disk...)
+            return self.reply(500, {"error": "couldn't save it: " + str(e)[:180]})
         self.reply(404, {"error": "no such thing"})
 
 

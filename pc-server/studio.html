@@ -88,11 +88,15 @@ function voiceOptions(sel) {
   return h;
 }
 
+let gen = 0;                                  // (a reply for a page left meanwhile is dropped, not shown over the new one)
 async function render() {
+  const my = ++gen;
   await loadBooks();
+  if (my !== gen) return;
   if (cur.k != null) return renderChapter();
   const v = $('#view');
   const c = await get('/api/chapters?job=' + encodeURIComponent(cur.job));
+  if (my !== gen) return;
   const book = lib.books.find(b => b.job === cur.job) || {};
   v.innerHTML = `<h3>${esc(c.title)}</h3>
     <div class="panel"><h2 style="margin-top:0">Voice</h2>
@@ -122,10 +126,18 @@ async function render() {
   v.querySelectorAll('tr.ch').forEach(tr => tr.onclick = () => { cur.k = +tr.dataset.k; render(); });
 }
 
-let audio = null, stopAt = null, playing = -1;
+let audio = null, stopAt = null, playing = -1, later = false;
+// A re-recording finishing while you listen or type new words waits: drawing the chapter again would stop the sound and
+// wipe what you typed. It's drawn as soon as the sound is paused and nothing is being edited.
+function busyHere() { return !!$('#view textarea') || (audio && !audio.paused); }
+function refreshChapter() { if (busyHere()) { later = true; return; } later = false; return renderChapter(); }
+function laterNow() { if (later && cur.k != null && !busyHere()) refreshChapter(); }
 async function renderChapter() {
+  const my = ++gen;
   const v = $('#view');
   const c = await get('/api/chapter?job=' + encodeURIComponent(cur.job) + '&k=' + cur.k);
+  if (my !== gen) return;
+  later = false; stopAt = null;
   const t = audio ? audio.currentTime : 0;
   v.innerHTML = `<p><button class="b" id="back">← All chapters</button></p><h3>${esc(c.name)}</h3>
     ${c.recorded ? `<div class="panel"><audio id="au" controls preload="metadata" src="/audio?job=${encodeURIComponent(cur.job)}&k=${cur.k}&v=${Date.now()}"></audio>
@@ -136,9 +148,10 @@ async function renderChapter() {
         <div class="tools">${s.busy ? `<span class="chip now">${s.busy === 'making' ? 'recording…' : 'waiting…'}</span>` : s.redone ? '<span class="chip ok">recorded again</span>' : ''}
           <button class="b" data-a="${s.i}">Again</button><button class="b" data-e="${s.i}">Edit</button></div></div>`).join('')}</div>`
     : '<div class="panel">Not recorded yet. It\'s recorded in order, whenever the graphics card is free (status at the top).</div>'}`;
-  $('#back').onclick = () => { cur.k = null; if (audio) audio.pause(); audio = null; render(); };
+  $('#back').onclick = () => { cur.k = null; later = false; if (audio) audio.pause(); audio = null; render(); };
   if (!c.recorded) return;
   audio = $('#au'); if (t) audio.currentTime = t;
+  audio.onpause = () => setTimeout(laterNow, 0);
   const rows = [...v.querySelectorAll('.sent')];
   audio.ontimeupdate = () => {
     const now = audio.currentTime;
@@ -148,7 +161,11 @@ async function renderChapter() {
   };
   v.querySelectorAll('[data-p]').forEach(b => b.onclick = () => { const s = c.sentences[+b.dataset.p]; audio.currentTime = s.start; stopAt = s.end; audio.play(); });
   const redo = async (i, text) => {
-    try { await post('/api/redo', {job: cur.job, k: cur.k, i, text}); toast('Recording it again…'); watch(); renderChapter(); } catch (e) { toast(e.message); }
+    try {
+      const r = await post('/api/redo', {job: cur.job, k: cur.k, i, text}); toast('Recording it again…'); watch(r && r.task);
+      const ta = $('textarea', rows[i]); if (ta) ta.closest('.t').textContent = text || c.sentences[i].text;   // (this edit is done)
+      refreshChapter();
+    } catch (e) { toast(e.message); }
   };
   v.querySelectorAll('[data-a]').forEach(b => b.onclick = () => redo(+b.dataset.a));
   v.querySelectorAll('[data-e]').forEach(b => b.onclick = () => {
@@ -156,7 +173,7 @@ async function renderChapter() {
     td.innerHTML = `<textarea>${esc(s.text)}</textarea><div class="row" style="margin-top:6px"><button class="b go">Record with these words</button><button class="b">Cancel</button></div>`;
     const [ok, cancel] = td.querySelectorAll('button');
     ok.onclick = () => redo(s.i, $('textarea', td).value);
-    cancel.onclick = () => renderChapter();
+    cancel.onclick = () => { $('.t', row).textContent = s.text; laterNow(); };
   });
   $('#redoAll').onclick = async () => {
     if (!confirm('Record the whole chapter again with the book\'s voice now? The old recording is kept in the "_replaced" folder.')) return;
@@ -165,10 +182,11 @@ async function renderChapter() {
 }
 
 let watching = false;
-async function watch() {
+async function watch(task) {
   if (watching) return; watching = true;
   let seen = {};
   try { seen = (await get('/api/tasks')).tasks; } catch (e) { }
+  if (task) delete seen[task];                 // (a quick one may be done already: still say so and show it)
   const tick = async () => {
     try {
       const t = (await get('/api/tasks')).tasks;
@@ -181,7 +199,7 @@ async function watch() {
         }
       }
       seen = t;
-      if (changed && cur.k != null) await renderChapter();
+      if (changed && cur.k != null) await refreshChapter();
       if (!busy) { watching = false; return; }
     } catch (e) { }
     setTimeout(tick, 2000);
