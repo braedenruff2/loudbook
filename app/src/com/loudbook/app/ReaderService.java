@@ -392,7 +392,9 @@ public class ReaderService extends Service {
     /** premade: sentences of this chapter already made (the start of the next chapter, made ahead). */
     private void setChapter(Chapter ch, int startAt, boolean play, Map<Integer, Future<Voice.Clip>> premade) {
         stopPlayback();
-        pausedForFocus = false;          // (another chapter opened during a call: the call ending mustn't start reading it)
+        // (another chapter opened during a call: the call ending mustn't start reading it. Not Kindle's own next page or
+        // reopened book, which goes on after the call as before)
+        if (!"kindle".equals(ch.site)) pausedForFocus = false;
         chapter = ch;
         heardIdx = -1;
         heardTiming = null; timings.clear();
