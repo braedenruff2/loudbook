@@ -1,3 +1,4 @@
+Links that aren't web pages (email, "open in the app") open the right app instead of doing nothing; a link shared at the end of a sentence no longer keeps its full stop or bracket; if the page crashes, Loudbook opens it again instead of closing.
 Reading aloud: a LitRPG skill's level is read as a number ("Fire Bolt II" is "Fire Bolt two", not "the second" as for a king).
 Reading aloud: "a 1/4 share" and "a 2/3 majority" are read as fractions, speeds in ft/s as feet per second, a star rating after "3/5 stars" isn't read twice, and bars drawn in blocks (▓▓▓░░) are skipped, "~$35" is "about thirty-five dollars" and a 52%-48% poll is "fifty-two percent to forty-eight percent".
 "Listen and pick a voice" has a Cancel button that keeps the voice you had, and opens faster. Back closes What's new.

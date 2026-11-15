@@ -69,6 +69,9 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     private final Handler main = new Handler(Looper.getMainLooper());
     private SharedPreferences prefs;
     private WebView web;
+    /** The page shown when its renderer went away: opened again in the screen made anew. */
+    private static String reopenAfterGone;
+    private boolean webGone;
     private EditText address;
     private TextView storyText, chapterText, nowText, statusText, speedBtn;
     private android.widget.ImageView playBtn;
@@ -129,8 +132,10 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         boolean again = state != null || (first != null && (first.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0);
         if (again && first != null && first.getAction() != null && !Intent.ACTION_MAIN.equals(first.getAction()))
             Log.i("LoudbookTest", "opened again with its first intent (" + first.getAction() + "): not handled again");
-        if (again || !handleIntent(first)) {
-            if (state != null) web.restoreState(state); else web.loadUrl(homeUrl());
+        String gone = reopenAfterGone; reopenAfterGone = null;
+        if (gone != null && gone.startsWith("http")) web.loadUrl(gone);
+        else if (gone != null || again || !handleIntent(first)) {
+            if (state != null && gone == null) web.restoreState(state); else web.loadUrl(homeUrl());
         }
         showLastCrash();
         if (VoiceCommands.crashedLastTime(this))
@@ -235,7 +240,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
 
     @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); handleIntent(intent); }
 
-    @Override protected void onSaveInstanceState(Bundle out) { super.onSaveInstanceState(out); web.saveState(out); }
+    @Override protected void onSaveInstanceState(Bundle out) { super.onSaveInstanceState(out); if (!webGone) web.saveState(out); }
 
     // ---------------------------------------------------------------- updates
     private boolean visible = false;
@@ -395,7 +400,15 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     private static String firstUrl(String s) {
         if (s == null) return null;
         Matcher m = Pattern.compile("https?://\\S+").matcher(s);
-        return m.find() ? m.group() : null;
+        if (!m.find()) return null;
+        // (a link at the end of a sentence or in brackets: "... (https://site/chapter/456)." opened ".../456).")
+        String u = m.group();
+        while (u.length() > 8 && ".,;:!?)]}'\"\u201d\u2019>".indexOf(u.charAt(u.length() - 1)) >= 0) {
+            char c = u.charAt(u.length() - 1);
+            if (c == ')' && u.indexOf('(') >= 0 && u.lastIndexOf('(') > u.indexOf("://")) break;    // (a wiki-style "Foo_(bar)" keeps it)
+            u = u.substring(0, u.length() - 1);
+        }
+        return u;
     }
 
     private void go(String typed) {
@@ -403,8 +416,27 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         if (u.isEmpty()) return;
         if (!u.matches("(?i)^[a-z]+://.*")) u = u.contains(".") && !u.contains(" ") ? "https://" + u
             : "https://www.royalroad.com/fictions/search?title=" + Uri.encode(u);
+        // (web pages only: "javascript://..." from another app's intent ran in the page shown, the start page included,
+        //  which could read its key and call everything the start page can)
+        String scheme = Uri.parse(u).getScheme();
+        if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) { Log.w(TAG, "not opened (not a web page): " + u); return; }
         web.loadUrl(u);
         hideKeyboard();
+    }
+
+    /** A link to something that isn't a web page: the app for it, or the page's own fallback (intent://...;S.browser_fallback_url). */
+    private void openOutside(Uri u) {
+        try {
+            Intent i = "intent".equals(u.getScheme()) ? Intent.parseUri(u.toString(), Intent.URI_INTENT_SCHEME) : new Intent(Intent.ACTION_VIEW, u);
+            i.addCategory(Intent.CATEGORY_BROWSABLE);
+            i.setComponent(null); i.setSelector(null);
+            String fallback = i.getStringExtra("browser_fallback_url");
+            try { startActivity(i); }
+            catch (android.content.ActivityNotFoundException e) {
+                if (fallback != null && (fallback.startsWith("https://") || fallback.startsWith("http://"))) web.loadUrl(fallback);
+                else android.widget.Toast.makeText(this, "No app on this phone opens that link.", android.widget.Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) { Log.w(TAG, "link " + u, e); }
     }
 
     // ---------------------------------------------------------------- the browser
@@ -421,7 +453,19 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         web.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
                 String scheme = r.getUrl().getScheme();
-                return !("http".equals(scheme) || "https".equals(scheme) || "file".equals(scheme));
+                if ("http".equals(scheme) || "https".equals(scheme) || "file".equals(scheme)) return false;
+                if (r.isForMainFrame() && r.hasGesture()) openOutside(r.getUrl());   // (mailto:, intent://, an app's link: was nothing at all)
+                return true;
+            }
+            // (the page's renderer was killed (low memory, an ad page) or crashed: Android closed all of Loudbook with it,
+            //  reading included. The screen is made again on the same page; reading goes on in the service)
+            @Override public boolean onRenderProcessGone(WebView v, android.webkit.RenderProcessGoneDetail d) {
+                Log.w(TAG, "the page's renderer went away (" + (d.didCrash() ? "crashed" : "killed for memory") + "): screen made again");
+                reopenAfterGone = v.getUrl();
+                webGone = true;
+                if (v.getParent() instanceof ViewGroup) ((ViewGroup) v.getParent()).removeView(v);
+                main.post(MainActivity.this::recreate);
+                return true;
             }
             // (a chapter of a book from the PC, made here from its text: BookPages)
             @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
@@ -611,7 +655,14 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     final class Bridge {
         @JavascriptInterface public void onChapter(String json) {
             main.post(() -> {
-                try { gotChapter(new Chapter(new JSONObject(json))); }
+                try {
+                    Chapter c = new Chapter(new JSONObject(json));
+                    // (the bridge is in every frame, ads' included: an answer for another site than the page shown is dropped)
+                    String shown = web == null ? null : web.getUrl();
+                    String hs = shown == null ? null : Uri.parse(shown).getHost(), hc = c.url == null ? null : Uri.parse(c.url).getHost();
+                    if (hs != null && hc != null && !hs.equalsIgnoreCase(hc)) { Log.w(TAG, "a chapter from another site's frame dropped: " + hc); return; }
+                    gotChapter(c);
+                }
                 catch (Exception e) { Log.e(TAG, "chapter", e); onStatus("Couldn't read this page: " + e.getMessage(), true); }
             });
         }
@@ -879,6 +930,14 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             pre.addJavascriptInterface(new PreBridge(), "LoudbookNative");
             pre.setWebViewClient(new WebViewClient() {
                 @Override public void onPageFinished(WebView v, String u) { if (u != null && u.startsWith("http")) inject(pre, u); }
+                // (the hidden browser's renderer went away: dropped, made again for the next prefetch; Loudbook stays)
+                @Override public boolean onRenderProcessGone(WebView v, android.webkit.RenderProcessGoneDetail d) {
+                    Log.w(TAG, "the hidden browser's renderer went away");
+                    if (v.getParent() instanceof ViewGroup) ((ViewGroup) v.getParent()).removeView(v);
+                    try { v.destroy(); } catch (Exception ignored) { }
+                    if (pre == v) pre = null;
+                    return true;
+                }
                 @Override public android.webkit.WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
                     return BookPages.intercept(getApplicationContext(), r);
                 }
