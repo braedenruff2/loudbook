@@ -63,9 +63,9 @@ jobs:
             echo '## Next chapter, in the background (Android 15)'; echo
             echo "commit ${GITHUB_SHA::7}, run ${{ github.run_id }}, emulator step: ${{ steps.emu.outcome }}, retry: ${{ steps.emu2.outcome }}"; echo
             cat newchapter.txt jobs.txt fancy.txt dual.txt audio.txt offline.txt recents.txt book.txt 2>/dev/null; echo
-            echo 'Pages served:'; echo '```'; grep -o 'GET [^ ]*' /tmp/http.log; echo '```'; echo
+            echo 'Pages served:'; echo '```'; grep -a -o 'GET [^ ]*' /tmp/http.log; echo '```'; echo
             echo '```'
-            grep -E "LoudbookTest|Loudbook|AndroidRuntime|FATAL| F DEBUG" logcat.txt 2>/dev/null | grep -v "SearchServiceCore\|ResourcesManager\|Choreographer" | tail -150
+            grep -a -E "LoudbookTest|Loudbook|AndroidRuntime|FATAL| F DEBUG" logcat.txt 2>/dev/null | grep -a -v "SearchServiceCore\|ResourcesManager\|Choreographer" | tail -150
             echo '```'
           } > results.md
           gh release view chapter-test >/dev/null 2>&1 || gh release create chapter-test --latest=false --title "Chapter turn test" --notes "Output of .github/workflows/chapter-test.yml"
@@ -74,7 +74,7 @@ jobs:
         if: always()
         run: |
           # (a crash used to pass unnoticed: the results were written and the job stayed green, 2026-11-01)
-          if grep -q "AndroidRuntime: Process: com.loudbook.app" logcat.txt 2>/dev/null; then
-            grep -A14 "AndroidRuntime: FATAL EXCEPTION" logcat.txt | head -60
+          if grep -a -q "AndroidRuntime: Process: com.loudbook.app" logcat.txt 2>/dev/null; then
+            grep -a -A14 "AndroidRuntime: FATAL EXCEPTION" logcat.txt | head -60
             echo "::error::Loudbook crashed during the test (FATAL EXCEPTION in logcat.txt)"; exit 1
           fi

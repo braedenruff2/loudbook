@@ -7,6 +7,12 @@ adb install -r build/Loudbook.apk
 adb shell pm grant com.loudbook.app android.permission.POST_NOTIFICATIONS
 adb logcat -G 16M || true
 adb logcat -c
+# the app's own lines (and crashes, activity starts), written down as they come: the 16 MB ring buffer still wrapped in some
+# runs, so every "adb logcat -d" came back without a single Loudbook line, even the test's own markers (ab18225, 2026-11-08:
+# every check NO). The checks read this file instead; it is copied to logcat.txt for the results and the crash check.
+adb logcat -v threadtime LoudbookTest:V Loudbook:V AndroidRuntime:V ActivityTaskManager:I DEBUG:V libc:F MediaPlayer:E '*:S' > applog.txt 2>/dev/null &
+LOGPID=$!
+snap() { sleep 2; cp applog.txt logcat.txt; }
 adb shell am start -n com.loudbook.app/.MainActivity
 sleep 100                                   # the phone voice downloads and loads the first time
 adb shell am start -n com.loudbook.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "http://localhost:8000/ch1.html" --ez play true --ez dual true
@@ -24,22 +30,22 @@ sleep 10
 adb reverse --remove tcp:8000 || true
 adb shell log -t LoudbookTest "=== no signal from here ==="
 sleep 150
-adb logcat -d > logcat.txt
+snap
 # (chapter one, read with the app open, has fancy letters and an emoji: every sentence must be marked on the page)
 awk '/=== app in the background/{exit} 1' logcat.txt > foreground.txt
-echo "app open (fancy text, emoji): sentences said: $(grep -c 'LoudbookTest: speaking' foreground.txt), not found on the page: $(grep -c "words weren't found" foreground.txt), found in another paragraph: $(grep -c 'found in paragraph' foreground.txt)" > fancy.txt
+echo "app open (fancy text, emoji): sentences said: $(grep -a -c 'LoudbookTest: speaking' foreground.txt), not found on the page: $(grep -a -c "words weren't found" foreground.txt), found in another paragraph: $(grep -a -c 'found in paragraph' foreground.txt)" > fancy.txt
 # (with no signal the pages of the chapters loaded ahead can't load: each is shown from its copy, and
 # highlighted there. They used to be the browser's error page, "its words weren't found on the page")
 # (dialogue in a second voice is on: chapter one quotes in double quotes, chapter two in single ones, with an apostrophe)
-{ grep -qE "two voices: .*(Tom tried it|It never opens)" logcat.txt && echo "second voice, double quotes (chapter one): yes" || echo "second voice, double quotes (chapter one): NO"
-  grep -q "two voices: 2 parts.*Is anyone here" logcat.txt && echo "second voice, single quotes (chapter two): yes" || echo "second voice, single quotes (chapter two): NO"
-  grep -qE "two voices: [23] parts.*Hello, garden" logcat.txt && echo "second voice, dashes (chapter two): yes" || echo "second voice, dashes (chapter two): NO"
-  grep -q "two voices: 2 parts.*Nobody answers" logcat.txt && echo "second voice, guillemets (chapter two): yes" || echo "second voice, guillemets (chapter two): NO"; } > dual.txt
+{ grep -a -qE "two voices: .*(Tom tried it|It never opens)" logcat.txt && echo "second voice, double quotes (chapter one): yes" || echo "second voice, double quotes (chapter one): NO"
+  grep -a -q "two voices: 2 parts.*Is anyone here" logcat.txt && echo "second voice, single quotes (chapter two): yes" || echo "second voice, single quotes (chapter two): NO"
+  grep -a -qE "two voices: [23] parts.*Hello, garden" logcat.txt && echo "second voice, dashes (chapter two): yes" || echo "second voice, dashes (chapter two): NO"
+  grep -a -q "two voices: 2 parts.*Nobody answers" logcat.txt && echo "second voice, guillemets (chapter two): yes" || echo "second voice, guillemets (chapter two): NO"; } > dual.txt
 awk '/test: the next audio write fails/{f=1} f' foreground.txt > audiofail.txt
-{ grep -q "audio write failed" audiofail.txt && echo "audio output failed once: noticed" || echo "audio output failed once: NOT noticed (test hook not reached?)"
-  grep -q "audio write failed" audiofail.txt && { sed -n '/audio write failed/,$p' logcat.txt | grep -q "LoudbookTest: speaking" && echo "reading went on after it: yes" || echo "reading went on after it: NO"; }; } > audio.txt
+{ grep -a -q "audio write failed" audiofail.txt && echo "audio output failed once: noticed" || echo "audio output failed once: NOT noticed (test hook not reached?)"
+  grep -a -q "audio write failed" audiofail.txt && { sed -n '/audio write failed/,$p' logcat.txt | grep -a -q "LoudbookTest: speaking" && echo "reading went on after it: yes" || echo "reading went on after it: NO"; }; } > audio.txt
 awk '/=== no signal from here ===/{f=1} f' logcat.txt > nosignal.txt
-echo "no signal: chapters shown from their copy: $(grep -c 'shown from the copy read ahead' nosignal.txt), sentences not found on the page: $(grep -c "words weren't found" nosignal.txt)" > offline.txt
+echo "no signal: chapters shown from their copy: $(grep -a -c 'shown from the copy read ahead' nosignal.txt), sentences not found on the page: $(grep -a -c "words weren't found" nosignal.txt)" > offline.txt
 # cold start: Loudbook closed, opened again, play pressed with nothing open -> carries on with the last story
 adb reverse tcp:8000 tcp:8000
 adb shell am force-stop com.loudbook.app
@@ -48,7 +54,7 @@ adb shell wm dismiss-keyguard
 adb shell log -t LoudbookTest "=== reopened, play with nothing open ==="
 adb shell am start -n com.loudbook.app/.MainActivity
 sleep 25
-SIZE=$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1); W=${SIZE%x*}; H=${SIZE#*x}
+SIZE=$(adb shell wm size | grep -a -o '[0-9]*x[0-9]*' | tail -1); W=${SIZE%x*}; H=${SIZE#*x}
 adb shell input tap $((W * 46 / 100)) $((H * 89 / 100))          # the big play button
 sleep 30
 # text shared from another app (no link): read out
@@ -59,10 +65,10 @@ sleep 20
 adb shell log -t LoudbookTest "=== new chapter published ==="
 sed -i 's#<nav>#<nav><a href="ch4.html">Next chapter</a> #' test/chapters/ch3.html
 sed 's/Chapter Three: The House/Chapter Four: The Kettle/; s#ch2.html">Previous#ch3.html">Previous#' test/chapters/ch3.html > test/chapters/ch4.html
-adb shell dumpsys jobscheduler | grep -i "loudbook" | head -5 > jobs.txt
+adb shell dumpsys jobscheduler | grep -a -i "loudbook" | head -5 > jobs.txt
 adb shell cmd jobscheduler run -f com.loudbook.app 4711
 sleep 25
-adb shell dumpsys notification --noredact | grep -o "New chapter[^,]*" | head -3 | sed 's/^/notification: /' > newchapter.txt
+adb shell dumpsys notification --noredact | grep -a -o "New chapter[^,]*" | head -3 | sed 's/^/notification: /' > newchapter.txt
 # reopened after the new chapter came out: play with nothing open goes on to the new chapter
 adb shell am force-stop com.loudbook.app
 adb shell input keyevent KEYCODE_WAKEUP
@@ -72,21 +78,21 @@ adb shell am start -n com.loudbook.app/.MainActivity
 sleep 25
 adb shell input tap $((W * 46 / 100)) $((H * 89 / 100))          # the big play button
 sleep 25
-adb logcat -d > logcat.txt
-grep -o "resumed with the next chapter: [^ ]*" logcat.txt | head -1 | sed 's/^/new chapter on play: /' >> newchapter.txt
+snap
+grep -a -o "resumed with the next chapter: [^ ]*" logcat.txt | head -1 | sed 's/^/new chapter on play: /' >> newchapter.txt
 # reopened from Recents after a share: Android hands back the share that first opened it; it mustn't be read out again
 adb shell am force-stop com.loudbook.app
 adb shell log -t LoudbookTest "=== reopened from Recents after a share ==="
 adb shell am start -n com.loudbook.app/.MainActivity -f 0x10100000 -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "'Pelicans circled the harbour wall all afternoon.'"
 sleep 15
-adb logcat -d > logcat.txt
+snap
 sed -n '/=== reopened from Recents after a share/,$p' logcat.txt > recents-log.txt
-grep -q "opened again with its first intent" recents-log.txt && ! grep -q "Pelicans" recents-log.txt && echo "reopened from Recents: the old share not read again: yes" > recents.txt || {
+grep -a -q "opened again with its first intent" recents-log.txt && ! grep -a -q "Pelicans" recents-log.txt && echo "reopened from Recents: the old share not read again: yes" > recents.txt || {
   echo "reopened from Recents: the old share not read again: NO ($(wc -l < recents-log.txt) log lines after the marker; the last of them:)" > recents.txt
-  grep -E "LoudbookTest|Loudbook|ActivityTaskManager|AndroidRuntime" recents-log.txt | tail -12 | sed 's/^/    /' >> recents.txt
+  grep -a -E "LoudbookTest|Loudbook|ActivityTaskManager|AndroidRuntime" recents-log.txt | tail -12 | sed 's/^/    /' >> recents.txt
   tail -3 logcat.txt | sed 's/^/    (logcat ends) /' >> recents.txt; }
 # the start page gets "Continue listening" from LoudbookNative.home() (only the start page itself may ask, 2026-11-04)
-grep -q "start page: last story there" logcat.txt && ! grep -q "isn't the start page" logcat.txt && echo "start page shows the last story: yes" >> recents.txt || echo "start page shows the last story: NO" >> recents.txt
+grep -a -q "start page: last story there" logcat.txt && ! grep -a -q "isn't the start page" logcat.txt && echo "start page shows the last story: yes" >> recents.txt || echo "start page shows the last story: NO" >> recents.txt
 # the PC's audiobook played in Loudbook (BookPlayer + book.html, 2026-11-06): two short chapters pushed into Loudbook's files
 # (as BookCopy leaves them, the recordings in its own Audiobooks folder), played from chapter 1, on to chapter 2 by itself
 # (its own small log: cleared first, only Loudbook's lines. The whole 16 MB dump came back cut short late in the run,
@@ -106,17 +112,18 @@ adb shell ls -l "'$D/books/Test Book'" "'$D/Audiobooks/Test Book'" > book-files.
 adb shell input keyevent KEYCODE_WAKEUP; adb shell wm dismiss-keyguard
 adb shell am start -n com.loudbook.app/.MainActivity --es bookplay "'Test Book'" > book-start.txt 2>&1
 sleep 14
-adb shell dumpsys media_session | grep -E "Loudbook audiobook|state=PlaybackState" | head -4 > book-session.txt
+adb shell dumpsys media_session | grep -a -E "Loudbook audiobook|state=PlaybackState" | head -4 > book-session.txt
 sleep 6
-adb logcat -d -s LoudbookTest:* Loudbook:* AndroidRuntime:* MediaPlayer:E > book-log.txt
-cat book-log.txt >> logcat.txt
+snap
+sed -n '/=== audiobook ===/,$p' logcat.txt > book-log.txt
 {
-  grep -o 'book: test book .*' book-log.txt | head -1
-  grep -q "book: playing chapter 1 at" book-log.txt && echo "audiobook: chapter 1 plays: yes" || echo "audiobook: chapter 1 plays: NO"
-  grep -q "book: chapter 1 ended" book-log.txt && grep -q "book: playing chapter 2 at" book-log.txt && echo "audiobook: on to chapter 2 by itself: yes" || echo "audiobook: on to chapter 2 by itself: NO"
-  grep -q "Loudbook audiobook" book-session.txt && echo "audiobook: media session there (headphones, car): yes" || echo "audiobook: media session there: NO"
-  grep -E "book: (player error|opening|couldn't)" book-log.txt | head -3
-  grep -q "book: playing chapter 2 at" book-log.txt || {
+  grep -a -o 'book: test book .*' book-log.txt | head -1
+  grep -a -q "book: playing chapter 1 at" book-log.txt && echo "audiobook: chapter 1 plays: yes" || echo "audiobook: chapter 1 plays: NO"
+  grep -a -q "book: chapter 1 ended" book-log.txt && grep -a -q "book: playing chapter 2 at" book-log.txt && echo "audiobook: on to chapter 2 by itself: yes" || echo "audiobook: on to chapter 2 by itself: NO"
+  grep -a -q "Loudbook audiobook" book-session.txt && echo "audiobook: media session there (headphones, car): yes" || echo "audiobook: media session there: NO"
+  grep -a -E "book: (player error|opening|couldn't)" book-log.txt | head -3
+  grep -a -q "book: playing chapter 2 at" book-log.txt || {
     echo "  (start: $(tr '\n' ' ' < book-start.txt | cut -c1-200))"; sed 's/^/  (files) /' book-files.txt
-    grep -E "book|Book|AndroidRuntime" book-log.txt | tail -15 | sed 's/^/  /'; }
+    grep -a -E "book|Book|AndroidRuntime" book-log.txt | tail -15 | sed 's/^/  /'; }
 } > book.txt
+kill $LOGPID 2>/dev/null || true
