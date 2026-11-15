@@ -72,6 +72,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     /** The page shown when its renderer went away: opened again in the screen made anew. */
     private static String reopenAfterGone;
     private boolean webGone;
+    /** The page shown has finished loading (onPageFinished since the last onPageStarted). */
+    private boolean pageLoaded;
     private EditText address;
     private TextView storyText, chapterText, nowText, statusText, speedBtn;
     private android.widget.ImageView playBtn;
@@ -476,9 +478,10 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 // (the audiobook page has its own controls: the reader's would play something else)
                 if (playerPanel != null) playerPanel.setVisibility(url.startsWith(BOOKS) || readingMode ? View.GONE : View.VISIBLE);
                 pageChapter = null;
+                pageLoaded = false;
                 readThisBtn.setVisibility(View.GONE);
             }
-            @Override public void onPageFinished(WebView v, String url) { inject(url); }
+            @Override public void onPageFinished(WebView v, String url) { pageLoaded = true; inject(url); }
             @Override public void onReceivedError(WebView v, WebResourceRequest r, android.webkit.WebResourceError e) {
                 // the chapter being read didn't load (no signal): its text, read ahead, is shown instead
                 // of the browser's error page, so it can still be followed and highlighted. (The error
@@ -490,7 +493,12 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             }
             @Override public void doUpdateVisitedHistory(WebView v, String url, boolean reload) {
                 // sites that change chapter without a page load (history.pushState)
-                if (!reload && url.startsWith("http") && (pageChapter == null || !url.equals(pageChapter.url))) main.postDelayed(() -> inject(web.getUrl()), 1200);
+                // (only once the page has loaded: this also comes at the start of every ordinary load, and the page read
+                //  1.2 s in on a slow connection was half there: a cut-short chapter read, or "couldn't find the text")
+                if (!reload && url.startsWith("http") && (pageChapter == null || !url.equals(pageChapter.url))) main.postDelayed(() -> {
+                    String now = web.getUrl();
+                    if (pageLoaded && now != null && (pageChapter == null || !now.equals(pageChapter.url))) inject(now);
+                }, 1200);
             }
         });
         // long-press a paragraph: read from there
