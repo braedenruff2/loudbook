@@ -7,7 +7,7 @@ import json, os, subprocess, sys, tempfile, time, urllib.request
 T = tempfile.mkdtemp()
 PORT, STUDIO = 8797, 8799
 env = dict(os.environ, LOUDBOOK_STATE=T + "/state", LOUDBOOK_PORT=str(PORT), LOUDBOOK_STUDIO_PORT=str(STUDIO),
-           LOUDBOOK_FAKE_BEST="1", LOUDBOOK_FAKE_BEST_SECS="0.05", LOUDBOOK_BOOKS=T + "/books")
+           LOUDBOOK_FAKE_BEST="1", LOUDBOOK_FAKE_BEST_SECS="0.05", LOUDBOOK_BOOKS=T + "/books", LOUDBOOK_FAIL_WAIT="1")
 os.makedirs(T + "/books/text")
 with open(T + "/books/text/1.json", "w") as f:
     json.dump([["First sentence of the book.", "Another one here."], [["Say it, Tavi!", "Tavi"]], ["The end of it."]], f)
@@ -16,6 +16,10 @@ with open(T + "/books/test.job.json", "w") as f:
     json.dump({"title": "Test Book", "voice": 3, "out": "Test Book", "chapters": [{"name": "One", "file": "text/1.json"}, {"name": "Two", "file": "text/2.json"}]}, f)
 with open(T + "/books/0 voice sample 1.job.json", "w") as f:
     json.dump({"title": "Voice samples", "voice": "s17/e0.75", "out": "Voice samples", "chapters": [{"name": "1 - Onyx, expressive", "file": "text/2.json", "say_title": False}]}, f)
+# two broken jobs named before the real one: a chapter that isn't an object (ended the recording thread for good) and a
+# chapter whose text file is missing (retried every minute forever, holding up every later book)
+with open(T + "/books/0 broken.job.json", "w") as f: json.dump({"title": "Broken", "chapters": ["text/1.json", None]}, f)
+with open(T + "/books/0 missing.job.json", "w") as f: json.dump({"title": "Missing", "chapters": [{"name": "Gone", "file": "text/nope.json"}]}, f)
 here = os.path.dirname(os.path.abspath(__file__))
 srv = subprocess.Popen([sys.executable, "-u", os.path.join(here, "..", "loudbook_server.py"), "serve", "--fake"], env=env,
                        stdout=open(T + "/server.log", "w"), stderr=subprocess.STDOUT)
@@ -41,9 +45,13 @@ def wait(cond, secs=60):
     return False
 try:
     check("studio up", wait(lambda: call("/")[0] == 200, 30))
-    check("both chapters and the sample recorded", wait(lambda: all(b["done"] == b["total"] for b in js("/api/books")["books"]), 90))
+    check("both chapters and the sample recorded (broken jobs before them passed over)",
+          wait(lambda: all(b["done"] == b["total"] for b in js("/api/books")["books"] if b["title"] in ("Test Book", "Voice samples")), 90))
+    log = open(T + "/server.log").read()
+    check("the missing chapter tried 3 times, then passed over", log.count("audiobook chapter failed") == 3)
+    check("the bad job left out, said once", log.count("broken.job.json: chapter") == 1)
     lib = js("/api/books")
-    check("books listed, sample marked", sorted((b["title"], b["sample"]) for b in lib["books"]) == [("Test Book", False), ("Voice samples", False if False else True)])
+    check("books listed, sample marked", sorted((b["title"], b["sample"]) for b in lib["books"] if b["title"] != "Missing") == [("Test Book", False), ("Voice samples", False if False else True)])
     check("phone voice names read from Voice.java", any(v["id"] == 3 and v["name"].startswith("Heart") for v in lib["kokoro"]))
     check("book voice named", next(b for b in lib["books"] if b["title"] == "Test Book")["voiceName"].startswith("Heart"))
     check("sample listed with its voice", lib["samples"] and lib["samples"][0]["voiceName"].startswith("Onyx") and lib["samples"][0]["recorded"])

@@ -616,7 +616,7 @@ class Ahead:
         os.makedirs(cls.dir(), exist_ok=True)
         f = cls.file(key)
         with open(f + ".part", "wb") as h: h.write(int(rate).to_bytes(4, "little")); h.write(pcm)
-        os.replace(f + ".part", f)
+        swap_in(f + ".part", f, wait=5)              # (the phone may be getting the same sentence from it right now)
         cls.stores += 1
         if cls.stores % 25 == 1: cls.trim()
 
@@ -693,6 +693,7 @@ def best_engine():
 
 
 # ------------------------------------------------------------------ audiobooks (whole books, recorded on the PC)
+FAIL_WAIT = float(os.environ.get("LOUDBOOK_FAIL_WAIT") or 60)   # (seconds before a failed chapter is tried again; tests: less)
 BOOKS = os.environ.get("LOUDBOOK_BOOKS") or os.path.join(os.path.expanduser("~"), "Desktop", "Loudbook audiobooks")
 
 
@@ -706,6 +707,19 @@ class Books:
     secs_work = 0.0
 
     heard = collections.Counter()
+    warned = set()
+    # chapters that failed 3 times in a row are passed over (one with a missing text file stopped every later chapter and
+    # book, retried every minute forever); keyed by job, index, name and file, so fixing the job tries it again
+    fails = {}
+    FAIL_LIMIT = 3
+
+    @classmethod
+    def fail_key(cls, n, j, k):
+        c = j["chapters"][k]
+        return (n, k, str(c.get("name", "")), str(c.get("file", "")))
+
+    @classmethod
+    def given_up(cls, n, j, k): return cls.fails.get(cls.fail_key(n, j, k), 0) >= cls.FAIL_LIMIT
 
     @classmethod
     def remember_voice(cls, who):
@@ -723,7 +737,13 @@ class Books:
         for n in names:
             try:
                 with open(os.path.join(BOOKS, n), encoding="utf-8") as f: j = json.load(f)
-                if isinstance(j, dict) and isinstance(j.get("chapters"), list): out.append((n, j))
+                if not (isinstance(j, dict) and isinstance(j.get("chapters"), list)): continue
+                # (every chapter an object with its text file: a bare name or a null ended the recording thread for good)
+                bad = [i for i, c in enumerate(j["chapters"]) if not (isinstance(c, dict) and isinstance(c.get("file"), str))]
+                if bad:
+                    if n not in cls.warned: print(f"Loudbook PC voice: audiobook job {n}: chapter {bad[0] + 1} isn't {{\"name\", \"file\"}}: left out", flush=True)
+                    cls.warned.add(n); continue
+                out.append((n, j))
             except Exception as e:
                 print(f"Loudbook PC voice: audiobook job {n} can't be read: {e!r}"[:200], flush=True)
         return out
@@ -778,7 +798,7 @@ class Books:
         """Does a job named before this one have a chapter to make?"""
         for n, j in cls.jobs():
             if n >= name: return False
-            if any(not os.path.exists(cls.chapter_path(j, k) + ".mp3") for k in range(len(j["chapters"]))): return True
+            if any(not os.path.exists(cls.chapter_path(j, k) + ".mp3") and not cls.given_up(n, j, k) for k in range(len(j["chapters"]))): return True
         return False
 
     @classmethod
@@ -786,7 +806,7 @@ class Books:
         """(job file, job, chapter index) of the first chapter not made yet, in job-name order; None if all are made."""
         for n, j in cls.jobs():
             for k in range(len(j["chapters"])):
-                if not os.path.exists(cls.chapter_path(j, k) + ".mp3"): return n, j, k
+                if not os.path.exists(cls.chapter_path(j, k) + ".mp3") and not cls.given_up(n, j, k): return n, j, k
         return None
 
     @classmethod
@@ -964,13 +984,19 @@ class Books:
         else: b = best_engine()
         if b is None: cls.idle_until = time.time() + 300; cls.status("Waiting: the best-quality voice couldn't be loaded on this PC."); return False
         Ahead.last_used = time.time()
-        try: cls.make_chapter(b, *nxt)
+        try:
+            cls.make_chapter(b, *nxt)
+            cls.fails.pop(cls.fail_key(*nxt), None)
         except Exception as e:
             import traceback
             print("Loudbook PC voice: audiobook chapter failed:", repr(e)[:300], flush=True)
             print("".join(traceback.format_exc().splitlines(True)[-6:]), flush=True)
-            cls.status(f"Stopped at {nxt[1].get('title', nxt[0])} chapter {nxt[2] + 1}: {e!r}"[:300])
-            cls.idle_until = time.time() + 60
+            key = cls.fail_key(*nxt)
+            cls.fails[key] = cls.fails.get(key, 0) + 1
+            gave_up = cls.fails[key] >= cls.FAIL_LIMIT
+            cls.status((f"Skipped {nxt[1].get('title', nxt[0])} chapter {nxt[2] + 1} after {cls.FAIL_LIMIT} tries (fix it and it's tried again): {e!r}"
+                        if gave_up else f"Stopped at {nxt[1].get('title', nxt[0])} chapter {nxt[2] + 1}: {e!r}")[:300])
+            cls.idle_until = time.time() + (0 if gave_up else FAIL_WAIT)
         Ahead.last_used = time.time()
         return True
 
@@ -1239,7 +1265,7 @@ class Studio:
         os.makedirs(keep, exist_ok=True)
         for ext in (".mp3", ".json"):
             if os.path.exists(dest + ext): os.replace(dest + ext, os.path.join(keep, os.path.basename(dest) + ext))
-        Books.idle_until = 0; Books.pending = True
+        Books.idle_until = 0; Books.pending = True; Books.fails.clear()
         return "the old recording is in _replaced; the chapter is recorded again next"
 
 
@@ -1333,12 +1359,11 @@ class StudioHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(e - a + 1))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
+        # (the part asked for read at once and the file closed: the page's player kept it open, and on Windows "Again"
+        #  couldn't put the new MP3 in its place)
         with open(f, "rb") as h:
-            h.seek(a); left = e - a + 1
-            while left > 0:
-                b = h.read(min(left, 256 * 1024))
-                if not b: break
-                self.wfile.write(b); left -= len(b)
+            h.seek(a); data = h.read(e - a + 1)
+        for o in range(0, len(data), 256 * 1024): self.wfile.write(data[o:o + 256 * 1024])
 
     def do_POST(self):
         if not self.ok_host(): return
@@ -1377,9 +1402,19 @@ def studio_serve():
 
 def ahead_worker():
     while True:
-        if Studio.work(): continue                  # (he's waiting at the studio page)
+        # (anything unexpected, e.g. a CUDA error while loading: said, then on with the next thing; it ended the thread
+        #  for good, and nothing was recorded or made ahead again until the server restarted, with no sign of it)
+        try: ahead_step()
+        except Exception as e:
+            print("Loudbook PC voice: the recording thread hit an error (going on):", repr(e)[:300], flush=True)
+            time.sleep(10)
+
+
+def ahead_step():
+    if True:
+        if Studio.work(): return                    # (he's waiting at the studio page)
         it = Ahead.next()
-        if it is None and Books.work(): continue
+        if it is None and Books.work(): return
         if it is None:
             # (nothing to make for half an hour: the full model gives the card back to Turbo for live reading)
             b = Handler.best
@@ -1390,13 +1425,13 @@ def ahead_worker():
                         with b.lock: b.close()
                         print("Loudbook PC voice: nothing to make ahead: the natural voice (Turbo) is back", flush=True)
                         Handler.natural = load_natural(Handler.engine)
-            continue
+            return
         key, text, ktext, who = it
         b = best_engine()
         if b is None:                                   # (couldn't load it: the sentence waits, and loading is tried later)
             with Ahead.cond:
                 if key not in Ahead.queued: Ahead.queue.appendleft(it); Ahead.queued.add(key)
-            time.sleep(30); continue
+            time.sleep(30); return
         while Ahead.live > 0: time.sleep(0.2)          # (a sentence the phone is waiting for comes first)
         Ahead.making = 1
         try:
@@ -1562,12 +1597,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
             f = Books.file_for(parse_qs(self.path.split("?", 1)[1]).get("p", [""])[0])
             if not f: return self.reply(404, {"error": "no such file"})
             n = os.path.getsize(f)
+            # (a chapter is read whole and the file closed before sending: on Windows a file being sent can't be replaced,
+            #  and a slow phone held it open past the studio's wait, leaving new timings beside the old audio)
+            data = None
+            if n <= 128 * 1024 * 1024:
+                with open(f, "rb") as h: data = h.read()
+                n = len(data)
             self.send_response(200)
             self.send_header("Content-Type", "audio/mpeg" if f.endswith(".mp3") else "application/epub+zip" if f.lower().endswith(".epub") else "application/json")
             self.send_header("Content-Length", str(n))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.connection.settimeout(60)
+            if data is not None:
+                for o in range(0, len(data), 256 * 1024): self.wfile.write(data[o:o + 256 * 1024])
+                return
             with open(f, "rb") as h:
                 while True:
                     b = h.read(256 * 1024)
