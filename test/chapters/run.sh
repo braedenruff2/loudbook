@@ -149,4 +149,16 @@ sed -n '/=== make audio now ===/,$p' logcat.txt > ahead-log.txt
   [ "$(grep -a -c '\.m4a' ahead-files.txt)" -ge 2 ] && echo "make audio now: audio files kept: yes" || { echo "make audio now: audio files kept: NO"; sed 's/^/  (files) /' ahead-files.txt; }
   [ "$made" = 2 ] || grep -a -E "ahead|AndroidRuntime" ahead-log.txt | tail -8 | sed 's/^/  /'
 } > ahead.txt
+# the first made chapter read in the reader: its sentences come from what was made (BookAudio), and the AAC decoder's
+# extra samples at the start are measured ("times moved": RecMatch.shift)
+adb shell log -t LoudbookTest "=== made chapter played ==="
+adb shell am start -n com.loudbook.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "https://book.loudbook.invalid/Ahead%20Book/0001%20-%20Ahead%20One.text.json" --ez play true > made-start.txt 2>&1
+sleep 25
+snap
+sed -n '/=== made chapter played ===/,$p' logcat.txt > made-log.txt
+{
+  grep -a -o 'book: [0-9]* of [0-9]* sentences are in the .*' made-log.txt | head -1
+  grep -a -q -E 'book: ([1-9][0-9]*) of \1 sentences are in' made-log.txt && echo "make audio now: the made chapter plays from what was made: yes" || echo "make audio now: the made chapter plays from what was made: NO"
+  grep -a -o 'book: made-ahead chapter decoded: .*' made-log.txt | head -1
+} >> ahead.txt
 kill $LOGPID 2>/dev/null || true
