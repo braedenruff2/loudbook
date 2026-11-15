@@ -316,6 +316,21 @@ public class UnitTest {
         check("dashes: unspaced dashes inside speech", str(Dialogue.split("\u2014I was\u2014well\u2014scared.", false, false, "", true)), "[q:I was\u2014well\u2014scared.]");
         check("dashes: unspaced tag to the end", str(Dialogue.split("\u2014Por aqu\u00ed hay agua\u2014dijo a su compa\u00f1ero.", false, false, "", true)), "[q:Por aqu\u00ed hay agua][n:dijo a su compa\u00f1ero.]");
         check("dashes: speech goes on after the tag", str(Dialogue.split("\u2014Ese ruido\u2014replic\u00f3 el ciego\u2014y que parece.", false, false, "", true)), "[q:Ese ruido][n:replic\u00f3 el ciego][q:y que parece.]");
+        // the reader's sentences -> the recording's (BookAudio via RecMatch)
+        {
+            java.util.List<String> rec = java.util.Arrays.asList("a", "b", "yes", "c", "d", "e", "f", "yes", "g");
+            java.util.List<String> mine = java.util.Arrays.asList("a", "b", "yes", "c", "d", "e", "f", "yes", "g");
+            check("rec match: same", java.util.Arrays.toString(RecMatch.align(mine, rec)), "[0, 1, 2, 3, 4, 5, 6, 7, 8]");
+            // the recording folded the first "yes" into a longer sentence: the second "yes" mustn't take it (c..f were lost)
+            java.util.List<String> rec2 = java.util.Arrays.asList("a", "byes", "c", "d", "e", "f", "yes", "g");
+            java.util.List<String> mine2 = java.util.Arrays.asList("a", "b", "yes", "c", "d", "e", "f", "yes", "g");
+            check("rec match: a repeated short line doesn't jump ahead", java.util.Arrays.toString(RecMatch.align(mine2, rec2)), "[0, -1, -1, 2, 3, 4, 5, 6, 7]");
+            java.util.List<String> rec3 = new java.util.ArrayList<>(java.util.Arrays.asList("title"));
+            for (int k = 0; k < 12; k++) rec3.add("note" + k);
+            rec3.addAll(java.util.Arrays.asList("x", "y"));
+            check("rec match: a long stretch the reader hasn't doesn't stop the rest", java.util.Arrays.toString(RecMatch.align(java.util.Arrays.asList("title", "x", "", "y"), rec3)), "[0, 13, -1, 14]");
+            check("rec match: nothing", RecMatch.align(new java.util.ArrayList<>(), rec).length, 0);
+        }
         // "What's new": one change at a time, and each shown only once
         {
             String v1 = "Kindle: the highlight is right. Numbers: \"Mr. He\" and \"e.g. Ext. 204\" read right.\nOlder: a thing (J. K. Rowling) fixed.";

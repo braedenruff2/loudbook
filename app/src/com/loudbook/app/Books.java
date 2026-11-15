@@ -125,18 +125,43 @@ final class Books {
     }
 
     /** The chapter's recording on this phone, or null if it isn't here. */
+    /** A recording's name without the " (1)" the phone adds when the name is taken by a file it won't show Loudbook
+     *  (one copied by Loudbook before it was reinstalled, or a half copy left pending): "0001 - X (1).mp3" -> "0001 - X.mp3".
+     *  (Chapter names start with their number, so two real chapters can't differ only by that.) */
+    static String plainName(String n) { return n == null ? "" : n.replaceFirst(" \\(\\d+\\)(\\.mp3)$", "$1"); }
+
+    /** Loudbook's rows in Audiobooks/<book>/: {_ID, DISPLAY_NAME}; pending ones (a copy cut off) too if asked. */
+    static android.database.Cursor folder(Context ctx, String book, boolean pending) {
+        Uri coll = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
+        String[] cols = {MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME};
+        String sel = MediaStore.MediaColumns.RELATIVE_PATH + "=?";
+        String[] args = {Environment.DIRECTORY_AUDIOBOOKS + "/" + book + "/"};
+        if (pending && Build.VERSION.SDK_INT >= 30) {
+            android.os.Bundle b = new android.os.Bundle();
+            b.putString(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION, sel);
+            b.putStringArray(android.content.ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS, args);
+            b.putInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_INCLUDE);
+            return ctx.getContentResolver().query(coll, cols, b, null);
+        }
+        return ctx.getContentResolver().query(coll, cols, sel, args, null);
+    }
+
     static Uri audio(Context ctx, String book, Chapter c) {
         // (Loudbook's own Audiobooks folder: where older phones keep them, and where the emulator test puts them)
         File own = new File(new File(ctx.getExternalFilesDir(Environment.DIRECTORY_AUDIOBOOKS), book), c.mp3);
         if (own.isFile()) return Uri.fromFile(own);
         if (Build.VERSION.SDK_INT < 29) return null;
         Uri coll = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
-        try (android.database.Cursor q = ctx.getContentResolver().query(coll, new String[]{MediaStore.MediaColumns._ID},
-                MediaStore.MediaColumns.RELATIVE_PATH + "=? AND " + MediaStore.MediaColumns.DISPLAY_NAME + "=?",
-                new String[]{Environment.DIRECTORY_AUDIOBOOKS + "/" + book + "/", c.mp3}, null)) {
-            if (q != null && q.moveToFirst()) return ContentUris.withAppendedId(coll, q.getLong(0));
+        // (its own name, or that name with the phone's " (1)": the newest copy if there are several)
+        long best = -1; boolean exact = false;
+        try (android.database.Cursor q = folder(ctx, book, false)) {
+            while (q != null && q.moveToNext()) {
+                String n = q.getString(1); long id = q.getLong(0);
+                if (c.mp3.equals(n)) { if (!exact || id > best) best = id; exact = true; }
+                else if (!exact && c.mp3.equals(plainName(n)) && id > best) best = id;
+            }
         } catch (Exception e) { Log.w(TAG, "book: finding " + c.mp3, e); }
-        return null;
+        return best < 0 ? null : ContentUris.withAppendedId(coll, best);
     }
 
     /** The recordings of a book that are on this phone (MP3 names). */
@@ -145,10 +170,8 @@ final class Books {
         String[] own = new File(ctx.getExternalFilesDir(Environment.DIRECTORY_AUDIOBOOKS), book).list();
         if (own != null) out.addAll(Arrays.asList(own));
         if (Build.VERSION.SDK_INT < 29) return out;
-        Uri coll = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
-        try (android.database.Cursor q = ctx.getContentResolver().query(coll, new String[]{MediaStore.MediaColumns.DISPLAY_NAME},
-                MediaStore.MediaColumns.RELATIVE_PATH + "=?", new String[]{Environment.DIRECTORY_AUDIOBOOKS + "/" + book + "/"}, null)) {
-            while (q != null && q.moveToNext()) out.add(q.getString(0));
+        try (android.database.Cursor q = folder(ctx, book, false)) {
+            while (q != null && q.moveToNext()) { out.add(q.getString(1)); out.add(plainName(q.getString(1))); }
         } catch (Exception e) { Log.w(TAG, "book: listing " + book, e); }
         return out;
     }
@@ -178,8 +201,7 @@ final class Books {
         if (Build.VERSION.SDK_INT >= 29) {
             Uri coll = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
             List<Long> ids = new ArrayList<>();
-            try (android.database.Cursor q = ctx.getContentResolver().query(coll, new String[]{MediaStore.MediaColumns._ID},
-                    MediaStore.MediaColumns.RELATIVE_PATH + "=?", new String[]{Environment.DIRECTORY_AUDIOBOOKS + "/" + book + "/"}, null)) {
+            try (android.database.Cursor q = folder(ctx, book, true)) {        // (a half copy left pending too)
                 while (q != null && q.moveToNext()) ids.add(q.getLong(0));
             } catch (Exception e) { Log.w(TAG, "book: listing " + book + " to delete", e); }
             for (long id : ids) {

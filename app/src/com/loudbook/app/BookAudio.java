@@ -35,6 +35,7 @@ final class BookAudio {
         final String key; final Uri mp3; final List<String> words = new ArrayList<>(); final List<double[]> times = new ArrayList<>();
         Chapter boundTo; final Map<Integer, Integer> bound = new HashMap<>();
         File pcm; volatile long frames; volatile int rate; volatile boolean done, failed; boolean started;
+        volatile long failedAt;
         /** Made on the phone ahead (AheadMaker): its voice and the speed it was made at; -1 / 1 for the PC's recordings. */
         int sid = -1; float madeAt = 1f; String stamp = "";
         Rec(String key, Uri mp3) { this.key = key; this.mp3 = mp3; }
@@ -53,6 +54,8 @@ final class BookAudio {
 
     private static synchronized Rec rec(Context ctx, Chapter ch) {
         Rec r = recs.get(ch.url);
+        // (a recording that failed to decode is tried again after a minute: it may have been copied again meanwhile)
+        if (r != null && r.failed && r.failedAt > 0 && System.currentTimeMillis() - r.failedAt > 60_000) { recs.remove(ch.url); r = null; }
         if (r != null) return r;
         Long no = none.get(ch.url);
         if (no != null && System.currentTimeMillis() - no < 60_000) return null;
@@ -123,13 +126,10 @@ final class BookAudio {
     private static synchronized Integer boundAt(Rec r, Chapter ch, int i) {
         if (r.boundTo != ch) {
             r.boundTo = ch; r.bound.clear();
-            int s = 0;
-            for (int k = 0; k < ch.size() && s < r.words.size(); k++) {
-                String w = words(ch.chunks.get(k).say);
-                if (w.isEmpty()) continue;
-                for (int look = s; look < Math.min(r.words.size(), s + 8); look++)
-                    if (r.words.get(look).equals(w)) { r.bound.put(k, look); s = look + 1; break; }
-            }
+            List<String> mine = new ArrayList<>();
+            for (int k = 0; k < ch.size(); k++) mine.add(words(ch.chunks.get(k).say));
+            int[] at = RecMatch.align(mine, r.words);
+            for (int k = 0; k < at.length; k++) if (at[k] >= 0) r.bound.put(k, at[k]);
             Log.i(TAG, "book: " + r.bound.size() + " of " + ch.size() + " sentences are in the PC's recording");
         }
         return r.bound.get(i);
@@ -210,6 +210,8 @@ final class BookAudio {
             try {
                 r.rate = Integer.parseInt(new String(java.nio.file.Files.readAllBytes(ok.toPath())).trim());
                 r.frames = r.pcm.length() / 2; r.done = true;
+                // (used now: trim keeps the newest files, and this one, decoded long ago, was the oldest while it played)
+                r.pcm.setLastModified(System.currentTimeMillis());
                 return;
             } catch (Exception ignored) { }
         }
@@ -298,6 +300,7 @@ final class BookAudio {
                 Log.i(TAG, "book: recording decoded (" + frames / Math.max(1, rate) + " s)");
             } catch (Exception e) {
                 Log.w(TAG, "book: decoding the recording", e);
+                r.failedAt = System.currentTimeMillis();
                 r.failed = true;
             } finally {
                 try { if (dec != null) { dec.stop(); dec.release(); } } catch (Exception ignored) { }

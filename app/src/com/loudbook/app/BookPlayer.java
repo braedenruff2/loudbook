@@ -88,7 +88,8 @@ public final class BookPlayer extends Service {
     static boolean isPlaying() { BookPlayer p = me; return p != null && p.playing; }
 
     private interface Op { void on(BookPlayer p); }
-    private static void run(Op op) { BookPlayer p = me; if (p != null) p.main.post(() -> op.on(p)); }
+    // (not on a player closed meanwhile: resume() there made a MediaPlayer nothing could stop)
+    private static void run(Op op) { BookPlayer p = me; if (p != null) p.main.post(() -> { if (me == p) op.on(p); }); }
 
     /** {book, ch (index), file, title, ms, dur, playing, speed, error} for the book page. */
     static String state(Context ctx) {
@@ -212,7 +213,7 @@ public final class BookPlayer extends Service {
         Uri u = Books.audio(this, book, c);
         if (u == null) {
             error = "The recording of \"" + c.title + "\" isn't on this phone. Tap “Get chapters from my PC”.";
-            playing = false; update();
+            playing = false; letGo(); update();
             return;
         }
         startAt = ms;
@@ -228,14 +229,19 @@ public final class BookPlayer extends Service {
             if (startAt < 0) startAt = Math.max(0, d + startAt);       // (from the end: back over a chapter's start)
             if (startAt > 0 && startAt < d - 500) m.seekTo(startAt);
             applySpeed();
-            if (go) resume(); else { playing = false; update(); }
+            // (what's wanted now, not when it was opened: paused while opening (headphones out, the reader's voice
+            //  started) stays paused; Play pressed while opening plays)
+            if (playing) resume(); else update();
         });
         mp.setOnCompletionListener(m -> { if (m == mp) { Log.i("LoudbookTest", "book: chapter " + (ch + 1) + " ended"); next(); } });
         mp.setOnErrorListener((m, what, extra) -> {
             if (m != mp) return true;
             Log.w(TAG, "book: player error " + what + "/" + extra + " in " + c.mp3);
             error = "Couldn't play \"" + c.title + "\" (error " + what + "/" + extra + ").";
-            playing = false; prepared = false; update();
+            // (the player is broken now: Play opens the chapter again instead of waiting for it forever)
+            try { m.release(); } catch (Exception ignored) { }
+            mp = null;
+            playing = false; prepared = false; letGo(); update();
             return true;
         });
         try { mp.setDataSource(this, u); mp.prepareAsync(); }
@@ -273,9 +279,12 @@ public final class BookPlayer extends Service {
         if (mp != null && prepared) { try { mp.pause(); } catch (Exception ignored) { } }
         playing = false;
         save();
-        if (wake.isHeld()) wake.release();
+        letGo();
         update();
     }
+
+    /** The CPU may sleep again (held 6 hours while playing: the book's end and errors kept it). */
+    private void letGo() { try { if (wake != null && wake.isHeld()) wake.release(); } catch (Exception ignored) { } }
 
     private void seek(int ms) {
         if (mp == null || !prepared) { startAt = Math.max(0, ms); return; }
@@ -296,7 +305,7 @@ public final class BookPlayer extends Service {
         if (ch + 1 >= chapters.size()) {
             // (the last chapter on the phone: the PC may have finished more since, copied next time)
             chapters = Books.chapters(this, book);
-            if (ch + 1 >= chapters.size()) { playing = false; error = "That's the last chapter on this phone."; release(); save(chapters.size() - 1, 0); update(); return; }
+            if (ch + 1 >= chapters.size()) { playing = false; error = "That's the last chapter on this phone."; release(); letGo(); save(chapters.size() - 1, 0); update(); return; }
         }
         ch++;
         open(0, true);                                     // (on to the next chapter: plays)

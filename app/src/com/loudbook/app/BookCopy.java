@@ -53,6 +53,8 @@ final class BookCopy {
             int slash = f.path.indexOf('/');
             if (slash <= 0) continue;
             String book = f.path.substring(0, slash), name = f.path.substring(slash + 1);
+            // (a name from the PC never reaches outside Loudbook's folders: "../x" or a deeper path is left out)
+            if (!Books.safe(book) || !Books.safe(name)) { Log.w(TAG, "audiobook: odd name from the PC left out: " + f.path); continue; }
             p.at("Copying " + (copied + 1) + " of " + todo + ": " + name);
             if (name.endsWith(".mp3")) saveAudio(ctx, l, f, book, name);
             else {
@@ -176,11 +178,9 @@ final class BookCopy {
     private static Set<String> audioNames(Context ctx, String book) {
         if (Build.VERSION.SDK_INT < 29) return null;
         Set<String> out = new HashSet<>();
-        Uri coll = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
-        try (android.database.Cursor c = ctx.getContentResolver().query(coll, new String[]{MediaStore.MediaColumns.DISPLAY_NAME},
-                MediaStore.MediaColumns.RELATIVE_PATH + "=?", new String[]{Environment.DIRECTORY_AUDIOBOOKS + "/" + book + "/"}, null)) {
+        try (android.database.Cursor c = Books.folder(ctx, book, false)) {
             if (c == null) return null;
-            while (c.moveToNext()) out.add(c.getString(0));
+            while (c.moveToNext()) { out.add(c.getString(1)); out.add(Books.plainName(c.getString(1))); }   // ("X (1).mp3" counts as X)
         } catch (Exception e) { Log.w(TAG, "audiobook: listing " + book, e); return null; }
         return out;
     }
@@ -199,10 +199,11 @@ final class BookCopy {
         ContentResolver cr = ctx.getContentResolver();
         Uri coll = MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
         String rel = Environment.DIRECTORY_AUDIOBOOKS + "/" + book + "/";
-        // (copied before and changed since: the old one goes first, so the folder doesn't get "name (1).mp3")
-        try (android.database.Cursor c = cr.query(coll, new String[]{MediaStore.MediaColumns._ID},
-                MediaStore.MediaColumns.RELATIVE_PATH + "=? AND " + MediaStore.MediaColumns.DISPLAY_NAME + "=?", new String[]{rel, name}, null)) {
-            while (c != null && c.moveToNext()) cr.delete(android.content.ContentUris.withAppendedId(coll, c.getLong(0)), null, null);
+        // (copied before and changed since: the old one goes first, so the folder doesn't get "name (1).mp3"; also its
+        //  " (1)" copies and a half copy left pending when Loudbook was stopped mid-copy, which the phone hides by default)
+        try (android.database.Cursor c = Books.folder(ctx, book, true)) {
+            while (c != null && c.moveToNext())
+                if (name.equals(Books.plainName(c.getString(1)))) cr.delete(android.content.ContentUris.withAppendedId(coll, c.getLong(0)), null, null);
         } catch (Exception e) { Log.w(TAG, "audiobook: replacing " + name, e); }
         ContentValues v = new ContentValues();
         v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
