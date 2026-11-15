@@ -95,7 +95,7 @@ public class GeminiStreamTest {
         for (String[] run : runs) {
             mode = run[0];
             int from = Integer.parseInt(run[1]);
-            CloudVoice.lastWay = -1;
+            CloudVoice.forgetWays();
             synchronized (bodies) { bodies.clear(); }
             // what Kokoro says for sentences from..end, with the true start of each
             java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
@@ -206,7 +206,7 @@ public class GeminiStreamTest {
         // packed: the end of one chapter and the start of the next in one request
         {
             mode = "streamed";
-            CloudVoice.lastWay = -1;
+            CloudVoice.forgetWays();
             int split = 12;
             List<Chapter.Chunk> a1 = new ArrayList<>(), a2 = new ArrayList<>();
             for (int i = 0; i < text.length; i++) (i < split ? a1 : a2).add(new Chapter.Chunk(i / 4, text[i], text[i]));
@@ -260,7 +260,7 @@ public class GeminiStreamTest {
             one.add(new Chapter.Chunk(0, say, say));
             for (String how : new String[]{"streamed", "all at once", "far too long"}) {
                 mode = how.equals("streamed") ? "streamed" : "all at once";
-                CloudVoice.lastWay = -1;
+                CloudVoice.forgetWays();
                 java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
                 for (int g = 0; g < rate * 3 / 10; g++) { out.write(0); out.write(0); }
                 String[] spoken = how.equals("far too long") ? java.util.Arrays.copyOf(text, 3) : new String[]{say};

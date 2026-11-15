@@ -1074,9 +1074,13 @@ function tidy(t) {
     .replace(/(\d)['′](?=\s+(?:wide|tall|long|high|deep|across|thick|away|square|by)\b)/g, (m, d, at, all) => d + (/\b[Aa]n?\s+\d*$/.test(all.slice(Math.max(0, at - 8), at + 1)) ? '-foot' : ' feet'))   // a 3' wide door (the voice dropped the foot mark)
     .replace(/\b(\d+(?:st|nd|rd|th))\s+fl\.(?=\s|$)/g, (m, n, at, all) => n + ' floor' + (/^\s*$/.test(all.slice(at + m.length)) ? '.' : ''))   // the 23rd fl.
     .replace(/\b(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d\d))?\s?USD\b/g, (m, n, c) => n + (n === '1' ? ' dollar' : ' dollars') + (c && +c ? ' ' + +c : ''))   // 3.99 USD
+    // "S2E5" -> season 2, episode 5; "ep. 4 of S2" (was "S two"); reader-insert stories' "Y/N" ("your name"), but a game's
+    // "Accept? Y/N" is yes or no
+    .replace(/\bS(\d{1,2})\s?E(\d{1,3})\b/g, 'season $1, episode $2').replace(/(\b[Ee]p(?:isode|\.)?\s*\d{1,3}\s+(?:of|in|from)\s+)S(\d{1,2})\b(?![-\w])/g, '$1season $2')
+    .replace(/([?？]\s*[\[(]?)Y\/N\b/g, '$1yes or no').replace(/\bY\/N\b/g, (m, at, all) => (/(?:^|[.!?…]["”’)]?\s+)["“]?$/.test(all.slice(0, at)) ? 'Your name' : 'your name')).replace(/\bL\/N\b/g, 'last name')
     .replace(/\b([Cc])hs\.\s*(?=\d)/g, (m, c) => (c === 'C' ? 'Chapters ' : 'chapters '))   // chs. 5-10
     .replace(/\b[Cc]h\.\s*(?=\d)/g, 'Chapter ').replace(/(^|[\s\[(])CH\s+(?=\d)/g, '$1Chapter ').replace(/\bVol\.\s*(?=\d)/g, 'Volume ').replace(/\bNo\.\s*(?=\d)/g, 'Number ').replace(/\bBk\.?\s*(?=\d)/g, 'Book ')
-    .replace(/\bEp\.\s*(?=\d)/g, 'Episode ').replace(/\bpg\.\s*(?=\d)/gi, 'page ').replace(/\b[Pp]g\s+(?=\d)/g, 'page ').replace(/(^|[\s(\[])p\.\s?(?=\d)/g, '$1page ').replace(/(^|[\s(\[])(?:c|ca)\.\s?(?=\d{3,4}\b)/g, '$1circa ').replace(/\bpp\.\s*(?=\d)/g, 'pages ')     // "pg. 45" (the voice said "P G")
+    .replace(/\b([Ee])p\.\s*(?=\d)/g, (m, e) => (e === 'E' ? 'Episode ' : 'episode ')).replace(/\bpg\.\s*(?=\d)/gi, 'page ').replace(/\b[Pp]g\s+(?=\d)/g, 'page ').replace(/(^|[\s(\[])p\.\s?(?=\d)/g, '$1page ').replace(/(^|[\s(\[])(?:c|ca)\.\s?(?=\d{3,4}\b)/g, '$1circa ').replace(/\bpp\.\s*(?=\d)/g, 'pages ')     // "pg. 45" (the voice said "P G")
     .replace(/\b(\d{1,2}(?:st|nd|rd|th))\s?c\.(?=(\s+(?:BC|AD|BCE|CE)\b|\s*[,;:)]|\s+\p{Ll})?)/gu, (m, n, mid) => n + ' century' + (mid !== undefined ? '' : '.'))   // the 12th c. (was "twelfth C")
     .replace(/\bPt\.?\s*(?=\d)/g, 'Part ').replace(/(?<!\b(?:[Aa]|[Oo]ne|[Hh]alf a|[Tt]his|[Tt]hat)\s)\b([Ss])ec\.\s*(?=\d)/g, (m, c) => (c === 'S' ? 'Section ' : 'section ')).replace(/\b([Pp])ara\.\s*(?=\d)/g, '$1aragraph ')   // "Chapter 5 Pt. 2"
     .replace(/\b([CF])#(?![\w#])/g, '$1 sharp')                     // C#, F# (languages, notes)

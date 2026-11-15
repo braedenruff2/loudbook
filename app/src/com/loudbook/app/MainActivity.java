@@ -823,7 +823,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         if (awaitingTurn != null) {
             // the page we opened because the last chapter ended
             awaitingTurn = null;
-            boolean go = resumeAfterTurn && !(svc != null && svc.pendingPauseAfterTurn);
+            // (and not if he paused while the page loaded: it started reading anyway)
+            boolean go = resumeAfterTurn && !(svc != null && (svc.pendingPauseAfterTurn || svc.isPaused()));
             if (svc != null) { svc.pendingPauseAfterTurn = false; svc.setChapter(ch, 0, go); }
             if (!go) onStatus("Stopped at the end of the chapter. The next one is ready.", false);
             return;

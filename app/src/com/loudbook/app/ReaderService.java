@@ -216,6 +216,9 @@ public class ReaderService extends Service {
         session.release();
         if (track != null) { track.release(); track = null; }
         if (wake.isHeld()) wake.release();
+        if (focus != null) { try { audio.abandonAudioFocusRequest(focus); } catch (Exception ignored) { } }
+        cloudNow.shutdownNow();
+        aheadSender.shutdownNow();
         super.onDestroy();
     }
 
@@ -283,12 +286,22 @@ public class ReaderService extends Service {
         sid = id;
         prefs.edit().putInt("voice", id).apply();
         dropClips();
-        if (playing) seek(pos);                       // say the current sentence again in the new voice
+        resay();                                      // say the current sentence again in the new voice
     }
     /** Something about the voice changed (a recorded voice was chosen): make what's ahead again. */
     void restyle() {
         dropClips();
-        if (playing) seek(pos);
+        resay();
+    }
+    /** Reading: the current sentence again (the clips were dropped). Paused: stays paused, and play starts it afresh
+     *  (seek would have started reading aloud: a voice picked in settings while paused). */
+    private void resay() {
+        if (!playing) return;
+        if (!paused) { seek(pos); return; }
+        long at = pausedAt;
+        stopPlayback();
+        playing = true; paused = true; pausedAt = at;    // (play finds no player and starts from pos)
+        state();
     }
         void setAutoNext(boolean on) { autoNext = on; prefs.edit().putBoolean("autoNext", on).apply(); }
     /** minutes > 0: pause after that long; 0: off. */
@@ -379,6 +392,7 @@ public class ReaderService extends Service {
     /** premade: sentences of this chapter already made (the start of the next chapter, made ahead). */
     private void setChapter(Chapter ch, int startAt, boolean play, Map<Integer, Future<Voice.Clip>> premade) {
         stopPlayback();
+        pausedForFocus = false;          // (another chapter opened during a call: the call ending mustn't start reading it)
         chapter = ch;
         heardIdx = -1;
         heardTiming = null; timings.clear();
@@ -423,8 +437,20 @@ public class ReaderService extends Service {
         // left in the speaker's buffer, then silence, still showing "playing")
         if (playing && paused) {
             Thread pl = player;
-            if (pl != null && pl.isAlive()) { paused = false; if (track != null) track.play(); state(); return; }
-            playing = false; paused = false;
+            if (pl != null && pl.isAlive()) {
+                // (focus again: it was lost to another app while paused, and both played at once, then a call didn't pause it)
+                if (!requestFocus()) {
+                    int mode = audio.getMode();
+                    if (mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION || mode == AudioManager.MODE_RINGTONE) {
+                        status("A call is using the audio.", true);
+                        return;
+                    }
+                }
+                paused = false; if (track != null) track.play(); state(); return;
+            }
+            // (the sleep timer ended the player: the unheard end of its last sentence is flushed, or it played, then the
+            // sentence again from its start)
+            stopPlayback();
         }
         if (playing) return;
         playing = true; paused = false;
@@ -1569,7 +1595,9 @@ public class ReaderService extends Service {
     private int playLive(GeminiBook b, GeminiBook.Live lv, int start, Chapter ch, int myGen, java.util.ArrayDeque<long[]> marks) {
         final int rate = 24000;
         AudioTrack t = ensureTrack(rate);
-        applyRate(t, new Voice.Clip(new float[0], rate, 1f, 0));
+        Voice.Clip live = new Voice.Clip(new float[0], rate, 1f, 0);
+        applyRate(t, live);
+        current = live;                  // (a speed change now: worked out against the phone voice's clip before it)
         long at = b.partOf(start) == lv.part ? Math.max(0, b.startOf(start)) : 0;
         if (offsetIdx == start && b.partOf(start) == lv.part) { at += Math.max(0, offsetSamples); }
         offsetIdx = -1;
@@ -1584,6 +1612,8 @@ public class ReaderService extends Service {
         Log.i("LoudbookTest", "gemini: playing as it arrives, from sentence " + start + " (" + lv.bytes / 2 / rate + " s in so far)");
         while (gen == myGen) {
             if (paused) { sleep(40); continue; }
+            // (the sleep timer: the loop's check pauses; it only ran at the end of the part, minutes of 5% volume later)
+            if (sleepAt > 0 && System.currentTimeMillis() >= sleepAt) return nextMark;
             // sentences found since: each one's highlight goes in where it starts
             while (nextMark < lv.to && b.has(nextMark) && b.partOf(nextMark) == lv.part) {
                 long s = b.startOf(nextMark);
@@ -2329,6 +2359,7 @@ public class ReaderService extends Service {
             .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
             .setWillPauseWhenDucked(true)
             .setOnAudioFocusChangeListener(change -> main.post(() -> {
+                if (destroyed) return;          // (a call ending after the app was swiped away started reading in the dead service)
                 if (change == AudioManager.AUDIOFOCUS_LOSS) { pausedForFocus = false; pause(); }
                 else if (change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
                     if (playing && !paused) { pause(); pausedForFocus = true; }

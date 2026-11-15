@@ -44,6 +44,10 @@ final class CloudVoice {
 
     /** Which way of asking worked last time (Google has two APIs and has renamed models before). */
     static volatile int lastWay = -1;
+    /** The way to try first, kept apart for streamed and whole requests: one "hear it" sample (whole) put the whole-WAV way
+     *  first for every chapter after it, which then waited minutes for Google to make all of it before any sound. */
+    static volatile int preferStream = -1, preferWhole = -1;
+    static void forgetWays() { lastWay = -1; preferStream = -1; preferWhole = -1; }
     /** How the last recording was asked for, and what the first way that didn't work said (shown in Settings). */
     static volatile String how = "", howProblem = "";
 
@@ -114,7 +118,7 @@ final class CloudVoice {
         urls[5] = HOST + "models/gemini-2.5-flash-preview-tts:generateContent"; bodies[5] = legacy;
         int[] order = stream ? new int[]{0, 3, 1, 2, 4, 5} : new int[]{1, 2, 4, 5};
         // the way that worked last time goes first (if it's one of these)
-        int lw = lastWay;
+        int lw = stream ? preferStream : preferWhole;
         for (int i = 1; i < order.length; i++) if (order[i] == lw) { System.arraycopy(order, 0, order, 1, i); order[0] = lw; break; }
 
         String firstProblem = null;
@@ -124,8 +128,12 @@ final class CloudVoice {
             Streamed r = postToFile(urls[w], key, bodies[w], out, timeoutMs, progress);
             if (r.code == 429) throw new Limited(errorOf(new Reply(r.code, r.json)), retryMs(r.json));
             if (r.code == 401 || r.code == 403) throw new IOException(errorOf(new Reply(r.code, r.json)));
+            // (Google busy (500/503 "overloaded"): not a wrong request. Moving on spent a request per way and settled on the
+            // old preview model for good; only while no way has worked yet is it worth trying the others)
+            if ((r.code >= 500 || r.code == 408) && (stream ? preferStream : preferWhole) >= 0) throw new IOException(errorOf(new Reply(r.code, r.json)));
             if (r.code == 200 && r.audioBytes > 100) {
                 lastWay = w;
+                if (stream) preferStream = w; else preferWhole = w;
                 how = WAY_NAMES[w];
                 howProblem = firstProblem == null ? "" : firstProblem;
                 return new Pcm(out, 0, r.audioBytes & ~1L, r.rate);
@@ -269,8 +277,18 @@ final class CloudVoice {
                         if (progress != null && sink.written > told) { told = sink.written; progress.on(told); }
                         continue;
                     }
+                    if (cc == '\\') {                                           // an escape (Google may write + and = as u-escapes, / as \\/): its letters aren't audio
+                        int x = in.read();
+                        if (x < 0) throw new IOException("Google's reply ended part way");
+                        cc = (char) x;
+                        if (cc == 'u') {
+                            char[] h = new char[4];
+                            for (int i = 0; i < 4; i++) { int y = in.read(); if (y < 0) throw new IOException("Google's reply ended part way"); h[i] = (char) y; }
+                            try { cc = (char) Integer.parseInt(new String(h), 16); } catch (NumberFormatException e) { cc = '?'; }
+                        }
+                    }
                     int v = val(cc);
-                    if (v < 0) continue;                                         // '=' padding, escapes, line breaks
+                    if (v < 0) continue;                                         // '=' padding, line breaks
                     quad[q++] = v;
                     if (q == 4) {
                         sink.put((quad[0] << 2) | (quad[1] >> 4));

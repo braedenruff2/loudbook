@@ -36,6 +36,8 @@ jobs:
           java -cp net-out com.loudbook.app.NetTest
           javac -nowarn -d gb-out -cp "$ANDROID_JAR" -sourcepath app/src:test/unit test/unit/com/loudbook/app/GeminiBookTest.java
           java -cp gb-out:"$ANDROID_JAR" com.loudbook.app.GeminiBookTest
+          javac -nowarn -d cv-out -cp "$ANDROID_JAR" -sourcepath app/src:test/unit test/unit/com/loudbook/app/CloudVoiceTest.java
+          java -cp cv-out:"$ANDROID_JAR" com.loudbook.app.CloudVoiceTest
           python3 -m pip install --quiet --break-system-packages cryptography numpy soundfile
           bash pc-server/test/ahead.sh
           python3 pc-server/test/studio_test.py
