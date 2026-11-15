@@ -660,7 +660,7 @@ const DAYS = { Mon: 'Monday', Tue: 'Tuesday', Tues: 'Tuesday', Wed: 'Wednesday',
   Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' };
 const UNITS = { km: ['kilometer', 'kilometers'], cm: ['centimeter', 'centimeters'], mm: ['millimeter', 'millimeters'],
   m: ['meter', 'meters'], kg: ['kilogram', 'kilograms'], g: ['gram', 'grams'], lb: ['pound', 'pounds'], lbs: ['pound', 'pounds'],
-  ft: ['foot', 'feet'], yd: ['yard', 'yards'], yds: ['yard', 'yards'], mph: ['mile per hour', 'miles per hour'], 'km/h': ['kilometer per hour', 'kilometers per hour'], 'm/s': ['meter per second', 'meters per second'],
+  ft: ['foot', 'feet'], yd: ['yard', 'yards'], yds: ['yard', 'yards'], mph: ['mile per hour', 'miles per hour'], 'km/h': ['kilometer per hour', 'kilometers per hour'], 'm/s': ['meter per second', 'meters per second'], 'ft/s': ['foot per second', 'feet per second'],
   kph: ['kilometer per hour', 'kilometers per hour'], wpm: ['word per minute', 'words per minute'], mi: ['mile', 'miles'], ms: ['millisecond', 'milliseconds'], min: ['minute', 'minutes'], mins: ['minute', 'minutes'], sec: ['second', 'seconds'], secs: ['second', 'seconds'], hr: ['hour', 'hours'], hrs: ['hour', 'hours'], oz: ['ounce', 'ounces'],
   kmh: ['kilometer per hour', 'kilometers per hour'], pts: ['point', 'points'], L: ['liter', 'liters'], ml: ['milliliter', 'milliliters'], mL: ['milliliter', 'milliliters'],
   KB: ['kilobyte', 'kilobytes'], MB: ['megabyte', 'megabytes'], GB: ['gigabyte', 'gigabytes'], TB: ['terabyte', 'terabytes'], PB: ['petabyte', 'petabytes'],
@@ -696,12 +696,16 @@ function stretched(w) {
 
 function tidy(t) {
   // star ratings: "Rating: ★★★★☆" -> 4 out of 5 stars; a row of stars on its own (a scene break) stays silent below
-  t = t.replace(/((?:\b(?:[Rr]ating|[Rr]ated|[Rr]eview|[Ss]core|[Rr]arity|[Gg]rade|[Dd]ifficulty)\b[^★☆\n]{0,12})?)([★☆]{3,10})(?![★☆])/g, (m, lead, st) => {
+  t = t.replace(/((?:\b(?:[Rr]ating|[Rr]ated|[Rr]eview|[Ss]core|[Rr]arity|[Gg]rade|[Dd]ifficulty)\b[^★☆\n]{0,12})?)([★☆]{3,10})(?![★☆])/g, (m, lead, st, at, all) => {
     if (!/^★+☆*$/.test(st)) return m;
+    // (the rating already said just before: "3/5 stars ★★★☆☆" was read twice)
+    if (!lead && /\b\d+(?:\.\d+)?\s*(?:\/\s*\d+|out of \d+)?\s*stars?\W{0,3}$/i.test(all.slice(Math.max(0, at - 30), at))) return ' ';
     const n = st.indexOf('☆') < 0 ? st.length : st.indexOf('☆');
     return n === st.length ? (lead ? lead + n + ' stars' : m) : lead || st.length === 5 || st.length === 10 ? lead + n + ' out of ' + st.length + ' stars' : m; })
   // scene breaks and decorations ("***", "~~~", "=== Chapter 5 ===", "---o0o---", "◇◇◇"): silent
   t = t.replace(/([~=*#_<>+\-—–])\1{2,}/g, ' ').replace(/(?<!\d)(^|\s)(?!XXX\b)[oO0xX]{3}(?=\s|$)/g, '$1 ').replace(/^\s*XXX\s*$/, '').replace(/[◇◆◈❖•·♦♢❦☆★✦✧♪♫]+/gu, ' ')
+    .replace(/[█▓▒░▉▊▋▌▍▎▏■□▰▱]{3,}/g, ' ')      // a bar drawn in blocks ("Mana: ▓▓▓▓▓░░░░░ 50%"): silent, the number is read
+    .replace(/¶\s?(?=\d)/g, 'paragraph ')
     .replace(/(\p{L})\s+<3\s+(?=\p{L})/gu, '$1 heart ').replace(/<3\b/g, '')
     // emoji and ♥ ™ ® (the voice reads out their names: "red heart", "trade mark"); © is kept
     .replace(/(?![©‼⁉])[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{1F3FB}-\u{1F3FF}]+/gu, ' ')
@@ -923,7 +927,7 @@ function tidy(t) {
     .replace(/(\b(?:[Aa]n?|[Tt]he|[Hh]is|[Hh]er|[Tt]heir|[Mm]y|[Yy]our|[Oo]ur|[Ii]ts)\s)(\d+(?:\.\d+)?)\s?(?:(km|cm|mm|m|ft|yds?|mi)\s?)?(?:[x×]|by)\s?(\d+(?:\.\d+)?)\s?(km|cm|mm|m|ft|yds?|mi)\b(?=\s+(?!(?:away|long|tall|wide|high|deep|thick|of|from|to|and|or|per|in|on|at|by|for|across|apart|area|space)\b)\p{Ll})/gu,
       (m, pre, a, u1, b, u) => u1 && u1 !== u ? pre + a + '-' + ({ yds: 'yard' }[u1] || UNITS[u1][0]) + ' by ' + b + '-' + ({ yds: 'yard' }[u] || UNITS[u][0])   // a 2 m x 3 ft rug -> a two-meter by three-foot rug
         : pre + a + ' by ' + b + ' ' + ({ yds: 'yard' }[u] || UNITS[u][0]))
-    .replace(/(^|[^$\w,])((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|wpm|ft|yds|yd|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|ms|m\/s|m|g|L|KB|MB|GB|TB|PB|kHz|MHz|GHz|Hz|Mbps|Gbps|kWh|kW|MW|kV|mAh|ly|V|W)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
+    .replace(/(^|[^$\w,])((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s?(km\/h|kmh|km|cm|mm|kg|lbs|lb|oz|mph|kph|wpm|ft\/s|ft|yds|yd|mi|mins|min|secs|sec|hrs|hr|pts|ml|mL|ms|m\/s|m|g|L|KB|MB|GB|TB|PB|kHz|MHz|GHz|Hz|Mbps|Gbps|kWh|kW|MW|kV|mAh|ly|V|W)\b(?!\/)(?:\.(?=\s+[a-z]))?/g,   // "2 lbs. of meat": no stop at the dot
       (m, pre, n, u, at, all) => {
         // "a 10 km run", "the 5 kg bag" -> ten-kilometer run (the adjective form takes the singular)
         const next = /^\s+(\p{Ll}+)/u.exec(all.slice(at + m.length));
@@ -990,6 +994,9 @@ function tidy(t) {
       (m, a, b) => (+a >= +b ? m : FRAC[b] ? fracWords(+a, +b, false) : (a === '1' ? 'one ' : a + ' ') + { 9: 'ninth', 10: 'tenth' }[b] + (a === '1' ? '' : 's')))
     .replace(/(\b(?:is|was|are|were|be|being|'s|’s)\s+)([1-7])\/([3-8])(?![\d\/])(?=\s+(?:elf|elven|human|demon|dwarf|orc|vampire|dragon|giant|fae|fairy|beast|angel|god|wolf|werewolf|[A-Z][a-z]+(?:ese|ish|ian|an|ic|i))\b)/g,
       (m, pre, a, b) => (+a < +b ? pre + fracWords(+a, +b, false) : m))
+    // "a 1/4 share", "a 2/3 majority", "the 3/4 mark" -> a one-quarter share, a two-thirds majority (was "a one of four share")
+    .replace(/(\b(?:[Aa]n?|[Tt]he)\s+)([1-7])\/([2-8])\b(?![\d\/.,:])(?=\s+\p{Ll})(?!\s+(?:of|hp|mp|xp|sp|ep|health|mana|stamina)\b)/gu,
+      (m, pre, a, b) => +a >= +b ? m : pre + (+a === 1 ? (+b === 2 ? 'half' : 'one-' + FRAC[b][0]) : ['', '', 'two', 'three', 'four', 'five', 'six', 'seven'][+a] + '-' + FRAC[b][1]))
     // ZIP codes digit by digit: "ZIP 90210" -> nine oh two one oh (was "ninety thousand two hundred and ten")
     .replace(/\b((?:ZIP|[Zz]ip)(?:\s+[Cc]ode)?:?\s+)(\d{5})(?:-(\d{4}))?\b(?!\d|[.,]\d)/g, (m, pre, a, b) => {
       const d = x => [...x].map(c => ['oh', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'][+c]).join(' ');
