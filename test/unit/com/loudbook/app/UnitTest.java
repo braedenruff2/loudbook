@@ -316,6 +316,17 @@ public class UnitTest {
         check("dashes: unspaced dashes inside speech", str(Dialogue.split("\u2014I was\u2014well\u2014scared.", false, false, "", true)), "[q:I was\u2014well\u2014scared.]");
         check("dashes: unspaced tag to the end", str(Dialogue.split("\u2014Por aqu\u00ed hay agua\u2014dijo a su compa\u00f1ero.", false, false, "", true)), "[q:Por aqu\u00ed hay agua][n:dijo a su compa\u00f1ero.]");
         check("dashes: speech goes on after the tag", str(Dialogue.split("\u2014Ese ruido\u2014replic\u00f3 el ciego\u2014y que parece.", false, false, "", true)), "[q:Ese ruido][n:replic\u00f3 el ciego][q:y que parece.]");
+        // "What's new": one change at a time, and each shown only once
+        {
+            String v1 = "Kindle: the highlight is right. Numbers: \"Mr. He\" and \"e.g. Ext. 204\" read right.\nOlder: a thing (J. K. Rowling) fixed.";
+            check("news: cut at sentences, not at Mr./e.g./initials", String.join(" | ", News.items(v1)),
+                "Kindle: the highlight is right. | Numbers: \"Mr. He\" and \"e.g. Ext. 204\" read right. | Older: a thing (J. K. Rowling) fixed.");
+            java.util.Set<String> seen = News.allSeen(v1, new java.util.HashSet<>());
+            check("news: nothing left once seen", News.unseen(v1, seen, 12).size(), 0);
+            String v2 = "Audiobooks: a new thing. Kindle: the highlight is right.\n" + v1;
+            check("news: an update shows only its new change", String.join(" | ", News.unseen(v2, seen, 12)), "Audiobooks: a new thing.");
+            check("news: at most max shown", News.unseen(v2, new java.util.HashSet<>(), 2).size(), 2);
+        }
         check("dashes: a tag starting with the speaker's name", str(Dialogue.split("\u2014Hello, garden \u2014Tom said quietly\u2014. Is the gate always open?", false, false, "", true)), "[q:Hello, garden][n:Tom said quietly.][q:Is the gate always open?]");
         check("dashes: a name after a spaced dash, not saying anything, stays speech", str(Dialogue.split("\u2014Ask \u2014Tom knows. Go.", false, false, "", true)), "[q:Ask \u2014Tom knows. Go.]");
         check("dashes: cut off", str(Dialogue.split("—I was going—", false, false, "", true)), "[q:I was going—]");

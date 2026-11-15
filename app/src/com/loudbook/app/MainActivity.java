@@ -622,7 +622,11 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         }
         @JavascriptInterface public void resume(String key, String url) { if (onStartPage(key)) main.post(() -> { resumeOnLoad = url; web.loadUrl(url); }); }
         /** "What's new" was read: don't show it again until there's something newer. */
-        @JavascriptInterface public void newsSeen(String key) { if (onStartPage(key)) prefs.edit().putInt("newsSeen", readAsset("web/new.txt").hashCode()).apply(); }
+        @JavascriptInterface public void newsSeen(String key) {
+            if (!onStartPage(key)) return;
+            // (every change in the file: the ones shown and the older ones not shown, so none of them comes back)
+            prefs.edit().putStringSet("newsSeenItems", News.allSeen(readAsset("web/new.txt"), prefs.getStringSet("newsSeenItems", new java.util.HashSet<>()))).apply();
+        }
         // ---- the audiobook page (web/book.html, opened with the same key)
         @JavascriptInterface public String books(String key) { return onStartPage(key) ? Books.listJson(getApplicationContext(), prefs) : "[]"; }
         @JavascriptInterface public String chapter(String key, String book, String file) { return onStartPage(key) ? Books.chapterText(getApplicationContext(), book, file) : ""; }
@@ -1995,11 +1999,23 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     }
     private static String fmtSpeed(float s) { String t = String.format(java.util.Locale.US, "%.2f", s).replaceAll("0$", ""); return t + "×"; }
     private void hideKeyboard() { ((InputMethodManager) getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(address.getWindowToken(), 0); web.requestFocus(); }
-    /** The latest "What's new" lines, if they haven't been dismissed (not on a first install: everything is new then). */
+    /** The changes in "What's new" not dismissed yet, one per line, newest first (not on a first install: everything is
+     *  new then). Each change is shown once: Got it / ✕ marks them all seen (News). */
     private String newsToShow() {
         String n = readAsset("web/new.txt").trim();
-        if (!prefs.contains("newsSeen")) { prefs.edit().putInt("newsSeen", prefs.contains("lastUrl") ? 0 : n.hashCode()).apply(); }
-        return prefs.getInt("newsSeen", 0) == n.hashCode() ? "" : n;
+        if (!prefs.contains("newsSeenItems")) {
+            java.util.Set<String> seen;
+            if (!prefs.contains("newsSeen") && !prefs.contains("lastUrl")) seen = News.allSeen(n, new java.util.HashSet<>());   // (first install)
+            else if (prefs.getInt("newsSeen", 0) == n.hashCode()) seen = News.allSeen(n, new java.util.HashSet<>());
+            else {
+                // (from the old way, one mark for the whole file: all of it was shown before, so only the newest update's
+                //  changes are left to show)
+                int nl = n.indexOf('\n');
+                seen = News.allSeen(nl < 0 ? "" : n.substring(nl + 1), new java.util.HashSet<>());
+            }
+            prefs.edit().putStringSet("newsSeenItems", seen).apply();
+        }
+        return TextUtils.join("\n", News.unseen(n, prefs.getStringSet("newsSeenItems", new java.util.HashSet<>()), 12));
     }
 
     private String readAsset(String path) {

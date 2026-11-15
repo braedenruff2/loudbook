@@ -3,10 +3,12 @@
 <style>
   [hidden]{display:none!important}
   #shelf{margin-bottom:16px}
-  .news{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 20px}
-  .news small{color:var(--amber);letter-spacing:.08em;text-transform:uppercase;font-size:11px}
-  .news ul{margin:6px 0 8px;padding-left:18px;color:var(--ink);font-size:14px}.news li{margin:4px 0}
-  .news button{background:var(--amber);color:#1b1712;border:0;border-radius:16px;padding:6px 14px;font-weight:600}
+  .news{position:fixed;inset:0;z-index:10;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px}
+  .news .win{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 16px 14px;width:100%;max-width:520px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+  .news small{color:var(--amber);letter-spacing:.08em;text-transform:uppercase;font-size:11px;padding-right:40px}
+  .news ul{margin:8px 0 12px;padding-left:18px;color:var(--ink);font-size:14px;overflow-y:auto;flex:1}.news li{margin:6px 0}
+  .news #newsOk{align-self:flex-end;background:var(--amber);color:#1b1712;border:0;border-radius:16px;padding:8px 18px;font-weight:600}
+  .news #newsX{position:absolute;top:6px;right:6px;width:40px;height:40px;background:none;border:0;color:var(--dim);font-size:22px;line-height:40px;padding:0}
   :root{--bg:#14120f;--panel:#1e1b17;--line:#2e2a24;--ink:#ede6da;--dim:#a79e90;--amber:#e8aa46}
   body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif;padding:20px 16px 40px}
   h1{font:600 26px/1.2 Georgia,serif;margin:8px 0 4px} p{color:var(--dim);margin:0 0 18px}
@@ -29,7 +31,7 @@
 <h1>Loudbook</h1>
 <p>Open a chapter, press play. It reads on with the screen off and turns the page for you.</p>
 <a class="resume" id="resume" href="#" hidden><small>Continue listening</small><b id="rt"></b><span id="rs"></span></a>
-<div class="news" id="news" hidden><small>New in Loudbook</small><ul id="newsList"></ul><button id="newsOk">Got it</button></div>
+<div class="news" id="news" role="dialog" aria-modal="true" aria-label="New in Loudbook" hidden><div class="win"><small>New in Loudbook</small><button id="newsX" aria-label="Close">✕</button><ul id="newsList"></ul><button id="newsOk">Got it</button></div></div>
 <a class="resume" id="books" href="#" hidden><small>Audiobooks</small><b>Recorded on your PC</b><span id="bs"></span></a>
 <div id="shelf" hidden><h2>Your stories</h2><div id="shelfList"></div></div>
 <h2 id="findH">Find something to read</h2>
@@ -67,7 +69,13 @@
       const ul = document.getElementById('newsList');
       for (const line of d.news.split('\n')) if (line.trim()) { const li = document.createElement('li'); li.textContent = line.trim(); ul.appendChild(li); }
       document.getElementById('news').hidden = false;
-      document.getElementById('newsOk').onclick = () => { LoudbookNative.newsSeen(K); document.getElementById('news').hidden = true; };
+      // (Got it, ✕, a tap outside the window or Back: never shown again)
+      const news = document.getElementById('news');
+      const seen = () => { if (news.hidden) return; news.hidden = true; try { LoudbookNative.newsSeen(K); } catch (e) { } };
+      document.getElementById('newsOk').onclick = seen;
+      document.getElementById('newsX').onclick = seen;
+      news.onclick = (e) => { if (e.target === news) seen(); };
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') seen(); });
     }
     // the other stories read lately (the newest is "Continue listening" above)
     const others = (d.shelf || []).filter(x => x.url !== d.lastUrl);
