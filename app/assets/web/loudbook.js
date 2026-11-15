@@ -1222,7 +1222,8 @@ function tidy(t) {
     .replace(/\bMt\.?(?=\s+[A-Z][a-z])/g, 'Mount').replace(/\bFt\.(?=\s+[A-Z])/g, 'Fort').replace(/(\d)\s?pct\b/g, '$1 percent')                     // the voice says "M T." and stops
     .replace(/\b([Tt]he|[Hh]is|[Hh]er|[Tt]heir|[Oo]ur|[Mm]y|[Yy]our|[Tt]hose|[Tt]hese)\s~\s?(?=\d)/g, '$1 roughly ')   // the ~200 goblins (was "the about")
     .replace(/\b((?:[Aa]bout|[Aa]round|[Rr]oughly|[Nn]early|[Aa]pproximately|[Ss]ome)\s+)~\s?(?=\$?\d)/g, '$1')   // "about ~20" (was "about about")
-    .replace(/(^|\s)~\s?(?=\$?\d)/g, '$1about ')                     // ~5 minutes, ~$300 (the voice says "tilde")
+    .replace(/(^|[\s(\["“])~\s?(?=[$£€¥]?\d)/g, '$1about ')               // ~5 minutes, ~$300, (~$35) (the voice says "tilde")
+    .replace(/(\d%)\s?[-–—]\s?(?=\d+(?:\.\d+)?%)/g, '$1 to ')            // a poll of 52%-48% (was "percent-forty-eight")
     .replace(/\b(\d+(?:st|nd|rd|th))\s+St\.(?!\w)/g, '$1 Street')                          // 42nd St.
     .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/(?<!\b(?:\d+\w*|[A-Z][a-z]+)\s)\bSt\s+(?=[A-Z][a-z])/g, 'Saint ').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, w, mid) => w + ' Street' + (mid !== undefined ? '' : '.'))   // "on Patrick St." keeps its full stop
     .replace(/\b(\p{Lu}\p{Ll}+\s+)(Rd|Ln)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, w, a, mid) => w + (a === 'Rd' ? 'Road' : 'Lane') + (mid !== undefined ? '' : '.'))   // Elm Rd., Oak Ln.
