@@ -126,4 +126,27 @@ sed -n '/=== audiobook ===/,$p' logcat.txt > book-log.txt
     echo "  (start: $(tr '\n' ' ' < book-start.txt | cut -c1-200))"; sed 's/^/  (files) /' book-files.txt
     grep -a -E "book|Book|AndroidRuntime" book-log.txt | tail -15 | sed 's/^/  /'; }
 } > book.txt
+# "Make audio now" (AheadMaker, 2026-11-15): a text book of two short chapters, as the PC sends them (.text.json), made
+# ahead on the phone with its voice; then the Audiobooks list must say "made on phone" for both
+adb shell log -t LoudbookTest "=== make audio now ==="
+AB=/tmp/lbahead; rm -rf $AB; mkdir -p $AB
+echo '{"title": "Ahead One", "seconds": 4, "blocks": ["The lighthouse keeper climbed the stairs.", "Rain fell on the sea."]}' > "$AB/0001 - Ahead One.text.json"
+echo '{"title": "Ahead Two", "seconds": 4, "blocks": ["The boats came home at dusk."]}' > "$AB/0002 - Ahead Two.text.json"
+adb shell mkdir -p "'$D/books/Ahead Book'"
+for f in "$AB"/*.json; do adb push "$f" "$D/books/Ahead Book/"; done
+adb shell am start -n com.loudbook.app/.MainActivity --es bookahead "'Ahead Book'" > ahead-start.txt 2>&1
+for t in $(seq 1 60); do sleep 5; grep -a -q "ahead test: list" applog.txt && break; done
+adb shell ls -l "$D/made" > ahead-files.txt 2>&1
+snap
+sed -n '/=== make audio now ===/,$p' logcat.txt > ahead-log.txt
+{
+  grep -a -o 'ahead test: "Ahead Book" has .*' ahead-log.txt | head -1
+  made=$(grep -a -c -E "ahead: Ahead (One|Two) made" ahead-log.txt)
+  [ "$made" = 2 ] && echo "make audio now: both chapters made: yes" || echo "make audio now: both chapters made: NO ($made)"
+  grep -a -o 'ahead test: job .*' ahead-log.txt | head -1
+  phone=$(grep -a -o 'ahead test: list .*' ahead-log.txt | grep -a -o '"rec":"phone"' | wc -l)
+  [ "$phone" = 2 ] && echo "make audio now: both listed as made on phone: yes" || echo "make audio now: both listed as made on phone: NO ($phone)"
+  [ "$(grep -a -c '\.m4a' ahead-files.txt)" -ge 2 ] && echo "make audio now: audio files kept: yes" || { echo "make audio now: audio files kept: NO"; sed 's/^/  (files) /' ahead-files.txt; }
+  [ "$made" = 2 ] || grep -a -E "ahead|AndroidRuntime" ahead-log.txt | tail -8 | sed 's/^/  /'
+} > ahead.txt
 kill $LOGPID 2>/dev/null || true

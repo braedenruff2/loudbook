@@ -365,6 +365,24 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             }
             return true;
         }
+        if (KindleService.testBuild() && i.hasExtra("bookahead") && svc != null) {
+            // (chapter-test: "Make audio now" on a text book pushed into Loudbook's files; when the job ends, the Audiobooks
+            //  list as the page gets it, to check each chapter now says "made on phone")
+            String bk = i.getStringExtra("bookahead"); i.removeExtra("bookahead");
+            java.util.List<String> urls = new java.util.ArrayList<>();
+            for (Books.Chapter c : Books.chapters(this, bk)) if (Books.isText(c)) urls.add(BookPages.url(bk, c.json));
+            Log.i("LoudbookTest", "ahead test: \"" + bk + "\" has " + urls.size() + " text chapters");
+            svc.ahead.book(bk, urls);
+            ReaderService s = svc;
+            new Thread(() -> {
+                long end = System.currentTimeMillis() + 300_000;
+                try { Thread.sleep(3000); while (s.ahead.busy() && System.currentTimeMillis() < end) Thread.sleep(1000); }
+                catch (InterruptedException e) { return; }
+                Log.i("LoudbookTest", "ahead test: job " + (s.ahead.busy() ? "still busy" : "ended") + ": " + s.ahead.line());
+                Log.i("LoudbookTest", "ahead test: list " + Books.listJson(getApplicationContext(), prefs));
+            }, "lb-ahead-test").start();
+            return true;
+        }
         if (i.getBooleanExtra("openBooks", false)) { i.removeExtra("openBooks"); web.loadUrl(booksUrl()); return true; }   // (the audiobook's notification)
         if (i.getBooleanExtra("home", false)) { i.removeExtra("home"); web.loadUrl(homeUrl()); return true; }      // (screenshots in CI)
         if (i.getBooleanExtra("settings", false)) { i.removeExtra("settings"); main.postDelayed(this::showSettings, 1500); }   // (screenshots in CI)
