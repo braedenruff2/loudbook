@@ -326,6 +326,11 @@ public class UnitTest {
             String v2 = "Audiobooks: a new thing. Kindle: the highlight is right.\n" + v1;
             check("news: an update shows only its new change", String.join(" | ", News.unseen(v2, seen, 12)), "Audiobooks: a new thing.");
             check("news: at most max shown", News.unseen(v2, new java.util.HashSet<>(), 2).size(), 2);
+            // from the old way (one hash of the whole untrimmed file when "Got it" was pressed): two updates since -> both shown
+            String f1 = "Old: one.\nOlder: two.\n", f3 = "New: three.\nNew: four.\n" + f1;
+            check("news: old hash, two updates since", String.join(" | ", News.unseen(f3.trim(), News.seenFromOld(f3, f1.hashCode()), 12)), "New: three. | New: four.");
+            check("news: old hash of today's file (trimmed, first install)", News.unseen(f3.trim(), News.seenFromOld(f3, f3.trim().hashCode()), 12).size(), 0);
+            check("news: old hash unknown -> the newest line only", String.join(" | ", News.unseen(f3.trim(), News.seenFromOld(f3, 12345), 12)), "New: three.");
         }
         check("dashes: a tag starting with the speaker's name", str(Dialogue.split("\u2014Hello, garden \u2014Tom said quietly\u2014. Is the gate always open?", false, false, "", true)), "[q:Hello, garden][n:Tom said quietly.][q:Is the gate always open?]");
         check("dashes: a name after a spaced dash, not saying anything, stays speech", str(Dialogue.split("\u2014Ask \u2014Tom knows. Go.", false, false, "", true)), "[q:Ask \u2014Tom knows. Go.]");

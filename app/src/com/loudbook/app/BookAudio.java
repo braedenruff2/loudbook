@@ -191,6 +191,9 @@ final class BookAudio {
     // ---------------------------------------------------------------- the MP3, decoded once into the cache
 
     private static final LinkedHashMap<String, Long> made = new LinkedHashMap<>();
+    /** Cache files being decoded now, by name (a copy from the PC forgets every Rec: a new one for the same recording
+     *  must not start a second decoder writing the same file over the first one's). */
+    private static final Map<String, Rec> decoding = new HashMap<>();
 
     private static File dir(Context ctx) { return new File(ctx.getCacheDir(), "bookaudio"); }
 
@@ -210,7 +213,22 @@ final class BookAudio {
                 return;
             } catch (Exception ignored) { }
         }
+        Rec twin = decoding.get(name);
+        if (twin != null) {
+            // (the same recording, already being decoded for a Rec forgotten meanwhile: follow that one)
+            Thread w = new Thread(() -> {
+                while (!twin.done && !twin.failed) {
+                    r.rate = twin.rate; r.frames = twin.frames;
+                    try { Thread.sleep(50); } catch (InterruptedException e) { return; }
+                }
+                r.rate = twin.rate; r.frames = twin.frames; r.failed = twin.failed; r.done = twin.done;
+            }, "lb-bookaudio-twin");
+            w.setDaemon(true);
+            w.start();
+            return;
+        }
         trim(d, name);
+        decoding.put(name, r);
         Thread th = new Thread(() -> {
             MediaExtractor ex = new MediaExtractor();
             MediaCodec dec = null;
@@ -284,6 +302,7 @@ final class BookAudio {
             } finally {
                 try { if (dec != null) { dec.stop(); dec.release(); } } catch (Exception ignored) { }
                 ex.release();
+                synchronized (BookAudio.class) { decoding.remove(name); }
             }
         }, "lb-bookaudio");
         th.setPriority(Thread.NORM_PRIORITY - 1);
@@ -299,7 +318,7 @@ final class BookAudio {
             if (fs[i].getName().startsWith(keep)) continue;
             String base = fs[i].getName().replaceFirst("\\.pcm$", "");
             synchronized (BookAudio.class) {
-                boolean inUse = false;
+                boolean inUse = decoding.containsKey(base);
                 for (Rec r : recs.values()) if (r.pcm != null && r.pcm.equals(fs[i]) && !r.done) inUse = true;
                 if (inUse) continue;
                 for (Rec r : recs.values()) if (r.pcm != null && r.pcm.equals(fs[i])) { r.started = false; r.done = false; r.frames = 0; r.rate = 0; }

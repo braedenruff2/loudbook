@@ -46,6 +46,7 @@ final class BookCopy {
         for (PcLink.BookFile f : files) if (f.path.endsWith(".mp3")) mp3s++;
         if (todo == 0) return mp3s == 0 ? "Your PC hasn't finished any audiobook chapters yet." : "All " + mp3s + " recorded chapters are on this phone already.";
         java.util.Set<String> books = new java.util.TreeSet<>();
+        try {
         for (PcLink.BookFile f : files) {
             String key = f.path + "|" + f.bytes;
             if (done.contains(key)) continue;
@@ -67,7 +68,9 @@ final class BookCopy {
             copied++;
             books.add(book);
         }
-        if (copied > 0) BookAudio.forgetAll();
+        } finally {
+            if (copied > 0) BookAudio.forgetAll();      // (also when a later file failed: the ones that came are new)
+        }
         String where = Build.VERSION.SDK_INT >= 29 ? "the phone's Audiobooks folder" : "Loudbook's files";
         return "Copied " + copied + " file" + (copied == 1 ? "" : "s") + " (" + String.join(", ", books) + ") to " + where
             + ". Play them in any audiobook app or in the car, with no connection.";

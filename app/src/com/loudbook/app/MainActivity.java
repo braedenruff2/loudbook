@@ -948,11 +948,23 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     @Override public boolean onKeyDown(int code, KeyEvent e) {
         if (code == KeyEvent.KEYCODE_BACK) {
             if (readingMode) { setReadingMode(false); return true; }
-            if (web.canGoBack()) { web.goBack(); return true; }
-            moveTaskToBack(true);           // keep reading in the background instead of closing
+            String u = web.getUrl();
+            if (u != null && u.startsWith(HOME)) {
+                // (the "What's new" window open: Back closes it and marks it seen, like Got it)
+                web.evaluateJavascript("(function(){var n=document.getElementById('news');if(n&&!n.hidden){"
+                    + "document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}));return 1}return 0})()",
+                    r -> { if (!"1".equals(r)) backNow(); });
+                return true;
+            }
+            backNow();
             return true;
         }
         return super.onKeyDown(code, e);
+    }
+
+    private void backNow() {
+        if (web.canGoBack()) { web.goBack(); return; }
+        moveTaskToBack(true);           // keep reading in the background instead of closing
     }
 
     // ---------------------------------------------------------------- emulator checks (CI only)
@@ -1284,7 +1296,13 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     /** The voices in a list: a tap chooses one and says a line in it; chapters made ahead with each are counted (they
      *  play straight away only in that voice). */
     private void pickVoice(Spinner voices) {
-        java.util.Map<Integer, Integer> made = Books.madeByVoice(getApplicationContext());
+        // (counting the chapters made ahead reads every one's file: off the main thread)
+        new Thread(() -> {
+            java.util.Map<Integer, Integer> made = Books.madeByVoice(getApplicationContext());
+            main.post(() -> { if (!isFinishing() && !isDestroyed()) showVoicePicker(voices, made); });
+        }, "lb-voices").start();
+    }
+    private void showVoicePicker(Spinner voices, java.util.Map<Integer, Integer> made) {
         String[] names = new String[Voice.VOICES.length];
         int sel = voices.getSelectedItemPosition();
         for (int i = 0; i < names.length; i++) {
@@ -1298,6 +1316,12 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 if (svc != null) { svc.setVoice(Integer.parseInt(Voice.VOICES[i][0])); svc.preview(); }
             })
             .setPositiveButton("Use this voice", null)
+            // (Cancel: back to the voice it had before the dialog)
+            .setNegativeButton("Cancel", (d, w) -> {
+                if (sel < 0 || sel >= Voice.VOICES.length || voices.getSelectedItemPosition() == sel) return;
+                voices.setSelection(sel);
+                if (svc != null) svc.setVoice(Integer.parseInt(Voice.VOICES[sel][0]));
+            })
             .show();
     }
 
@@ -2026,17 +2050,12 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     /** The changes in "What's new" not dismissed yet, one per line, newest first (not on a first install: everything is
      *  new then). Each change is shown once: Got it / ✕ marks them all seen (News). */
     private String newsToShow() {
-        String n = readAsset("web/new.txt").trim();
+        String raw = readAsset("web/new.txt"), n = raw.trim();
         if (!prefs.contains("newsSeenItems")) {
             java.util.Set<String> seen;
             if (!prefs.contains("newsSeen") && !prefs.contains("lastUrl")) seen = News.allSeen(n, new java.util.HashSet<>());   // (first install)
-            else if (prefs.getInt("newsSeen", 0) == n.hashCode()) seen = News.allSeen(n, new java.util.HashSet<>());
-            else {
-                // (from the old way, one mark for the whole file: all of it was shown before, so only the newest update's
-                //  changes are left to show)
-                int nl = n.indexOf('\n');
-                seen = News.allSeen(nl < 0 ? "" : n.substring(nl + 1), new java.util.HashSet<>());
-            }
+            // (from the old way, one hash of the whole file: the updates since then are new)
+            else seen = News.seenFromOld(raw, prefs.getInt("newsSeen", 0));
             prefs.edit().putStringSet("newsSeenItems", seen).apply();
         }
         return TextUtils.join("\n", News.unseen(n, prefs.getStringSet("newsSeenItems", new java.util.HashSet<>()), 12));

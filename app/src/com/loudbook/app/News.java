@@ -71,5 +71,25 @@ final class News {
         return s;
     }
 
+    /** From the old way (one hash of the whole file as it was when "Got it" was pressed: the file untrimmed, or trimmed
+     *  on a first install): the changes seen then. new.txt only grows at the top, so the file then is today's minus its
+     *  newest lines: the one whose hash matches says how many updates came since. If none does (never dismissed, or an
+     *  older line was reworded), only the newest line counts as new. */
+    static Set<String> seenFromOld(String raw, int oldHash) {
+        if (raw == null) raw = "";
+        int at = 0;
+        for (int k = 0; k <= 200 && at <= raw.length(); k++) {
+            String rest = raw.substring(at);
+            if (!rest.trim().isEmpty() && (rest.hashCode() == oldHash || rest.trim().hashCode() == oldHash))
+                return allSeen(rest, new HashSet<>());
+            int nl = raw.indexOf('\n', at);
+            if (nl < 0) break;
+            at = nl + 1;
+        }
+        String t = raw.trim();
+        int nl = t.indexOf('\n');
+        return allSeen(nl < 0 ? "" : t.substring(nl + 1), new HashSet<>());
+    }
+
     private News() { }
 }

@@ -204,7 +204,7 @@ final class AheadMaker {
             }
         }
         if (stop) return 1;
-        JSONObject o = new JSONObject().put("url", ch.url).put("title", ch.title).put("sid", sid).put("speed", (double) speed)
+        JSONObject o = new JSONObject().put("sid", sid).put("speed", (double) speed).put("url", ch.url).put("title", ch.title)
             .put("rate", RATE).put("sentences", marks);
         File info = infoFile(svc, ch.url), audio = audioFile(svc, ch.url);
         java.nio.file.Files.write(info.toPath(), o.toString().getBytes(StandardCharsets.UTF_8));

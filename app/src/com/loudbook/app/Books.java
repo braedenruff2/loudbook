@@ -62,6 +62,8 @@ final class Books {
         if (fs == null) return out;
         for (File f : fs) {
             if (!f.getName().endsWith(".json")) continue;
+            // (only those that play: the audio is there too, as the Audiobooks list counts them)
+            if (!new File(f.getParentFile(), f.getName().replaceFirst("\\.json$", ".m4a")).isFile()) continue;
             Matcher m = SID.matcher(head(f));
             if (m.find()) { int sid = Integer.parseInt(m.group(1)); out.put(sid, out.getOrDefault(sid, 0) + 1); }
         }
@@ -101,7 +103,7 @@ final class Books {
 
     /** The first bit of a chapter's .json, where its title and length are (written first by the PC). */
     private static String head(File f) {
-        byte[] b = new byte[600];
+        byte[] b = new byte[4096];          // (a made-ahead chapter's "sid" comes after its address and title)
         try (java.io.FileInputStream in = new java.io.FileInputStream(f)) {
             int n = 0, r;
             while (n < b.length && (r = in.read(b, n, b.length - n)) > 0) n += r;
