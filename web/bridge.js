@@ -154,6 +154,14 @@
     return null;
   }
 
+  /** Is the chapter's first paragraph its title again? Letters and numbers compared ("Chapter 7: The Old Well" and
+   *  "CHAPTER 7 - The Old Well" are the same; "The Old Well" alone isn't: the title says more). */
+  function titleRepeated(title, first) {
+    const key = (s) => LBSay.plainLetters(String(s || '')).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+    const t = key(title);
+    return !!t && t === key(first);
+  }
+
   // Run by the app after every page load. fixes: the pronunciation list; tidy: web-fiction clean-ups.
   async function run(fixes, tidy) {
     const url = location.href;                       // (the page this answer is about, even if the address changes meanwhile)
@@ -165,7 +173,10 @@
         return;
       }
       const say = LBSay.makeSayer(LBSay.parseFixes(fixes || ''), { tidy: tidy !== false });
-      const chunks = [{ block: -1, text: r.title }, ...LBChunk.chunkBlocks(blocks.map((b, i) => ({ i, text: b.text })))]
+      // (a chapter whose text starts with its own title, as Wuxiaworld's and many Royal Road chapters do: the title isn't
+      //  read on its own first as well, which said it twice)
+      const head = titleRepeated(r.title, blocks[0] && blocks[0].text) ? [] : [{ block: -1, text: r.title }];
+      const chunks = [...head, ...LBChunk.chunkBlocks(blocks.map((b, i) => ({ i, text: b.text })))]
         .map(c => ({ block: c.block, text: c.text, say: speakNumbers(say(c.text)) }))
         .filter(c => /[\p{L}\p{N}]/u.test(c.say));            // scene breaks ("* * *") aren't read
       LoudbookNative.onChapter(JSON.stringify({
@@ -369,5 +380,5 @@
     const i = blockAt(x, y);
     return JSON.stringify({ i, text: i >= 0 && blocks[i] ? blocks[i].text : '' });
   }
-  window.LB = { run, highlight, progress, letterAt, partsOf, clear, blockAt, blockInfo, speakNumbers, words, sayText, at: () => activeIndex, count: () => blocks.length };
+  window.LB = { run, titleRepeated, highlight, progress, letterAt, partsOf, clear, blockAt, blockInfo, speakNumbers, words, sayText, at: () => activeIndex, count: () => blocks.length };
 })();

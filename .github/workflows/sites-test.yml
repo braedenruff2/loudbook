@@ -23,5 +23,6 @@ jobs:
           NODE_PATH=/tmp/js/node_modules node test/sites/offline.js
           node test/sites/stale.js
           NODE_PATH=/tmp/js/node_modules node test/sites/marks.js
+          NODE_PATH=/tmp/js/node_modules node test/sites/title.js
           NODE_PATH=/tmp/js/node_modules node test/book/run.js
           NODE_PATH=/tmp/js/node_modules node pc-server/test/studio_page.js
