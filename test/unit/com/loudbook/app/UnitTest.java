@@ -341,6 +341,8 @@ public class UnitTest {
             check("news: cut at sentences, not at Mr./e.g./initials", String.join(" | ", News.items(v1)),
                 "Kindle: the highlight is right. | Numbers: \"Mr. He\" and \"e.g. Ext. 204\" read right. | Older: a thing (J. K. Rowling) fixed.");
             java.util.Set<String> seen = News.allSeen(v1, new java.util.HashSet<>());
+            check("news: an inch mark doesn't hold the cut", String.join(" | ", News.items("Fits 7\" tablets. Faster start. Says \"Go.\" Then stops.")),
+                "Fits 7\" tablets. | Faster start. | Says \"Go.\" | Then stops.");
             check("news: nothing left once seen", News.unseen(v1, seen, 12).size(), 0);
             String v2 = "Audiobooks: a new thing. Kindle: the highlight is right.\n" + v1;
             check("news: an update shows only its new change", String.join(" | ", News.unseen(v2, seen, 12)), "Audiobooks: a new thing.");

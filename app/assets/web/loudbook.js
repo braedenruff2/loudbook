@@ -689,6 +689,7 @@ const GRUNTS = [[/^[Hh](m+p+h|m+f|r+m+p+h)$/, 'humph'], [/^[Hh]mn?$/, 'hmm'], [/
 const STRETCH_KEEP = /^(good|soon|cool|too|boo|moon|food|noon|ooh|oops|woo|whoo|woohoo|yoo|hoo|see|free|wee|whee|sweet|sleep|need|feel|three|eek|beep|well|hell|hello|all|kill|still|will|yell|tell|call|fall|ball|really|sorry|hurry|happy|little|off|stuff|kiss|miss|hiss|boss|mess|less|guess|bless|press|yummy|shh|grr|brr|hmm|mmm|mm|zzz|zz|ahh|uhh|umm|err|ehh|pff|pfft|ugh|ahem)$/i;
 function stretched(w) {
   if (/^[IVXLCDM]+$/.test(w) || /^(\p{Lu})\1\1$/u.test(w)) return w;   // Roman numerals, a rank like "SSS"
+  if (/^x{0,3}v?iii$/.test(w)) return w;                                // a lowercase one: clause (iii), xiii, viii (was "ii")
   // each run as one letter or two ("Helllooo" -> "Hello"): the first that's a word kept double, else all single
   const runs = w.match(/(\p{L})\1{2,}/giu);
   for (let k = 0; runs.length < 5 && k < 1 << runs.length; k++) {
@@ -981,7 +982,7 @@ function tidy(t) {
     .replace(/(?<![\w.])(\d+(?:\.\d+)?|half|thirds?|quarters?|eighths?)\s?(tsp|tbsp)\b/g, (m, n, u, at, all) => n + ' ' + (u === 'tsp' ? 'teaspoon' : 'tablespoon') + (n === '1' || (/^(half|third|quarter|eighth)$/.test(n) && !/and an? $/.test(all.slice(Math.max(0, at - 6), at))) ? '' : 's'))   // 2 tsp
     // powers: "E=mc²", "x^2", "10^6" (the voice dropped the ² and read "x^2" as "x two")
     .replace(/\bmc(?:²|\^2\b)/g, 'm c squared').replace(/([\w)])(?:²|\^2\b)/g, '$1 squared').replace(/([\w)])(?:³|\^3\b)/g, '$1 cubed').replace(/([\w)])\^(-?\d+)\b/g, '$1 to the power of $2')
-    .replace(/(\w)\s?=\s?(?=\w)/g, (m, a, at, all) => (/[²³^]|squared|cubed|power of/.test(all) ? a + ' equals ' : m))
+    .replace(/(\w)\s?=\s?(?=\w)/g, (m, a, at, all) => (/[²³^]|squared|cubed|power of/.test(all) || /\d(?: (?:plus|minus|times) |\s?[-−×*\/]\s?)\d+$/.test(all.slice(0, at + 1)) && /^\s?=\s?-?\d/.test(m.slice(1) + all.slice(at + m.length, at + m.length + 2)) ? a + ' equals ' : m))   // 2+2=4 (the voice skipped "=")
     .replace(/\bCO2\b/g, 'C O 2')   // CO2 (the voice said "co two")
     // "Day 3/10 of the siege", "Chapter 2/5" -> 3 of 10 (was "three 10ths of", "Day a third of")
     .replace(/\b((?:Day|Week|Month|Year|Chapter|Ch\.|Part|Book|Episode|Ep\.|Round|Floor|Wave|Stage|Act|Phase|Turn|Game|Match|Level|Lvl|Lv\.|[dw]ay|week|chapter|episode|wave|floor|stage|level|turn)\s+)(\d+)\s?\/\s?(\d+)\b(?![\/\d]|[.,]\d)/g, '$1$2 of $3')

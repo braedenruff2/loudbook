@@ -82,12 +82,16 @@ final class BookPages {
         JSONObject o = new JSONObject(raw);
         JSONArray blocks = o.optJSONArray("blocks");
         if (blocks == null) return null;
-        List<Books.Chapter> chs = Books.chapters(ctx, book);
+        // (only the text chapters: a recording's own .json has no paragraphs to show)
+        List<Books.Chapter> chs = texts(Books.chapters(ctx, book));
         int at = -1;
         for (int i = 0; i < chs.size(); i++) if (chs.get(i).json.equals(file)) at = i;
-        String prev = at > 0 ? url(book, chs.get(at - 1).json) : "";
-        String next = at >= 0 && at + 1 < chs.size() ? url(book, chs.get(at + 1).json) : nextBook(ctx, book, o.optString("book", ""));
-        if (prev.isEmpty()) prev = prevBook(ctx, book, o.optString("book", ""));
+        String prev = "", next = "";
+        // (a chapter no longer in the list, e.g. renamed on the PC: no links rather than jumping to another volume)
+        if (at >= 0) {
+            prev = at > 0 ? url(book, chs.get(at - 1).json) : prevBook(ctx, book, o.optString("book", ""));
+            next = at + 1 < chs.size() ? url(book, chs.get(at + 1).json) : nextBook(ctx, book, o.optString("book", ""));
+        }
         String title = o.optString("title", file);
         String vol = o.optString("volume", book);
         StringBuilder h = new StringBuilder("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
@@ -121,13 +125,19 @@ final class BookPages {
         int i = all.indexOf(book);
         if (i < 0 || i + d < 0 || i + d >= all.size()) return "";
         String other = all.get(i + d);
-        List<Books.Chapter> chs = Books.chapters(ctx, other);
+        List<Books.Chapter> chs = texts(Books.chapters(ctx, other));
         if (chs.isEmpty()) return "";
         Books.Chapter c = d > 0 ? chs.get(0) : chs.get(chs.size() - 1);
         if (!c.json.endsWith(".text.json")) return "";
         try { if (!series.equals(new JSONObject(Books.chapterText(ctx, other, c.json)).optString("book", ""))) return ""; }
         catch (Exception e) { return ""; }
         return url(other, c.json);
+    }
+
+    static List<Books.Chapter> texts(List<Books.Chapter> all) {
+        List<Books.Chapter> t = new java.util.ArrayList<>();
+        for (Books.Chapter c : all) if (Books.isText(c)) t.add(c);
+        return t;
     }
 
     private BookPages() { }

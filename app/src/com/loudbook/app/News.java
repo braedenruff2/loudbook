@@ -30,7 +30,7 @@ final class News {
                 else if (c == ')') paren = Math.max(0, paren - 1);
                 else if (c == '“') quote = true;
                 else if (c == '”') quote = false;
-                else if (c == '"') quote = !quote;
+                else if (c == '"' && !(i > 0 && Character.isDigit(line.charAt(i - 1)))) quote = !quote;   // (7" is an inch mark)
                 if (c != '.' && c != '!' && c != '?' || paren > 0) continue;
                 // (a quote closing right after the stop ends with it: "... read right." is fine)
                 if (quote && !(i + 1 < line.length() && (line.charAt(i + 1) == '"' || line.charAt(i + 1) == '”'))) continue;
