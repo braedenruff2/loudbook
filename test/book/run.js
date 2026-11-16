@@ -49,6 +49,17 @@ check('progress', () => {
   assert.strictEqual(B.progress({ chapters: book.chapters, at: { file: 'gone', sec: 5 } }), 0);
   assert.strictEqual(B.progress({ chapters: [] }), 0);
 });
+check('sleep timer steps', () => {
+  assert.deepStrictEqual(B.sleepNext({}), [15, false]);
+  assert.deepStrictEqual(B.sleepNext({ sleepLeft: 15 * 60000 }), [30, false]);
+  assert.deepStrictEqual(B.sleepNext({ sleepLeft: 12 * 60000 }), [30, false]);     // (part-way down 15: on to 30)
+  assert.deepStrictEqual(B.sleepNext({ sleepLeft: 59 * 60000 }), [0, true]);
+  assert.deepStrictEqual(B.sleepNext({ sleepLeft: 90 * 60000 }), [0, true]);       // (longer than any: as 60)
+  assert.deepStrictEqual(B.sleepNext({ sleepEnd: true }), [0, false]);
+  assert.strictEqual(B.sleepLabel({}), '\u263E');
+  assert.strictEqual(B.sleepLabel({ sleepLeft: 61000 }), '\u263E 2m');
+  assert.strictEqual(B.sleepLabel({ sleepEnd: true, sleepLeft: 0 }), '\u263E end');
+});
 check('what each text chapter plays with', () => {
   assert.strictEqual(B.recLabel({ seconds: 600, rec: 'pc' }), 'PC recording \u00b7 ~10:00');
   assert.strictEqual(B.recLabel({ seconds: 600, rec: 'phone', voice: 'Heart' }), 'made on phone \u00b7 Heart \u00b7 ~10:00');
@@ -67,7 +78,7 @@ async function page() {
     '0001 - One.json': { title: 'One', seconds: 14, sentences: S },
     '0002 - Two.json': { title: 'Two', seconds: 6, sentences: [{ p: 0, s: 0, start: 0, end: 2, text: 'Chapter two' }, { p: 1, s: 0, start: 2.5, end: 6, text: 'E.' }] },
   };
-  const player = { book: '', ch: -1, file: '', ms: 0, playing: false, speed: 1, calls: [] };
+  const player = { book: '', ch: -1, file: '', ms: 0, playing: false, speed: 1, calls: [], sleepLeft: 0, sleepEnd: false };
   const lib = () => [{ name: 'Test Book', chapters: Object.keys(chapters).map(f => ({ file: f, title: chapters[f].title, seconds: chapters[f].seconds, audio: true })),
     at: player.file ? { file: player.file, sec: player.ms / 1000 } : undefined }];
   const files = Object.keys(chapters);
@@ -75,7 +86,8 @@ async function page() {
   const native = {
     books(k) { if (k !== KEY) wrongKey.push('books'); return JSON.stringify(lib()); },
     chapter(k, b, f) { if (k !== KEY) wrongKey.push('chapter'); return JSON.stringify(chapters[f] || null); },
-    bookState(k) { return JSON.stringify(player.file ? { book: player.book, ch: player.ch, file: player.file, ms: player.ms, dur: chapters[player.file].seconds * 1000, playing: player.playing, speed: player.speed, error: '' } : { playing: false, speed: 1, error: '' }); },
+    bookState(k) { return JSON.stringify(player.file ? { book: player.book, ch: player.ch, file: player.file, ms: player.ms, dur: chapters[player.file].seconds * 1000, playing: player.playing, speed: player.speed, error: '', sleepLeft: player.sleepLeft, sleepEnd: player.sleepEnd } : { playing: false, speed: 1, error: '', sleepLeft: player.sleepLeft, sleepEnd: player.sleepEnd }); },
+    bookSleep(k, m, end) { if (k !== KEY) wrongKey.push('bookSleep'); player.calls.push(['sleep', m, end]); player.sleepLeft = m * 60000; player.sleepEnd = end; },
     bookPlay(k, b, ch, sec) {
       player.calls.push(['play', ch, sec]);
       // (the real one is posted to the main thread and the player service: player.delay ms before bookState says so)
@@ -180,6 +192,14 @@ async function page() {
     assert.strictEqual(d.getElementById('rTitle').textContent, 'One');
     assert.deepStrictEqual(player.calls[player.calls.length - 1], ['play', 0, 7]);
   });
+  // the sleep timer: the moon button steps 15 minutes, 30, ..., end of chapter, off; the label follows what's left
+  const moon = d.getElementById('sleep');
+  moon.click(); await wait(20);
+  check('page: sleep timer 15 minutes', () => { assert.deepStrictEqual(player.calls[player.calls.length - 1], ['sleep', 15, false]); assert.strictEqual(moon.textContent, '\u263E 15m'); });
+  player.sleepLeft = 9 * 60000 + 500; await wait(900);
+  check('page: sleep timer counts down', () => assert.ok(moon.textContent === '\u263E 10m' && /10 minutes left/.test(moon.getAttribute('aria-label')), moon.textContent));
+  for (let t = 0; t < 5; t++) moon.click();
+  check('page: sleep timer round to off', () => { assert.deepStrictEqual(player.calls[player.calls.length - 1], ['sleep', 0, false]); assert.strictEqual(moon.textContent, '\u263E'); });
   check('page: every call used the page key', () => assert.deepStrictEqual(wrongKey, []));
   w.close();
 }

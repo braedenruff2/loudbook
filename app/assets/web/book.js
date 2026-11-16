@@ -68,6 +68,23 @@
       if (rest) parts.push(rest + ' read live');
       return parts.join(', ');
     },
+    /** The sleep timer's settings, in the order the moon button steps through them: [minutes, at the chapter's end]. */
+    SLEEPS: [[0, false], [15, false], [30, false], [45, false], [60, false], [0, true]],
+    /** The setting after the one running now (st: bookState's sleepLeft ms, sleepEnd). A timer part-way down counts as the
+     *  setting it started from (12 minutes left: 15), so one tap goes on to 30. */
+    sleepNext(st) {
+      const S = LBBook.SLEEPS;
+      let i = 0;
+      if (st && st.sleepEnd) i = S.length - 1;
+      else if (st && st.sleepLeft > 0) { const m = st.sleepLeft / 60000; i = S.findIndex(x => !x[1] && x[0] >= m - 0.01); if (i < 0) i = S.length - 2; }
+      return S[(i + 1) % S.length];
+    },
+    /** The moon button's text: "☾" off, "☾ 12m" (minutes left, rounded up), "☾ end" (this chapter's end). */
+    sleepLabel(st) {
+      if (st && st.sleepEnd) return '\u263E end';
+      if (st && st.sleepLeft > 0) return '\u263E ' + Math.ceil(st.sleepLeft / 60000) + 'm';
+      return '\u263E';
+    },
   };
   if (typeof module !== 'undefined') module.exports = LBBook;
   root.LBBook = LBBook;

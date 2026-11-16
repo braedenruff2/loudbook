@@ -1,3 +1,4 @@
+Audiobooks: a sleep timer (the ☾ button in the reader: 15, 30, 45, 60 minutes or the end of the chapter), fading out at the end; the Settings sleep timer stops audiobooks too, and pressing Done in Settings no longer turns off a timer that was running.
 Paused, skipping a sentence back or forward (headphones, the notification, the player's buttons, "Loudbook back") now stays paused there instead of starting to read; play goes on from that sentence. Changing the PC voice style while paused stays paused too.
 Chapters that start with their own title (Wuxiaworld, many Royal Road stories) no longer have the title read twice, nor "Chapter 12" again right after the title said it.
 Audiobooks: going to the next or previous chapter while one plays no longer flicks back to the old one first; dragging the slider on a chapter that isn't the one playing starts at the right place; a PC chapter with ".part" in its name now copies to the phone.

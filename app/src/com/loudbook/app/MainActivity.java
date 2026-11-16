@@ -367,6 +367,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             java.util.List<Books.Chapter> cs = Books.chapters(this, bk);
             Log.i("LoudbookTest", "book: test book \"" + bk + "\" has " + cs.size() + " chapters, " + Books.audioHere(this, bk).size() + " recordings");
             if (!cs.isEmpty()) {
+                if (i.getBooleanExtra("booksleepend", false)) { i.removeExtra("booksleepend"); BookPlayer.setSleep(0, true); }
                 BookPlayer.play(getApplicationContext(), bk, 0, 0);
                 web.loadUrl(booksUrl() + "&b=" + Uri.encode(bk) + "&f=" + Uri.encode(cs.get(0).json));
             }
@@ -773,6 +774,9 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             if (!onStartPage(key)) return;
             prefs.edit().putFloat("bookSpeed", (float) s).apply();
             BookPlayer.setSpeed((float) s);
+        }
+        @JavascriptInterface public void bookSleep(String key, int minutes, boolean atChapterEnd) {
+            if (onStartPage(key)) BookPlayer.setSleep(Math.max(0, Math.min(600, minutes)), atChapterEnd);
         }
         @JavascriptInterface public String bookState(String key) { return onStartPage(key) ? BookPlayer.state(getApplicationContext()) : "{}"; }
         @JavascriptInterface public void bookCopy(String key) { if (onStartPage(key)) main.post(MainActivity.this::copyBooks); }
@@ -1509,7 +1513,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         String[] sl = {"Off", "End of this chapter", "15 minutes", "30 minutes", "45 minutes", "1 hour"};
         int[] mins = {0, 0, 15, 30, 45, 60};
         sleep.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, sl));
-        sleep.setSelection(svc != null && svc.stopAtChapterEnd ? 1 : 0);
+        final int sleepWas = svc != null && svc.stopAtChapterEnd ? 1 : 0;
+        sleep.setSelection(sleepWas);
         box.addView(sleep);
 
         box.addView(label("Pronunciation fixes — one per line, e.g.  Tavi = Tah-vee"));
@@ -1878,7 +1883,12 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 if (svc != null) {
                     svc.setVoice(Integer.parseInt(Voice.VOICES[voices.getSelectedItemPosition()][0]));
                     int k = sleep.getSelectedItemPosition();
-                    svc.setSleep(mins[k], k == 1);
+                    // (only when changed here: a 30-minute timer running shows "Off" here, and Done for any other setting
+                    //  turned it off)
+                    if (k != sleepWas) {
+                        svc.setSleep(mins[k], k == 1);
+                        BookPlayer.setSleep(mins[k], k == 1);      // (the audiobook player too)
+                    }
                 }
                 String f = fixes.getText().toString();
                 boolean changed = !f.equals(prefs.getString("fixes", "")) || tidy.isChecked() != prefs.getBoolean("tidy", true);

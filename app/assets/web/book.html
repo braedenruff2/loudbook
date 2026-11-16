@@ -66,6 +66,7 @@
   <div id="rhead">
     <button class="icon" id="backBtn" aria-label="All chapters">&#x2190;</button>
     <div class="t"><small id="rBook"></small><b id="rTitle"></b></div>
+    <button class="icon" id="sleep" aria-label="Sleep timer: off">&#x263E;</button>
     <button class="icon" id="smaller" aria-label="Smaller text">A&#x2212;</button>
     <button class="icon" id="bigger" aria-label="Bigger text">A+</button>
   </div>
@@ -306,6 +307,16 @@
     const nx = SPEEDS.find(x => x > s + 0.01) || SPEEDS[0];
     call('bookSpeed', nx); $('speed').textContent = nx + '×';
   };
+  // the sleep timer: each tap steps Off, 15, 30, 45, 60 minutes, end of this chapter, Off
+  const showSleep = (st) => {
+    $('sleep').textContent = LBBook.sleepLabel(st);
+    $('sleep').setAttribute('aria-label', 'Sleep timer: ' + (st.sleepEnd ? 'at the end of this chapter' : st.sleepLeft > 0 ? Math.ceil(st.sleepLeft / 60000) + ' minutes left' : 'off'));
+  };
+  $('sleep').onclick = () => {
+    const nx = LBBook.sleepNext(json(call('bookState'), {}));
+    call('bookSleep', nx[0], nx[1]);
+    showSleep({ sleepLeft: nx[0] * 60000, sleepEnd: nx[1] });
+  };
   const fs = (d) => { const v = Math.max(14, Math.min(30, (+store.get('lbFs', '19')) + d)); store.set('lbFs', String(v)); document.documentElement.style.setProperty('--fs', v + 'px'); scrollToLit(true); };
   $('smaller').onclick = () => fs(-1);
   $('bigger').onclick = () => fs(1);
@@ -350,6 +361,7 @@
     $('play').textContent = playing ? '❚❚' : '▶';
     $('play').setAttribute('aria-label', playing ? 'Pause' : 'Play');
     $('speed').textContent = (st.speed || 1) + '×';
+    showSleep(st);
     $('err').hidden = !st.error; $('err').textContent = st.error || '';
     const dur = mine ? st.dur : shown.seconds * 1000;
     let ms = mine ? st.ms : 0;

@@ -85,6 +85,16 @@ public final class BookPlayer extends Service {
     static void seekMs(long ms) { run(p -> p.seek((int) ms)); }
     static void jump(int ms) { run(p -> p.seek(p.posMs() + ms)); }
     static void setSpeed(float s) { run(p -> p.speed(s)); }
+    /** Sleep timer (the book page's moon button, or the reader's Settings): pauses after that many minutes, the sound fading
+     *  over the last 15 s; atChapterEnd: pauses when this chapter ends, the next one opened ready (play goes on there).
+     *  0 and false: off. (The audiobook player had none: the reader's timer only stopped the reader's voice.) */
+    static void setSleep(int minutes, boolean atChapterEnd) {
+        sleepAt = minutes > 0 ? System.currentTimeMillis() + minutes * 60_000L : 0;
+        sleepEnd = atChapterEnd;
+        run(p -> { p.volume(1f); p.sleepTick(); });
+    }
+    private static volatile long sleepAt;
+    private static volatile boolean sleepEnd;
     static boolean isPlaying() { BookPlayer p = me; return p != null && p.playing; }
 
     private interface Op { void on(BookPlayer p); }
@@ -97,6 +107,8 @@ public final class BookPlayer extends Service {
         BookPlayer p = me;
         try {
             o.put("error", error);
+            long sa = sleepAt;
+            o.put("sleepLeft", sa > 0 ? Math.max(0, sa - System.currentTimeMillis()) : 0).put("sleepEnd", sleepEnd);
             o.put("speed", ctx.getSharedPreferences("lb", Context.MODE_PRIVATE).getFloat("bookSpeed", 1f));
             List<Books.Chapter> list = p == null ? null : p.chapters;
             int k = p == null ? -1 : p.ch;
@@ -233,7 +245,12 @@ public final class BookPlayer extends Service {
             //  started) stays paused; Play pressed while opening plays)
             if (playing) resume(); else update();
         });
-        mp.setOnCompletionListener(m -> { if (m == mp) { Log.i("LoudbookTest", "book: chapter " + (ch + 1) + " ended"); next(); } });
+        mp.setOnCompletionListener(m -> {
+            if (m != mp) return;
+            Log.i("LoudbookTest", "book: chapter " + (ch + 1) + " ended");
+            if (sleepEnd) { sleepEnd = false; sleepAtEnd(); return; }
+            next();
+        });
         mp.setOnErrorListener((m, what, extra) -> {
             if (m != mp) return true;
             Log.w(TAG, "book: player error " + what + "/" + extra + " in " + c.mp3);
@@ -267,12 +284,44 @@ public final class BookPlayer extends Service {
         if (!prepared) { playing = true; update(); return; }        // (starts when ready)
         if (!requestFocus()) { error = "Another app is using the sound."; playing = false; update(); return; }
         applySpeed();
+        volume(1f);                                       // (after a sleep-timer fade)
         try { mp.start(); } catch (Exception e) { Log.w(TAG, "book: start", e); }
         playing = true; pausedForFocus = false;
         if (!wake.isHeld()) wake.acquire(6 * 3600 * 1000L);
         Log.i("LoudbookTest", "book: playing chapter " + (ch + 1) + " at " + posMs() + " ms");
         update();
         tick();
+        sleepTick();
+    }
+
+    private final Runnable sleeper = this::sleepTick;
+    /** The sleep timer, while playing: fades the last 15 s, then pauses (the volume back for the next play). */
+    private void sleepTick() {
+        main.removeCallbacks(sleeper);
+        long at = sleepAt;
+        if (at <= 0 || !playing) return;
+        long left = at - System.currentTimeMillis();
+        if (left <= 0) {
+            sleepAt = 0;
+            Log.i("LoudbookTest", "book: sleep timer: paused");
+            pause();
+            volume(1f);
+            return;
+        }
+        if (left < 15_000) volume(Math.max(0.05f, left / 15_000f));
+        main.postDelayed(sleeper, Math.min(1000, left));
+    }
+    /** The sleep timer set to the chapter's end, which came: the next chapter is opened, paused at its start. */
+    private void sleepAtEnd() {
+        Log.i("LoudbookTest", "book: sleep timer: paused at the end of chapter " + (ch + 1));
+        playing = false;
+        if (chapters != null && ch + 1 < chapters.size()) { ch++; open(0, false); save(ch, 0); }
+        else { save(); update(); }
+        letGo();
+    }
+    private void volume(float v) {
+        MediaPlayer m = mp;
+        if (m != null) { try { m.setVolume(v, v); } catch (Exception ignored) { } }
     }
 
     private void pause() {
