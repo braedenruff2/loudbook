@@ -1,3 +1,4 @@
+Reading aloud: "she sent a :)" is "she sent a smiley" (also a wink, a sad face, a grin, a heart) instead of "she sent a".
 Audiobooks: a sleep timer (the ☾ button in the reader: 15, 30, 45, 60 minutes or the end of the chapter), fading out at the end; the Settings sleep timer stops audiobooks too, and pressing Done in Settings no longer turns off a timer that was running.
 Paused, skipping a sentence back or forward (headphones, the notification, the player's buttons, "Loudbook back") now stays paused there instead of starting to read; play goes on from that sentence. Changing the PC voice style while paused stays paused too.
 Chapters that start with their own title (Wuxiaworld, many Royal Road stories) no longer have the title read twice, nor "Chapter 12" again right after the title said it.

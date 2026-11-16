@@ -708,6 +708,10 @@ function tidy(t) {
     if (!lead && /\b\d+(?:\.\d+)?\s*(?:\/\s*\d+|out of \d+)?\s*stars?\W{0,3}$/i.test(all.slice(Math.max(0, at - 30), at))) return ' ';
     const n = st.indexOf('☆') < 0 ? st.length : st.indexOf('☆');
     return n === st.length ? (lead ? lead + n + ' stars' : m) : lead || st.length === 5 || st.length === 10 ? lead + n + ' out of ' + st.length + ' stars' : m; })
+  // an emoticon used as a word, after "a", "the", "his"...: "she sent a :)" -> "a smiley" (dropped below otherwise, which
+  // left "she sent a")
+  t = t.replace(/\b(a|an|the|his|her|their|my|your|our|this|that|one|another) (:-?\)|=\)|;-?\)|:-?\(|:-?D|<3)(?=[\s.,!?"'”’)]|$)/gi,
+    (m, w, e) => w + ' ' + (e === '<3' ? 'heart' : e[0] === ';' ? 'wink' : /\($/.test(e) ? 'sad face' : /D$/.test(e) ? 'grin' : 'smiley'));
   // scene breaks and decorations ("***", "~~~", "=== Chapter 5 ===", "---o0o---", "◇◇◇"): silent
   t = t.replace(/([~=*#_<>+\-—–])\1{2,}/g, ' ').replace(/(?<!\d)(^|\s)(?!XXX\b)[oO0xX]{3}(?=\s|$)/g, '$1 ').replace(/^\s*XXX\s*$/, '').replace(/[◇◆◈❖•·♦♢❦☆★✦✧♪♫]+/gu, ' ')
     .replace(/[█▓▒░▉▊▋▌▍▎▏■□▰▱]{3,}/g, ' ')      // a bar drawn in blocks ("Mana: ▓▓▓▓▓░░░░░ 50%"): silent, the number is read
