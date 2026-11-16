@@ -172,6 +172,9 @@ public final class BookPlayer extends Service {
     @Override public IBinder onBind(Intent i) { return null; }
 
     @Override public void onDestroy() {
+        // (a save still queued would run after the player is gone and store where the chapter was opened instead)
+        main.removeCallbacks(ticker); main.removeCallbacks(sleeper);
+        sleepAt = 0; sleepEnd = false;                    // (a timer doesn't carry over to another day's listening)
         save();
         if (me == this) me = null;
         try { unregisterReceiver(noisyReceiver); } catch (Exception ignored) { }
@@ -285,6 +288,8 @@ public final class BookPlayer extends Service {
         if (!requestFocus()) { error = "Another app is using the sound."; playing = false; update(); return; }
         applySpeed();
         volume(1f);                                       // (after a sleep-timer fade)
+        // (a timer that ran out while paused by hand: it's over, and this Play plays; it used to pause again at once)
+        if (sleepAt > 0 && System.currentTimeMillis() >= sleepAt) { sleepAt = 0; sleepEnd = false; }
         try { mp.start(); } catch (Exception e) { Log.w(TAG, "book: start", e); }
         playing = true; pausedForFocus = false;
         if (!wake.isHeld()) wake.acquire(6 * 3600 * 1000L);
@@ -302,7 +307,7 @@ public final class BookPlayer extends Service {
         if (at <= 0 || !playing) return;
         long left = at - System.currentTimeMillis();
         if (left <= 0) {
-            sleepAt = 0;
+            sleepAt = 0; sleepEnd = false;
             Log.i("LoudbookTest", "book: sleep timer: paused");
             pause();
             volume(1f);
@@ -315,8 +320,9 @@ public final class BookPlayer extends Service {
     private void sleepAtEnd() {
         Log.i("LoudbookTest", "book: sleep timer: paused at the end of chapter " + (ch + 1));
         playing = false;
+        if (chapters != null && ch + 1 >= chapters.size()) chapters = Books.chapters(this, book);   // (copied from the PC since)
         if (chapters != null && ch + 1 < chapters.size()) { ch++; open(0, false); save(ch, 0); }
-        else { save(); update(); }
+        else pause();                                     // (the last chapter: stops there)
         letGo();
     }
     private void volume(float v) {
@@ -338,7 +344,10 @@ public final class BookPlayer extends Service {
     private void seek(int ms) {
         if (mp == null || !prepared) { startAt = Math.max(0, ms); return; }
         int d = mp.getDuration();
-        if (ms >= d - 300) { next(); return; }            // (forward past the end: the next chapter)
+        if (ms >= d - 300) {                              // (forward past the end: the next chapter)
+            if (sleepEnd) { sleepEnd = false; sleepAtEnd(); return; }   // (or the sleep timer's chapter end)
+            next(); return;
+        }
         if (ms < 0) {
             // (back past the start: the end of the chapter before)
             if (ch > 0 && posMs() < 2000) { ch--; open(-JUMP_MS, playing); return; }
@@ -418,7 +427,12 @@ public final class BookPlayer extends Service {
                 if (change == AudioManager.AUDIOFOCUS_LOSS) { pausedForFocus = false; if (playing) pause(); }
                 else if (change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK) {
                     if (playing) { pause(); pausedForFocus = true; }
-                } else if (change == AudioManager.AUDIOFOCUS_GAIN && pausedForFocus) { pausedForFocus = false; resume(); }
+                } else if (change == AudioManager.AUDIOFOCUS_GAIN && pausedForFocus) {
+                    pausedForFocus = false;
+                    // (the sleep timer ran out during the call: it stays paused, as it would have)
+                    if (sleepAt > 0 && System.currentTimeMillis() >= sleepAt) { sleepAt = 0; sleepEnd = false; update(); }
+                    else resume();
+                }
             })).build();
         return audio.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
     }

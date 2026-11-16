@@ -1887,7 +1887,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                     //  turned it off)
                     if (k != sleepWas) {
                         svc.setSleep(mins[k], k == 1);
-                        BookPlayer.setSleep(mins[k], k == 1);      // (the audiobook player too)
+                        if (BookPlayer.isPlaying()) BookPlayer.setSleep(mins[k], k == 1);   // (an audiobook playing now too)
                     }
                 }
                 String f = fixes.getText().toString();
