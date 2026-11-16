@@ -68,6 +68,43 @@
       if (rest) parts.push(rest + ' read live');
       return parts.join(', ');
     },
+    /** Kokoro's English voices by speaker number (as VoiceNames.java). */
+    KOKORO: { 3: 'Heart', 2: 'Bella', 6: 'Nicole', 21: 'Emma', 16: 'Michael', 14: 'Fenrir', 18: 'Puck', 1: 'Aoede', 5: 'Kore',
+      9: 'Sarah', 26: 'George', 25: 'Fable', 22: 'Isabella', 7: 'Nova', 0: 'Alloy', 10: 'Sky', 27: 'Lewis', 13: 'Eric', 15: 'Liam',
+      17: 'Onyx', 12: 'Echo', 24: 'Daniel', 20: 'Alice', 23: 'Lily', 11: 'Adam' },
+    /** A recording's voice in words ("voice" in the PC's chapter .json): 17 -> "Onyx", "s17/e0.75" -> "Onyx (expressiveness
+     *  0.75)", "builtin" -> "Chatterbox's own voice", a recorded voice's id -> "a voice recorded on your PC". */
+    voiceName(v) {
+      const k = n => (n in LBBook.KOKORO ? LBBook.KOKORO[n] : 'voice ' + n);
+      if (v === undefined || v === null || String(v).trim() === '') return 'unknown';
+      v = String(v).trim();
+      if (v === 'phone') return 'the phone\'s voice';
+      if (/^-?\d+(\.0)?$/.test(v)) return k(parseInt(v, 10));
+      const parts = v.split('/');
+      let head = parts[0], pitch = null, speed = null;
+      const hat = head.indexOf('^'); if (hat >= 0) { pitch = head.slice(hat + 1); head = head.slice(0, hat); }
+      const at = head.indexOf('@'); if (at >= 0) { speed = head.slice(at + 1); head = head.slice(0, at); }
+      const base = /^s\d+$/.test(head) ? k(+head.slice(1)) : head === 'builtin' ? 'Chatterbox\'s own voice'
+        : /^[0-9a-f]{12}$/.test(head) ? 'a voice recorded on your PC' : /^\d+$/.test(head) ? k(+head) : head;
+      const how = [];
+      if (speed) how.push('speed ' + speed);
+      if (pitch) how.push('pitch ' + (/^[+-]/.test(pitch) ? pitch : '+' + pitch));
+      for (const p of parts.slice(1)) {
+        if (p.length < 2) continue;
+        how.push(p[0] === 'e' ? 'expressiveness ' + p.slice(1) : p[0] === 'c' ? 'pace ' + p.slice(1) : p);
+      }
+      return how.length ? base + ' (' + how.join(', ') + ')' : base;
+    },
+    /** The voices of a chapter's sentences, most used first: [{name, n}]. names: the PC's own words for them, if it sent any. */
+    voices(sentences, names) {
+      const m = new Map();
+      for (const x of sentences || []) {
+        if (!('voice' in x)) continue;
+        const nm = (names && names[String(x.voice)]) || LBBook.voiceName(x.voice);
+        m.set(nm, (m.get(nm) || 0) + 1);
+      }
+      return [...m.entries()].map(([name, n]) => ({ name, n })).sort((a, b) => b.n - a.n);
+    },
     /** The sleep timer's settings, in the order the moon button steps through them: [minutes, at the chapter's end]. */
     SLEEPS: [[0, false], [15, false], [30, false], [45, false], [60, false], [0, true]],
     /** The setting after the one running now (st: bookState's sleepLeft ms, sleepEnd). A timer part-way down counts as the

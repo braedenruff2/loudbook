@@ -366,6 +366,11 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             if (svc != null) svc.cloudChanged();
         }
         if (KindleService.testBuild() && i.getBooleanExtra("audiofail", false) && svc != null) { i.removeExtra("audiofail"); svc.testAudioFail(); }   // (chapter-test)
+        if (KindleService.testBuild() && i.getBooleanExtra("whichvoice", false)) {   // (chapter-test: what "Voice" by the title says)
+            i.removeExtra("whichvoice");
+            Log.i("LoudbookTest", "which voice: " + (svc != null ? svc.voiceReport().replace('\n', '|') : "no service"));
+            return true;
+        }
         if (KindleService.testBuild() && i.getBooleanExtra("nextch", false)) { i.removeExtra("nextch"); Log.i("LoudbookTest", "test: next chapter button"); chapterStep(true); return true; }   // (chapter-test)
         if (KindleService.testBuild() && i.hasExtra("bookplay")) {
             // (chapter-test: a fake two-chapter audiobook pushed into Loudbook's files, played from its first chapter)
@@ -1987,7 +1992,20 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         updateBtn.setVisibility(View.GONE);
         updateBtn.setTextSize(13);
         player.addView(updateBtn);
-        player.addView(storyText); player.addView(chapterText); player.addView(nowText); player.addView(statusText);
+        // the chapter's title, with "Voice" beside it: which voice made what's being heard (the PC's recording, made ahead,
+        // the phone's Kokoro, the PC, Gemini) and how long the chapter took to start
+        LinearLayout titleRow = hbox(0, 0);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        titleRow.addView(chapterText, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView voiceBtn = text(12, C_AMBER, true);
+        voiceBtn.setText("Voice ⓘ");
+        voiceBtn.setContentDescription("Which voice is reading this chapter");
+        voiceBtn.setPadding(dp(10), dp(6), 0, dp(6));
+        voiceBtn.setClickable(true); voiceBtn.setFocusable(true);
+        if (Build.VERSION.SDK_INT >= 26) voiceBtn.setTooltipText(voiceBtn.getContentDescription());
+        voiceBtn.setOnClickListener(v -> showVoiceReport());
+        titleRow.addView(voiceBtn);
+        player.addView(storyText); player.addView(titleRow); player.addView(nowText); player.addView(statusText);
 
         readThisBtn = smallButton("Read this page instead");
         readThisBtn.setVisibility(View.GONE);
@@ -2070,6 +2088,43 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         frame.addView(rc, lp);
         readingControls = rc;
         return frame;
+    }
+
+    /** "Voice ⓘ" by the chapter's title: which voice is reading this chapter, from ReaderService.voiceReport. */
+    private void showVoiceReport() {
+        if (svc == null) return;
+        TextView t = text(14, C_INK, false);
+        t.setTextIsSelectable(true); t.setPadding(dp(20), dp(8), dp(20), dp(8));
+        ScrollView sv = new ScrollView(this); sv.addView(t);
+        // (made off the main thread: it may read the chapter's recording details from storage)
+        boolean[] busy = {false};
+        Runnable fill = () -> {
+            ReaderService s = svc;
+            if (s == null || busy[0]) return;
+            busy[0] = true;
+            new Thread(() -> {
+                String r;
+                try { r = s.voiceReport(); } catch (Exception e) { r = "Couldn't tell: " + e; }
+                final String rr = r;
+                main.post(() -> { busy[0] = false; if (!rr.contentEquals(t.getText())) t.setText(rr); });
+            }, "lb-which-voice").start();
+        };
+        t.setText("\u2026");
+        fill.run();
+        AlertDialog dlg = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("Which voice?")
+            .setView(sv)
+            .setPositiveButton("Close", null)
+            .setNeutralButton("Copy", (d, w) -> {
+                android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("Loudbook voice", t.getText()));
+            })
+            .create();
+        // (kept up to date while it's open: the first sentence may still be on its way)
+        Runnable[] tick = new Runnable[1];
+        tick[0] = () -> { if (dlg.isShowing()) { fill.run(); main.postDelayed(tick[0], 1000); } };
+        dlg.setOnShowListener(d -> main.postDelayed(tick[0], 1000));
+        dlg.show();
     }
 
     // ---------------------------------------------------------------- reading mode: text only, full screen

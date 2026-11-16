@@ -335,6 +335,24 @@ public class UnitTest {
             check("aac shift: unknown (older files)", RecMatch.shift(0, 240000, 24000), 0L);
             check("aac shift: odd (a second more) ignored", RecMatch.shift(240000, 264000 + 600, 24000), 0L);
         }
+        // "Which voice?": a PC recording's voice in words
+        {
+            check("voice name: speaker number", VoiceNames.pc("17"), "Onyx");
+            check("voice name: number as 17.0", VoiceNames.pc("17.0"), "Onyx");
+            check("voice name: style", VoiceNames.pc("s17/e0.75"), "Onyx (expressiveness 0.75)");
+            check("voice name: speed, pitch, cfg", VoiceNames.pc("s17@0.85^-2/e0.35/c0.35"), "Onyx (speed 0.85, pitch -2, expressiveness 0.35, pace 0.35)");
+            check("voice name: pitch up", VoiceNames.pc("s3^2"), "Heart (pitch +2)");
+            check("voice name: Chatterbox's own", VoiceNames.pc("builtin/e0.4"), "Chatterbox's own voice (expressiveness 0.4)");
+            check("voice name: recorded on the PC", VoiceNames.pc("0a1b2c3d4e5f/c0.3"), "a voice recorded on your PC (pace 0.3)");
+            check("voice name: unknown speaker", VoiceNames.pc("40"), "voice 40");
+            check("voice name: nothing", VoiceNames.pc(""), "unknown");
+            check("voice name: phone", VoiceNames.pc("phone"), "the phone's voice");
+            check("voice summary: one voice", VoiceNames.summary(java.util.Arrays.asList("s17/e0.75", "s17/e0.75")), "Onyx (expressiveness 0.75)");
+            check("voice summary: most used first", VoiceNames.summary(java.util.Arrays.asList("3", "17", "17", "16", "17")),
+                "Onyx: 3 sentences; Heart: 1 sentence; Michael: 1 sentence");
+            check("voice summary: none", VoiceNames.summary(new java.util.ArrayList<>()), "unknown");
+            check("voice name: odd text doesn't throw", VoiceNames.pc("s/^/@/e"), "s");
+        }
         // "What's new": one change at a time, and each shown only once
         {
             String v1 = "Kindle: the highlight is right. Numbers: \"Mr. He\" and \"e.g. Ext. 204\" read right.\nOlder: a thing (J. K. Rowling) fixed.";

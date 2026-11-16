@@ -404,6 +404,7 @@ public class ReaderService extends Service {
         // (another chapter opened during a call: the call ending mustn't start reading it. Not Kindle's own next page or
         // reopened book, which goes on after the call as before)
         if (!"kindle".equals(ch.site)) pausedForFocus = false;
+        if (chapter != ch) { heardSrc.clear(); chapterStart = ""; chapterFirstFor = -1; }
         chapter = ch;
         heardIdx = -1;
         heardTiming = null; timings.clear();
@@ -663,7 +664,25 @@ public class ReaderService extends Service {
 
     /** A sentence, with the parts in quotes said in the dialogue voice when that's on. */
     private Voice.Clip makeVoiced(Chapter ch, int i, String text, int want, float sp) throws Exception {
-        if (!twoVoices()) return makeHere(text, want, sp);
+        // (while reading: the PC is waited on only until what's queued has played, plus a few seconds, 7 s at least, then
+        // the phone's voice reads this sentence: a chapter's first sentence waited up to half a minute for a busy PC. The
+        // parts of a sentence with a second voice share the one deadline. See Voice.speak)
+        boolean reading = ch == chapter && playing && !paused;
+        long wait = Math.min(Voice.PC_WAIT_MS, Math.max(PC_WAIT_NOW_MS, Math.round(queuedSecs() * 1000) + 4000));
+        deadline.set(reading ? System.currentTimeMillis() + wait : 0L);
+        try {
+            if (!twoVoices()) return makeHere(text, want, sp);
+            return makeVoicedParts(ch, i, text, want, sp);
+        } finally { deadline.set(0L); }
+    }
+    /** Set on the voice thread while reading: when the sentence being made is needed by (0: no hurry). */
+    private final ThreadLocal<Long> deadline = ThreadLocal.withInitial(() -> 0L);
+    static final int PC_WAIT_NOW_MS = 7000;
+    private int pcWait() {
+        long d = deadline.get();
+        return d == 0 ? Voice.PC_WAIT_MS : (int) Math.max(1500, Math.min(Voice.PC_WAIT_MS, d - System.currentTimeMillis()));
+    }
+    private Voice.Clip makeVoicedParts(Chapter ch, int i, String text, int want, float sp) throws Exception {
         return makeParts(text, Dialogue.openAt(ch, i), Dialogue.singles(ch, i), Dialogue.after(ch, i), Dialogue.dashes(ch, i), want, sp);
     }
     /** The second voice is on (not with a recorded PC voice). */
@@ -715,7 +734,7 @@ public class ReaderService extends Service {
                 Voice.Clip c = null;
                 for (int attempt = 0; c == null; attempt++) {
                     while (!voice.ready()) Thread.sleep(100);        // first run: model still loading
-                    try { c = voice.speak(text, want, sp); }
+                    try { c = voice.speak(text, want, sp, pcWait()); }
                     catch (Voice.NeedLocal e) {                       // the PC dropped out: switch to the phone
                         if (attempt >= 2) throw e;
                         main.post(() -> { status("Can't reach your PC. Using the phone's voice…", false); warmUp(); });
@@ -1609,6 +1628,14 @@ public class ReaderService extends Service {
     private void logFirstSound(int myGen, boolean gem, boolean byPhone) {
         firstSoundFor = myGen;
         long ms = System.currentTimeMillis() - playAt;
+        // (the first start of this chapter, for "Which voice?": how long it took to start, and from what)
+        if (chapterFirstFor < 0) {
+            chapterFirstFor = myGen;
+            Chapter c0 = chapter;
+            chapterStart = "started " + secs(ms) + " after play" + (c0 != null && c0 == turnedTo ? " (it went on from the chapter before)" : "")
+                + ", at " + new java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(new java.util.Date());
+            trail("chapter " + chapterStart);
+        }
         String how = !gem ? "" : byPhone ? " (the phone's voice, while Gemini got ready)" : " (Gemini)";
         Log.i("LoudbookTest", "start: first sound after " + ms + " ms" + how);
         if (gem) prefs.edit().putString("gemStart", new java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(new java.util.Date())
@@ -1882,7 +1909,8 @@ public class ReaderService extends Service {
                 if (c != null) {
                     GeminiBook bk = book;
                     if (gem && !byPhone && bk != null && !bk.has(next)) byPhone = true;      // (not Gemini's: it isn't in the recording)
-                    srcOf.put(next, gem && !byPhone ? "Gemini, " + (bk != null ? bk.describe(next) : "") : gem ? "the phone's voice (Gemini not ready)" : "the phone's voice");
+                    String said = c.src != null ? c.src : "the phone's voice";
+                    srcOf.put(next, gem && !byPhone ? "Gemini, " + (bk != null ? bk.describe(next) : "") : gem ? said + " (Gemini not ready)" : said);
                     Log.i("LoudbookTest", "clip " + next + ": " + Math.round(c.seconds() * 100) / 100.0 + " s" + (!gem ? "" : byPhone ? ", phone's voice" : ", gemini"));
                     if (next == pos) main.post(() -> status("", false));
                     // another sample rate (the PC's voice failing over to the phone's): let the old track play out first. It
@@ -2053,6 +2081,7 @@ public class ReaderService extends Service {
             trailHeard = here;
             Chapter.Chunk tc = ch.chunks.get(here);
             String src = srcOf.get(here);
+            if (src != null && ch == chapter) heardSrc.put(here, src);
             trail("hearing " + here + " \"" + clip40(tc.text) + "\"" + (src != null ? ": " + src : ""));
         }
         { Chapter.Chunk cc = ch.chunks.get(here); String said = cc.text;
@@ -2336,6 +2365,7 @@ public class ReaderService extends Service {
             nextClips.clear(); nextClipsUrl = null;
         }
         nextCh = null; nextFor = null;
+        turnedTo = n; turnedPre = pre != null ? pre.size() : 0;
         Log.i("LoudbookTest", "turned to " + n.url + " (" + (pre != null ? pre.size() : 0) + " sentences made ahead), play " + go);
         setChapter(n, 0, go, pre);
         if (!go) status("Stopped at the end of the chapter. The next one is ready.", false);
@@ -2613,6 +2643,51 @@ public class ReaderService extends Service {
     private volatile int trailHeard = -1;
     /** Where each queued sentence's sound comes from, for the trail. */
     private final java.util.Map<Integer, String> srcOf = new java.util.concurrent.ConcurrentHashMap<>();
+    /** This chapter's sentences heard so far, and where each one's sound came from (for "Which voice?"). */
+    private final java.util.Map<Integer, String> heardSrc = new java.util.concurrent.ConcurrentHashMap<>();
+    private volatile String chapterStart = "";
+    private volatile int chapterFirstFor = -1;
+    /** The chapter reading went on to by itself at the end of the one before, and how many of its sentences were ready. */
+    private volatile Chapter turnedTo;
+    private volatile int turnedPre;
+
+    /**
+     * "Which voice?": what's reading this chapter, in words. The sentence being heard, every voice this chapter's sentences
+     * have come from so far (the PC's recording, made ahead on the phone, the phone's Kokoro, the PC, Gemini), how long
+     * it took to start, and the settings that choose the voice.
+     */
+    String voiceReport() {
+        Chapter ch = chapter;
+        StringBuilder b = new StringBuilder();
+        if (ch == null) return "Nothing is open. Open a chapter and press play.";
+        b.append(ch.title == null || ch.title.isEmpty() ? "This chapter" : ch.title).append("\n\n");
+        int i = heardIdx;
+        String now = i >= 0 ? srcOf.get(i) : null;
+        b.append("Now: ").append(now != null ? now : playing ? "getting the first sentence ready…" : "not reading yet").append("\n");
+        java.util.LinkedHashMap<String, Integer> n = new java.util.LinkedHashMap<>();
+        for (String v : new java.util.TreeMap<>(heardSrc).values()) n.merge(v.startsWith("Gemini") ? "Gemini (online)" : v, 1, Integer::sum);
+        if (!n.isEmpty()) {
+            b.append("\nThis chapter so far:\n");
+            for (java.util.Map.Entry<String, Integer> e : n.entrySet())
+                b.append("• ").append(e.getKey()).append(" — ").append(e.getValue()).append(e.getValue() == 1 ? " sentence" : " sentences").append("\n");
+        }
+        String rec = BookAudio.describe(this, ch, sid);
+        if (rec != null) b.append("\nRecording on this phone: ").append(rec).append("\n");
+        else if (BookPages.isBook(ch.url)) b.append("\nNo recording of this chapter is on this phone: it's read live.\n");
+        if (!chapterStart.isEmpty()) b.append("\nStart: ").append(chapterStart)
+            .append(ch == turnedTo ? "; " + turnedPre + (turnedPre == 1 ? " sentence was" : " sentences were") + " made ahead" : "").append(".\n");
+        b.append("\nSettings: ");
+        if (cloudOn() && !"kindle".equals(ch.site)) b.append("Gemini (online) reads web chapters. ");
+        PcLink l = voice.pcLink();
+        String pcv = prefs.getString("pcVoice", "");
+        if (l != null) b.append("your PC's voice (").append(prefs.getString("pcEngine", "natural")).append(pcv.isEmpty() ? "" : ", your recorded voice").append(")")
+            .append(voice.pcOk ? "" : " — not reachable just now, so the phone reads").append("; ");
+        b.append("voice ").append(Voice.name(sid)).append(String.format(java.util.Locale.US, ", speed %.2fx", speed));
+        if (twoVoices()) b.append(", what characters say in ").append(Voice.name(dialogueVoice(sid)));
+        b.append(".");
+        return b.toString();
+    }
+
     /** How far into its recording each queued Gemini sentence's sound starts after its own start (samples; after a move by hand). */
     private final java.util.Map<Integer, Long> clipOffset = new java.util.concurrent.ConcurrentHashMap<>();
 

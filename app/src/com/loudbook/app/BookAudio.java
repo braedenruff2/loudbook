@@ -42,6 +42,8 @@ final class BookAudio {
         long written; volatile long shift;
         /** Made on the phone ahead (AheadMaker): its voice and the speed it was made at; -1 / 1 for the PC's recordings. */
         int sid = -1; float madeAt = 1f; String stamp = "";
+        /** Its voice in words, for "Which voice?" */
+        String who = "";
         Rec(String key, Uri mp3) { this.key = key; this.mp3 = mp3; }
     }
 
@@ -91,6 +93,7 @@ final class BookAudio {
             r.sid = o.optInt("sid", -1); r.madeAt = (float) o.optDouble("speed", 1);
             r.written = o.optLong("frames", 0);
             r.stamp = audio.length() + "-" + audio.lastModified();
+            r.who = "made ahead on this phone: Kokoro, " + Voice.name(r.sid) + (Math.abs(r.madeAt - 1f) > 0.01f ? String.format(java.util.Locale.US, " at %.2fx", r.madeAt) : "");
             for (int i = 0; i < ss.length(); i++) {
                 JSONObject x = ss.getJSONObject(i);
                 r.words.add(words(x.optString("text", "")));
@@ -117,11 +120,14 @@ final class BookAudio {
             Rec r = new Rec(rp, mp3);
             // (recorded again on the PC (its studio) and copied again: decoded afresh, not the old take from the cache)
             r.stamp = json.length() + "-" + json.hashCode();
+            List<String> voices = new ArrayList<>();
             for (int i = 0; i < ss.length(); i++) {
                 JSONObject s = ss.getJSONObject(i);
                 r.words.add(words(s.optString("text", "")));
                 r.times.add(new double[]{s.optDouble("start", 0), s.optDouble("end", 0)});
+                if (s.has("voice")) voices.add(s.optString("voice", ""));
             }
+            r.who = "your PC's recording: " + VoiceNames.summary(voices);
             Log.i(TAG, "book: " + file + " has the PC's recording (" + r.words.size() + " sentences)");
             return r;
         } catch (Exception e) { Log.w(TAG, "book: recording of " + file, e); return null; }
@@ -159,8 +165,11 @@ final class BookAudio {
             // (the decoding runs ahead from the start: wait until it has got this far)
             // (a decoder that stops moving for 6 s gives way to the voice at once: each sentence waited the whole 90 s)
             long until = System.currentTimeMillis() + 90_000, seen = -1, moved = System.currentTimeMillis();
-            // (made on the phone: wait for the whole file when the encoder's delay may move the times; it's short)
-            while (!r.failed && (r.rate == 0 || (!r.done && (r.written > 0 || r.frames < (long) (t[1] * r.rate))))) {
+            // (made on the phone: the AAC decoder's delay at the start is only known once the whole file is decoded. It used
+            // to wait for all of it, which for a long chapter was half a minute of silence at every new chapter; now it
+            // goes on with the delay this phone's decoder had last time (each sentence has 80 ms of pause on each side))
+            long guess = r.written > 0 ? knownShift(ctx) : 0;   // (in 24 kHz samples: used only at that rate, below)
+            while (!r.failed && (r.rate == 0 || (!r.done && r.frames < (long) (t[1] * r.rate) + guess + r.rate / 10))) {
                 long now = System.currentTimeMillis(), f = r.frames;
                 if (f != seen) { seen = f; moved = now; }
                 if (now > until || now - moved > 6_000) { Log.w(TAG, "book: the recording's decoding is stuck or slow: the voice reads sentence " + i); return null; }
@@ -168,16 +177,25 @@ final class BookAudio {
             }
             if (r.failed) return null;
             int rate = r.rate;
-            long from = Math.max(0, (long) (t[0] * rate) + r.shift), to = Math.min(r.frames, (long) (t[1] * rate) + r.shift);
+            long sh = r.done ? r.shift : rate == AheadMaker.RATE ? guess : 0;
+            long from = Math.max(0, (long) (t[0] * rate) + sh), to = Math.min(r.frames, (long) (t[1] * rate) + sh);
             if (to <= from) return null;
             float[] out = new float[(int) (to - from)];
             byte[] b = new byte[out.length * 2];
             try (RandomAccessFile f = new RandomAccessFile(r.pcm, "r")) { f.seek(from * 2); f.readFully(b); }
             ByteBuffer bb = ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN);
             for (int k = 0; k < out.length; k++) out[k] = bb.getShort() / 32768f;
-            return new Voice.Clip(out, rate, r.madeAt, System.currentTimeMillis() - t0);
+            return new Voice.Clip(out, rate, r.madeAt, System.currentTimeMillis() - t0).from(r.who);
         } catch (InterruptedException e) { Thread.currentThread().interrupt(); return null; }
         catch (Exception e) { Log.w(TAG, "book: reading the recording", e); return null; }
+    }
+
+    /** The recording of this chapter on the phone, in words ("your PC's recording: Onyx"), or null. */
+    static String describe(Context ctx, Chapter ch, int sid) {
+        Rec r = rec(ctx, ch);
+        if (r == null) return null;
+        return r.who + (r.failed ? " (it couldn't be played: the voice reads instead)"
+            : r.sid >= 0 && r.sid != sid ? " (another voice than the one chosen now, so it isn't used)" : "");
     }
 
     /** This chapter was made again (AheadMaker): looked up afresh next time. */
@@ -203,10 +221,24 @@ final class BookAudio {
 
     private static File dir(Context ctx) { return new File(ctx.getCacheDir(), "bookaudio"); }
 
-    private static long shiftOf(Rec r, long decoded, int rate) {
+    private static long shiftOf(Context ctx, Rec r, long decoded, int rate) {
         long s = rate == AheadMaker.RATE ? RecMatch.shift(r.written, decoded, rate) : 0;
-        if (r.written > 0) Log.i(TAG, "book: made-ahead chapter decoded: " + decoded + " samples for " + r.written + " written: times moved " + s);
+        if (r.written > 0) {
+            Log.i(TAG, "book: made-ahead chapter decoded: " + decoded + " samples for " + r.written + " written: times moved " + s);
+            if (rate == AheadMaker.RATE && s != shiftSeen) { shiftSeen = s; try { Voice.prefs(ctx).edit().putLong("aacShift", s).apply(); } catch (Exception ignored) { } }
+        }
         return s;
+    }
+    private static volatile long shiftSeen = -1;
+    /** The AAC decoder's delay this phone had on the last chapter made ahead (samples; 0 until one was decoded). */
+    static long knownShift(Context ctx) {
+        long s = shiftSeen;
+        if (s >= 0) return s;
+        // (none measured yet: half the usual 2048-sample priming, so either way a cut is within ~45 ms, inside the quiet
+        // each sentence has at both ends; a guess of 0 cut a phone that keeps the priming ~85 ms early)
+        try { s = Voice.prefs(ctx).getLong("aacShift", -1); } catch (Exception e) { s = -1; }
+        if (s < 0) return 1024;
+        return shiftSeen = s;
     }
 
     private static synchronized void decode(Context ctx, Rec r) {
@@ -221,7 +253,7 @@ final class BookAudio {
         if (r.pcm.isFile() && ok.isFile()) {
             try {
                 r.rate = Integer.parseInt(new String(java.nio.file.Files.readAllBytes(ok.toPath())).trim());
-                r.frames = r.pcm.length() / 2; r.shift = shiftOf(r, r.frames, r.rate); r.done = true;
+                r.frames = r.pcm.length() / 2; r.shift = shiftOf(ctx, r, r.frames, r.rate); r.done = true;
                 // (used now: trim keeps the newest files, and this one, decoded long ago, was the oldest while it played)
                 r.pcm.setLastModified(System.currentTimeMillis());
                 return;
@@ -235,7 +267,7 @@ final class BookAudio {
                     r.rate = twin.rate; r.frames = twin.frames;
                     try { Thread.sleep(50); } catch (InterruptedException e) { return; }
                 }
-                r.rate = twin.rate; r.frames = twin.frames; r.failed = twin.failed; r.done = twin.done;
+                r.rate = twin.rate; r.frames = twin.frames; r.shift = twin.shift; r.failed = twin.failed; r.done = twin.done;
             }, "lb-bookaudio-twin");
             w.setDaemon(true);
             w.start();
@@ -307,7 +339,7 @@ final class BookAudio {
                 }
                 out.flush();
                 r.rate = rate;
-                r.shift = shiftOf(r, frames, rate);
+                r.shift = shiftOf(ctx, r, frames, rate);
                 r.done = true;
                 try (FileOutputStream w = new FileOutputStream(ok)) { w.write(String.valueOf(rate).getBytes()); }
                 Log.i(TAG, "book: recording decoded (" + frames / Math.max(1, rate) + " s)");

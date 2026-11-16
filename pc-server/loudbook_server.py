@@ -962,7 +962,9 @@ class Books:
         audio = np.concatenate(parts) if parts else np.zeros(rate, dtype="<i2")
         with sf.SoundFile(dest + ".part.mp3", "w", rate, 1, format="MP3") as out: out.write(audio.astype(np.int16))
         with open(dest + ".json.part", "w", encoding="utf-8") as h:
-            json.dump({"title": title, "rate": rate, "seconds": round(at / rate, 2), "sentences": marks}, h, ensure_ascii=False)
+            # ("engine": shown by the phone's "Voice" button with each sentence's "voice")
+            json.dump({"title": title, "rate": rate, "seconds": round(at / rate, 2), "sentences": marks,
+                       "engine": "Kokoro" if isinstance(b, KokoroBook) else "Chatterbox (best quality)"}, h, ensure_ascii=False)
         # (the timings first: a chapter counts as recorded once its MP3 is there, and the phone copies it then)
         swap_in(dest + ".json.part", dest + ".json")
         swap_in(dest + ".part.mp3", dest + ".mp3")
@@ -1279,13 +1281,15 @@ class Studio:
 
 KOKORO_NAMES = {}
 def load_kokoro_names():
-    """The phone's voice names (app/src/.../Voice.java), for the studio's voice list."""
-    try:
-        here = os.path.dirname(os.path.abspath(__file__))
-        import re
-        with open(os.path.join(here, "..", "app", "src", "com", "loudbook", "app", "Voice.java"), encoding="utf-8") as h: src = h.read()
+    """The phone's voice names (app/src/.../VoiceNames.java; Voice.java before 2026-11-16), for the studio's voice list."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    import re
+    for f in ("VoiceNames.java", "Voice.java"):
+        try:
+            with open(os.path.join(here, "..", "app", "src", "com", "loudbook", "app", f), encoding="utf-8") as h: src = h.read()
+        except OSError: continue
         for sid, name in re.findall(r'\{"(\d+)", "([^"]+)"\}', src): KOKORO_NAMES[int(sid)] = name.split(" \u00b7 ")[0]
-    except Exception: pass
+        if KOKORO_NAMES: return
 
 
 class StudioHandler(http.server.BaseHTTPRequestHandler):

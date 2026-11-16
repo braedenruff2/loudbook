@@ -52,12 +52,16 @@ try:
     check("the bad job left out, said once", log.count("broken.job.json: chapter") == 1)
     lib = js("/api/books")
     check("books listed, sample marked", sorted((b["title"], b["sample"]) for b in lib["books"] if b["title"] != "Missing") == [("Test Book", False), ("Voice samples", False if False else True)])
-    check("phone voice names read from Voice.java", any(v["id"] == 3 and v["name"].startswith("Heart") for v in lib["kokoro"]))
+    check("phone voice names read from VoiceNames.java", any(v["id"] == 3 and v["name"].startswith("Heart") for v in lib["kokoro"]))
     check("book voice named", next(b for b in lib["books"] if b["title"] == "Test Book")["voiceName"].startswith("Heart"))
     check("sample listed with its voice", lib["samples"] and lib["samples"][0]["voiceName"].startswith("Onyx") and lib["samples"][0]["recorded"])
     c = js("/api/chapter?job=test.job.json&k=0")
     before = [(s["start"], s["end"]) for s in c["sentences"]]
     check("chapter one: title + 4 sentences", len(c["sentences"]) == 5 and c["recorded"])
+    import glob as _g
+    made = json.load(open(_g.glob(T + "/books/Test Book/0001 - *.json")[0], encoding="utf-8"))
+    check("the chapter's .json says its engine and each sentence's voice (the phone's Voice button)",
+          made.get("engine") in ("Kokoro", "Chatterbox (best quality)") and all("voice" in x for x in made["sentences"]))
     code, mp3 = call("/audio?job=test.job.json&k=0", headers={"Range": "bytes=0-99"})
     check("audio answers a range", code == 206 and len(mp3) == 100)
     # one sentence, new words: a longer take -> later sentences move by the same amount

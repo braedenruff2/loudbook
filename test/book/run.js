@@ -49,6 +49,21 @@ check('progress', () => {
   assert.strictEqual(B.progress({ chapters: book.chapters, at: { file: 'gone', sec: 5 } }), 0);
   assert.strictEqual(B.progress({ chapters: [] }), 0);
 });
+check('voice names (as VoiceNames.java)', () => {
+  assert.strictEqual(B.voiceName(17), 'Onyx'); assert.strictEqual(B.voiceName('17'), 'Onyx');
+  assert.strictEqual(B.voiceName('s17/e0.75'), 'Onyx (expressiveness 0.75)');
+  assert.strictEqual(B.voiceName('s17@0.85^-2/e0.35/c0.35'), 'Onyx (speed 0.85, pitch -2, expressiveness 0.35, pace 0.35)');
+  assert.strictEqual(B.voiceName('s3^2'), 'Heart (pitch +2)');
+  assert.strictEqual(B.voiceName('builtin/e0.4'), 'Chatterbox\'s own voice (expressiveness 0.4)');
+  assert.strictEqual(B.voiceName('0a1b2c3d4e5f/c0.3'), 'a voice recorded on your PC (pace 0.3)');
+  assert.strictEqual(B.voiceName(40), 'voice 40'); assert.strictEqual(B.voiceName(''), 'unknown'); assert.strictEqual(B.voiceName(null), 'unknown');
+  assert.strictEqual(B.voiceName(0), 'Alloy');
+});
+check('voices of a chapter, most used first', () => {
+  assert.deepStrictEqual(B.voices([{ voice: 3 }, { voice: 17 }, { voice: 17 }, { text: 'x' }]), [{ name: 'Onyx', n: 2 }, { name: 'Heart', n: 1 }]);
+  assert.deepStrictEqual(B.voices([{ voice: 's17/e0.75' }], { 's17/e0.75': 'Onyx, deeper' }), [{ name: 'Onyx, deeper', n: 1 }]);
+  assert.deepStrictEqual(B.voices([]), []); assert.deepStrictEqual(B.voices(undefined), []);
+});
 check('sleep timer steps', () => {
   assert.deepStrictEqual(B.sleepNext({}), [15, false]);
   assert.deepStrictEqual(B.sleepNext({ sleepLeft: 15 * 60000 }), [30, false]);
@@ -76,7 +91,7 @@ async function page() {
   const KEY = 'feedbeef';
   const chapters = {
     '0001 - One.json': { title: 'One', seconds: 14, sentences: S },
-    '0002 - Two.json': { title: 'Two', seconds: 6, sentences: [{ p: 0, s: 0, start: 0, end: 2, text: 'Chapter two' }, { p: 1, s: 0, start: 2.5, end: 6, text: 'E.' }] },
+    '0002 - Two.json': { title: 'Two', seconds: 6, engine: 'Chatterbox (best quality)', sentences: [{ p: 0, s: 0, start: 0, end: 2, text: 'Chapter two', voice: 's17/e0.75' }, { p: 1, s: 0, start: 2.5, end: 6, text: 'E.', voice: 's17/e0.75' }] },
   };
   const player = { book: '', ch: -1, file: '', ms: 0, playing: false, speed: 1, calls: [], sleepLeft: 0, sleepEnd: false };
   const lib = () => [{ name: 'Test Book', chapters: Object.keys(chapters).map(f => ({ file: f, title: chapters[f].title, seconds: chapters[f].seconds, audio: true })),
@@ -200,6 +215,20 @@ async function page() {
   check('page: sleep timer counts down', () => assert.ok(moon.textContent === '\u263E 10m' && /10 minutes left/.test(moon.getAttribute('aria-label')), moon.textContent));
   for (let t = 0; t < 5; t++) moon.click();
   check('page: sleep timer round to off', () => { assert.deepStrictEqual(player.calls[player.calls.length - 1], ['sleep', 0, false]); assert.strictEqual(moon.textContent, '\u263E'); });
+  // "Voice": which voice made the chapter shown
+  player.playing = false; await wait(800);
+  w.location.hash = B.hash(KEY, 'Test Book', files[1]); await wait(300);
+  d.getElementById('voiceBtn').click(); await wait(20);
+  check('page: Voice says which voice recorded the chapter', () => {
+    assert.ok(!d.getElementById('vinfo').hidden);
+    assert.strictEqual(d.getElementById('vinfoT').textContent, 'Recorded on your PC with Onyx (expressiveness 0.75) \u00b7 Chatterbox (best quality).');
+  });
+  w.location.hash = B.hash(KEY, 'Test Book', files[0]); await wait(300);
+  check('page: another chapter closes it', () => assert.ok(d.getElementById('vinfo').hidden));
+  d.getElementById('voiceBtn').click(); await wait(20);
+  check('page: a recording that doesn\'t say its voice', () => assert.ok(/doesn't say which voice/.test(d.getElementById('vinfoT').textContent), d.getElementById('vinfoT').textContent));
+  d.getElementById('vinfoX').click();
+  check('page: Voice closes', () => assert.ok(d.getElementById('vinfo').hidden));
   // delete: the first tap asks for a second; not given in 4 s, the button goes back to what it was
   d.getElementById('backBtn').click(); await wait(100);
   const delBtn = [...d.querySelectorAll('#books button')].find(x => x.textContent === 'Delete recordings');

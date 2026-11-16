@@ -24,23 +24,10 @@ final class Voice {
     static final String TAG = "Loudbook";
     static final String DIR = "kokoro";
 
-    /** Kokoro v1.0 English voices, best first, with sherpa-onnx's speaker numbers. */
-    static final String[][] VOICES = {
-        {"3", "Heart — US female · A"}, {"2", "Bella — US female · A-"}, {"6", "Nicole — US female, soft · B-"},
-        {"21", "Emma — UK female · B-"}, {"16", "Michael — US male · C+"}, {"14", "Fenrir — US male · C+"},
-        {"18", "Puck — US male · C+"}, {"1", "Aoede — US female · C+"}, {"5", "Kore — US female · C+"},
-        {"9", "Sarah — US female · C+"}, {"26", "George — UK male · C"}, {"25", "Fable — UK male · C"},
-        {"22", "Isabella — UK female · C"}, {"7", "Nova — US female · C"}, {"0", "Alloy — US female · C"},
-        {"10", "Sky — US female · C-"}, {"27", "Lewis — UK male · D+"}, {"13", "Eric — US male · D"},
-        {"15", "Liam — US male · D"}, {"17", "Onyx — US male, deep · D"}, {"12", "Echo — US male · D"},
-        {"24", "Daniel — UK male · D"}, {"20", "Alice — UK female · D"}, {"23", "Lily — UK female · D"},
-        {"11", "Adam — US male · F+"},
-    };
+    /** Kokoro v1.0 English voices, best first, with sherpa-onnx's speaker numbers (see VoiceNames). */
+    static final String[][] VOICES = VoiceNames.VOICES;
     /** A voice's name ("Heart"), or "voice N". */
-    static String name(int sid) {
-        for (String[] v : VOICES) if (Integer.parseInt(v[0]) == sid) return v[1].split(" — ")[0];
-        return "voice " + sid;
-    }
+    static String name(int sid) { return VoiceNames.kokoro(sid); }
 
     private OfflineTts tts;
     int sampleRate = 24000;
@@ -48,7 +35,10 @@ final class Voice {
 
     static final class Clip {
         final float[] samples; final int rate; final float madeAt; final long ms;
+        /** Where the sound came from, in words ("this phone: Kokoro, Michael"), for "Which voice?"; null: not known. */
+        String src;
         Clip(float[] s, int r, float speed, long ms) { samples = s; rate = r; madeAt = speed; this.ms = ms; }
+        Clip from(String where) { src = where; return this; }
         double seconds() { return samples.length / (double) rate; }
     }
     /** Whether a clip is all silence (what speak gives for a scene break). */
@@ -204,7 +194,15 @@ final class Voice {
     }
 
     /** One chunk of speech. sid: speaker number; speed: 1.0 = normal. */
-    Clip speak(String text, int sid, float speed) {
+    Clip speak(String text, int sid, float speed) { return speak(text, sid, speed, PC_WAIT_MS); }
+    static final int PC_WAIT_MS = 30000;
+    /**
+     * pcWaitMs: how long to wait for the PC's answer. Shorter when nothing is playing and this sentence is the one wanted
+     * (a chapter's first): a PC that's slow just then (recording an audiobook, a long sentence with its best voice) left
+     * up to half a minute of silence before the chapter started. Past that, this one sentence is read by the phone's
+     * voice and the PC stays in use for the rest (it isn't taken as gone).
+     */
+    Clip speak(String text, int sid, float speed, int pcWaitMs) {
         long t0 = System.currentTimeMillis();
         // nothing to say (a scene break, a row of symbols): a short silence, without asking anyone
         if (!text.codePoints().anyMatch(Character::isLetterOrDigit)) return new Clip(new float[2400], 24000, speed, 0);
@@ -219,7 +217,8 @@ final class Voice {
                 String rec = prefs(app).getString("pcVoice", "");          // a voice recorded on the PC
                 // (the PC reads with Kokoro too when asked for it or when its natural voice can't: the same respellings as the phone's)
                 PcLink.Audio a;
-                try { a = l.speak(text, kText, sid, speed, engine, rec.isEmpty() ? null : rec, 30000); }
+                int wait = tts != null ? pcWaitMs : PC_WAIT_MS;           // (the phone's voice must be there to take over)
+                try { a = l.speak(text, kText, sid, speed, engine, rec.isEmpty() ? null : rec, wait); }
                 catch (java.io.IOException e) {
                     String m = String.valueOf(e.getMessage());
                     // (the recorded voice was deleted on the PC, or it has no natural voice now: that isn't the PC being down, which
@@ -227,14 +226,19 @@ final class Voice {
                     if (rec.isEmpty() || !(m.startsWith("PC said 404") || m.startsWith("PC said 409"))) throw e;
                     Log.w(TAG, "PC voice: the recorded voice can't be used (" + m + "): the PC's own voice reads");
                     prefs(app).edit().remove("pcVoice").apply();
-                    a = l.speak(text, kText, sid, speed, engine, null, 30000);
+                    a = l.speak(text, kText, sid, speed, engine, null, wait);
                 }
                 pcOk = true; pcError = ""; lastSource = "pc:" + a.engine;
                 float[] f = new float[a.pcm.length];
                 for (int i = 0; i < f.length; i++) f[i] = a.pcm[i] / 32768f;
                 // the natural voice comes at normal speed; the phone speeds it up as it plays
-                return new Clip(trim(f, a.rate), a.rate, a.madeAt, System.currentTimeMillis() - t0);
+                return new Clip(trim(f, a.rate), a.rate, a.madeAt, System.currentTimeMillis() - t0).from(pcSource(a.engine, rec, sid));
             } catch (Exception e) {
+                if (slowNotGone(e, pcWaitMs) && tts != null) {
+                    Log.i(TAG, "PC voice: no answer in " + pcWaitMs + " ms for the sentence wanted now: the phone's voice reads it");
+                    Log.i("LoudbookTest", "pc slow: the phone's voice reads the sentence wanted now");
+                    return speakHere(text, sid, speed, t0, " (your PC was slow to answer)");
+                }
                 Log.w(TAG, "PC voice failed", e);
                 pcOk = false; pcError = String.valueOf(e.getMessage());
                 pcRetryAt = System.currentTimeMillis() + 30_000;
@@ -242,12 +246,38 @@ final class Voice {
                 if (tts == null) throw new NeedLocal(pcError);
             }
         }
+        return speakHere(text, sid, speed, t0, "");
+    }
+
+    /** A read timeout on a shortened wait (the PC answered the connection, it's just busy): not the PC being down. */
+    static boolean slowNotGone(Exception e, int waitMs) {
+        if (waitMs >= PC_WAIT_MS || !(e instanceof java.net.SocketTimeoutException)) return false;
+        String m = String.valueOf(e.getMessage()).toLowerCase(java.util.Locale.US);
+        return !m.contains("connect");
+    }
+
+    private Clip speakHere(String text, int sid, float speed, long t0, String why) {
         if (tts == null) throw new NeedLocal("the voice isn't loaded");
         lastSource = "phone";
         GeneratedAudio a;
         String said = Chapter.forKokoro(text);
         synchronized (this) { a = tts.generate(said, sid, speed); }
-        return new Clip(trim(a.getSamples(), a.getSampleRate()), a.getSampleRate(), speed, System.currentTimeMillis() - t0);
+        return new Clip(trim(a.getSamples(), a.getSampleRate()), a.getSampleRate(), speed, System.currentTimeMillis() - t0).from("this phone: Kokoro, " + name(sid) + why);
+    }
+
+    /** "your PC: ..." for a sentence the PC made: its engine, and the recorded voice or Kokoro speaker asked for. */
+    static String pcSource(String engine, String rec, int sid) {
+        String e = engine == null ? "" : engine;
+        boolean mine = rec != null && !rec.isEmpty();
+        String who = mine ? "your recorded voice" : name(sid);
+        switch (e) {
+            case "best": return "your PC: best quality (Chatterbox, made ahead), " + who;
+            case "best-live": return "your PC: best quality (Chatterbox, made when asked), " + who;
+            case "recorded": return "your PC: your recorded voice";
+            case "natural": return "your PC: natural voice, " + who;
+            case "kokoro": return "your PC: Kokoro, " + name(sid);
+            default: return "your PC: " + (e.isEmpty() ? "" : e + ", ") + who;
+        }
     }
 
     /** Clips one after another, with a short breath between (all at the first one's rate and speed). */
@@ -271,7 +301,11 @@ final class Voice {
             at += x.length + (k < clips.size() - 1 ? gap : 0);
             ms += c.ms;
         }
-        return new Clip(out, rate, first.madeAt, ms);
+        Clip j = new Clip(out, rate, first.madeAt, ms);
+        java.util.LinkedHashSet<String> srcs = new java.util.LinkedHashSet<>();
+        for (Clip c : clips) if (c.src != null) srcs.add(c.src);
+        if (!srcs.isEmpty()) j.src = String.join(" + ", srcs);
+        return j;
     }
 
     /** Kokoro pads each sentence with silence; keep just a natural sliver so sentences and

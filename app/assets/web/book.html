@@ -45,6 +45,9 @@
   #play{flex:0 0 60px;width:60px;height:60px;border-radius:30px;background:var(--amber);color:#1b1712;border:0;font-size:24px}
   #follow{position:fixed;right:14px;bottom:150px;z-index:3;background:var(--amber);color:#1b1712;border:0;border-radius:18px;padding:7px 14px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.4)}
   #err{color:#f0a08a;font-size:13px;margin:0 2px 4px}
+  #vinfo{position:relative;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:10px;margin:10px 14px 0;padding:10px 44px 10px 12px;font-size:14px}
+  #vinfo #vinfoX{position:absolute;top:2px;right:2px}
+  #vinfoT p{margin:0 0 6px}
 </style></head><body>
 
 <div id="lib">
@@ -66,10 +69,12 @@
   <div id="rhead">
     <button class="icon" id="backBtn" aria-label="All chapters">&#x2190;</button>
     <div class="t"><small id="rBook"></small><b id="rTitle"></b></div>
+    <button class="icon" id="voiceBtn" aria-label="Which voice made this chapter" style="font-size:13px;color:var(--amber)">Voice</button>
     <button class="icon" id="sleep" aria-label="Sleep timer: off">&#x263E;</button>
     <button class="icon" id="smaller" aria-label="Smaller text">A&#x2212;</button>
     <button class="icon" id="bigger" aria-label="Bigger text">A+</button>
   </div>
+  <div id="vinfo" role="dialog" aria-label="Which voice" hidden><button class="icon" id="vinfoX" aria-label="Close">&#x2715;</button><div id="vinfoT"></div></div>
   <div id="text"></div>
   <button id="follow" hidden>Back to the voice</button>
   <div id="ctl">
@@ -246,7 +251,9 @@
       box.appendChild(p);
     }
     if (!sentences.length) { const p = document.createElement('p'); p.className = 'dim'; p.textContent = 'This chapter has no text.'; box.appendChild(p); }
-    shown = { book, file, idx, sentences, spans, b, seconds: data && data.seconds || b.chapters[idx].seconds };
+    shown = { book, file, idx, sentences, spans, b, seconds: data && data.seconds || b.chapters[idx].seconds,
+      voiceNames: data && data.voiceNames, engine: data && data.engine };
+    $('vinfo').hidden = true;
     $('rBook').textContent = book + ' · ' + (idx + 1) + ' of ' + b.chapters.length;
     $('rTitle').textContent = b.chapters[idx].title;
     document.title = b.chapters[idx].title;
@@ -312,6 +319,21 @@
     const nx = SPEEDS.find(x => x > s + 0.01) || SPEEDS[0];
     call('bookSpeed', nx); $('speed').textContent = nx + '×';
   };
+  // "Voice": which voice made this chapter (from its sentences' "voice" in the PC's .json), and the sentence lit now
+  function showVoice() {
+    if (!shown) return;
+    const box = $('vinfoT'); box.textContent = '';
+    const line = (t) => { const p = document.createElement('p'); p.textContent = t; box.appendChild(p); };
+    const vs = LBBook.voices(shown.sentences, shown.voiceNames);
+    if (!vs.length) line('This chapter\'s recording doesn\'t say which voice made it (recorded before Loudbook kept that).');
+    else if (vs.length === 1) line('Recorded on your PC with ' + vs[0].name + (shown.engine ? ' \u00b7 ' + shown.engine : '') + '.');
+    else { line('Recorded on your PC with ' + vs.length + ' voices' + (shown.engine ? ' \u00b7 ' + shown.engine : '') + ':'); for (const v of vs) line('\u2022 ' + v.name + ' \u2014 ' + v.n + (v.n === 1 ? ' sentence' : ' sentences')); }
+    const cur = lit >= 0 ? shown.sentences[lit] : null;
+    if (cur && 'voice' in cur && vs.length > 1) line('Now: ' + ((shown.voiceNames && shown.voiceNames[String(cur.voice)]) || LBBook.voiceName(cur.voice)) + '.');
+    $('vinfo').hidden = false;
+  }
+  $('voiceBtn').onclick = () => { if ($('vinfo').hidden) showVoice(); else $('vinfo').hidden = true; };
+  $('vinfoX').onclick = () => { $('vinfo').hidden = true; };
   // the sleep timer: each tap steps Off, 15, 30, 45, 60 minutes, end of this chapter, Off
   const showSleep = (st) => {
     $('sleep').textContent = LBBook.sleepLabel(st);
