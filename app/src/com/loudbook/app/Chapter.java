@@ -480,7 +480,13 @@ final class Chapter {
         if (pos >= chunks.size()) return END;
         if (pos < 0) return "";
         String t = chunks.get(pos).text.trim();
-        return t.length() > 80 ? t.substring(0, 80) : t;
+        return cut(t, 80);
+    }
+    /** The first n letters of t, never half of a 𝐟𝐚𝐧𝐜𝐲 letter or emoji (a lone half is saved as "?" and never found again). */
+    static String cut(String t, int n) {
+        if (t.length() <= n) return t;
+        if (Character.isHighSurrogate(t.charAt(n - 1))) n--;
+        return t.substring(0, n);
     }
 
     /** A saved place in a chapter as it is now: the sentence that starts with the saved text, nearest to the saved index
@@ -497,7 +503,7 @@ final class Chapter {
             if (pos + d >= 0 && pos + d < n && chunks.get(pos + d).text.trim().startsWith(text)) return pos + d;
         }
         // (the sentence was cut in two or joined with the one before: the one that holds its start)
-        String key = text.length() > 30 ? text.substring(0, 30) : text;
+        String key = cut(text, 30);
         for (int d = 0; d <= far; d++) {
             if (pos - d >= 0 && pos - d < n && chunks.get(pos - d).text.contains(key)) return pos - d;
             if (d > 0 && pos + d >= 0 && pos + d < n && chunks.get(pos + d).text.contains(key)) return pos + d;

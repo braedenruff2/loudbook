@@ -1,3 +1,4 @@
+Web pages a site draws again (a theme or font switch): the highlight now also finds paragraphs with fancy letters, and the right one of two paragraphs with the same words. "What's new" no longer runs two changes together after a quote ending in a number.
 Headphones taken off during a call: reading no longer starts on the speaker when the call ends. Skipping a sentence from the car or lock screen no longer flashes "stopped", and their progress bar follows your reading speed.
 Settings: tapping beside the window no longer closes it without saving (use Done), and the recorded PC voice you chose is no longer reset when Settings opens before the PC answers. "Check for updates" no longer sticks on "checking…".
 Web pages: scroll ahead or back while it reads and the page stays where you put it for a few seconds, instead of jumping back to the sentence straight away.

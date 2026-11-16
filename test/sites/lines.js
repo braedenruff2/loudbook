@@ -82,6 +82,31 @@ function at(w, root, r) {                                   // where a range sta
     const r = marks.get('loudbook-sentence');
     check('paragraphs drawn again: the sentence still marked', ok && r && r.r.toString().startsWith('Second'), String(ok) + ' ' + (r ? JSON.stringify(r.r.toString()) : 'no mark'));
   }
+  {
+    // drawn again with 𝐟𝐚𝐧𝐜𝐲 letters in it (the blocks keep plain letters; the page's text has the fancy ones)
+    const { w, marks } = page('<article><p>First paragraph is here.</p><p>\u{1D412}\u{1D432}\u{1D42C}\u{1D42D}\u{1D41E}\u{1D426} notice here.</p><p>Third one.</p></article>', 'https://example.com/story/chapter-1',
+      small, small());
+    await w.eval("LB.run('', true)");
+    const art = w.document.querySelector('article');
+    art.innerHTML = art.innerHTML.replace(/ data-lb[^=]*="[^"]*"/g, '').replace(/ class="[^"]*"/g, '');
+    const c = w.ch.chunks.find((x) => x.text.startsWith('System'));
+    const ok = c && w.LB.highlight(c.block, c.text, 0, w.ch.chunks.indexOf(c));
+    const r = marks.get('loudbook-sentence');
+    check('drawn again with fancy letters: still marked', !!ok && !!r && r.r.toString().includes('notice'), String(ok) + ' ' + (r ? JSON.stringify(r.r.toString()) : 'no mark'));
+  }
+  {
+    // two paragraphs with the same text, only the second drawn again: the mark goes to the new second, not the first
+    const { w, marks } = page('<article><p>Opening line is here.</p><p>Yes.</p><p>Middle line is here.</p><div id="x"><p>Yes.</p></div></article>', 'https://example.com/story/chapter-1',
+      small, small());
+    await w.eval("LB.run('', true)");
+    const x = w.document.getElementById('x');
+    x.innerHTML = '<p>Yes.</p>';
+    const cs = w.ch.chunks.filter((y) => y.text === 'Yes.');
+    const c = cs[cs.length - 1];
+    const ok = c && w.LB.highlight(c.block, c.text, 0, w.ch.chunks.indexOf(c));
+    const r = marks.get('loudbook-sentence');
+    check('same text, only one drawn again: the right one marked', !!ok && !!r && x.contains(r.r.startContainer), String(ok) + ' ' + (r ? 'in first' : 'no mark'));
+  }
   console.log(bad ? `lines: ${bad} wrong` : 'lines: all right');
   process.exit(bad ? 1 : 0);
 })();

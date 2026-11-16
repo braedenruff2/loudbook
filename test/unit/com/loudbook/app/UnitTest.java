@@ -343,6 +343,8 @@ public class UnitTest {
             java.util.Set<String> seen = News.allSeen(v1, new java.util.HashSet<>());
             check("news: an inch mark doesn't hold the cut", String.join(" | ", News.items("Fits 7\" tablets. Faster start. Says \"Go.\" Then stops.")),
                 "Fits 7\" tablets. | Faster start. | Says \"Go.\" | Then stops.");
+            check("news: a quote ending in a number still closes", String.join(" | ", News.items("Says \"Version v1.2\" no longer. Then \"Sr. Agnes\" as Sister. Done.")),
+                "Says \"Version v1.2\" no longer. | Then \"Sr. Agnes\" as Sister. | Done.");
             check("news: nothing left once seen", News.unseen(v1, seen, 12).size(), 0);
             String v2 = "Audiobooks: a new thing. Kindle: the highlight is right.\n" + v1;
             check("news: an update shows only its new change", String.join(" | ", News.unseen(v2, seen, 12)), "Audiobooks: a new thing.");
@@ -507,6 +509,8 @@ public class UnitTest {
                 check("place: saved text", spot, "Mara ran.");
                 check("place: a line dropped before it", Chapter.relocate(now, 2, spot), 1);
                 check("place: same chapter, same place", Chapter.relocate(old, 2, spot), 2);
+                check("place: saved text never ends in half a fancy letter", Chapter.cut("abc\uD835\uDC1Fx", 4), "abc");
+                check("place: cut keeps a whole fancy letter", Chapter.cut("abc\uD835\uDC1Fx", 5), "abc\uD835\uDC1F");
                 check("place: nothing saved beside it (older place)", Chapter.relocate(now, 2, ""), 2);
                 check("place: sentence gone: the index as it was", Chapter.relocate(now, 2, "Gone now."), 2);
                 check("place: read to the end stays the end", Chapter.relocate(now, 5, Chapter.spotText(old, 5)), 5);

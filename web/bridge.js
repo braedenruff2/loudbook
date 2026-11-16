@@ -162,8 +162,11 @@
     refound = Date.now();
     try {
       const r = S.extract(document, location.href, hiddenEl);
+      // (keyed by the plain letters, as the blocks' texts are; elements still held by a block on the page aren't free, or a
+      //  "Yes." drawn again took the first "Yes." and the mark went to the wrong paragraph)
+      const held = new Set(blocks.filter((b) => b.el && b.el.isConnected).map((b) => b.el));
       const free = new Map();
-      for (const nb of r.blocks) if (nb.el && !nb.shared) { const k = nb.text; if (!free.has(k)) free.set(k, []); free.get(k).push(nb.el); }
+      for (const nb of r.blocks) if (nb.el && !nb.shared && !held.has(nb.el)) { const k = LBSay.plainLetters(nb.text); if (!free.has(k)) free.set(k, []); free.get(k).push(nb.el); }
       for (const b of blocks) {
         if (!b.el || b.el.isConnected || b.shared) continue;
         const list = free.get(b.text);

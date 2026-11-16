@@ -24,13 +24,15 @@ final class News {
             line = line.trim();
             int start = 0, paren = 0;
             boolean quote = false;                                   // (inside "..." or “...”: an example, not the end)
+            // (a " after a digit is an inch mark (6' 2") only when the line's straight quotes don't pair up: "Version v1.2" closes)
+            boolean inches = (line.length() - line.replace("\"", "").length()) % 2 == 1;
             for (int i = 0; i < line.length(); i++) {
                 char c = line.charAt(i);
                 if (c == '(') paren++;
                 else if (c == ')') paren = Math.max(0, paren - 1);
                 else if (c == '“') quote = true;
                 else if (c == '”') quote = false;
-                else if (c == '"' && !(i > 0 && Character.isDigit(line.charAt(i - 1)))) quote = !quote;   // (7" is an inch mark)
+                else if (c == '"' && !(inches && i > 0 && Character.isDigit(line.charAt(i - 1)))) quote = !quote;
                 if (c != '.' && c != '!' && c != '?' || paren > 0) continue;
                 // (a quote closing right after the stop ends with it: "... read right." is fine)
                 if (quote && !(i + 1 < line.length() && (line.charAt(i + 1) == '"' || line.charAt(i + 1) == '”'))) continue;
