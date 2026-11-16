@@ -752,6 +752,9 @@ function tidy(t) {
     .replace(/\b(Mr|Mrs|Ms|Dr)\.(?=\p{Lu}\p{Ll})/gu, (m, t) => TITLES[t] + ' ')   // Mr.Smith (no space)
     .replace(/\b(Mr|Mrs|Ms|Dr)(?=\s+(?:\p{Lu}\p{Ll}|(?:&|and)\s+(?:Mr|Mrs|Ms|Dr)\b))/gu, (m, t) => TITLES[t])   // Mr Smith, Mrs Jones (no dot, British style)
     // sums: "3 * 4 = 12" (the lone asterisk was dropped), "15 + 7 = 22"
+    // a sum written out: "10-3=7", "3*4=12", "6/2=3" (was "ten to three", "three*four", "six of two")
+    .replace(/(?<![\w.\/\-−])(\d+(?:\s?[-−+*×÷\/x]\s?\d+)+)\s?=\s?(-?\d+(?:\.\d+)?)(?![\w\/]|[.,]\d)/g, (m, ex, r) =>
+      ex.replace(/\s?([-−+*×÷\/x])\s?/g, (o, op) => ' ' + ({ '+': 'plus', '*': 'times', '×': 'times', x: 'times', '÷': 'divided by', '/': 'divided by' }[op] || 'minus') + ' ') + ' equals ' + r)
     .replace(/(\d)\s\*\s(?=\d)/g, '$1 times ').replace(/([\w)])\s+=\s+(?=[\w(+\-−$])/g, '$1 equals ')
     // *sigh*, **bold**: the voice would say "asterisk"
     .replace(/\*+([^*\n]{1,80}?)\*+/g, '$1').replace(/(^|\s)\*+(?=\s|$)/g, '$1')

@@ -1,3 +1,5 @@
+Reading aloud: sums like "10-3=7" and "5x5=25" are read as sums ("ten minus three equals seven"), and list items like (iii), viii and xiii are no longer cut to "ii" or "vi".
+Audiobooks from your PC: the Next and Previous chapter links skip recordings that have no text, and the "chapter N of M" count is right.
 Picking up where you left off finds the same sentence even when the chapter changed since (an author's note added at the top, a title line no longer read): it went back a sentence or more off.
 Reading aloud: "she sent a :)" is "she sent a smiley" (also a wink, a sad face, a grin, a heart) instead of "she sent a".
 Audiobooks: a sleep timer (the ☾ button in the reader: 15, 30, 45, 60 minutes or the end of the chapter), fading out at the end; the Settings sleep timer stops audiobooks too, and pressing Done in Settings no longer turns off a timer that was running.
