@@ -1152,13 +1152,16 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     }
 
     // ---------------------------------------------------------------- voice commands setup
-    private Runnable afterMicPermission;
+    private Runnable afterMicPermission, onMicDenied;
     @Override public void onRequestPermissionsResult(int code, String[] perms, int[] res) {
         super.onRequestPermissionsResult(code, perms, res);
         if (code == 42) {
             Runnable r = afterMicPermission; afterMicPermission = null;
             if (res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED) { if (r != null) r.run(); }
-            else { prefs.edit().putBoolean("voiceCmds", false).apply(); onStatus("Voice commands need the microphone.", true); }
+            else {
+                prefs.edit().putBoolean("voiceCmds", false).apply(); onStatus("Voice commands need the microphone.", true);
+                Runnable d = onMicDenied; onMicDenied = null; if (d != null) d.run();     // (the open Settings switch goes off too)
+            }
         }
     }
 
@@ -1880,6 +1883,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             if (on) setUpCommands(false, showCmdInfo); else if (svc != null) svc.updateListening();
         });
         teach.setOnClickListener(v -> setUpCommands(true, showCmdInfo));
+        onMicDenied = () -> { cmds.setChecked(false); showCmdInfo.run(); };
 
         TextView ver = label("Version " + BuildInfo.VERSION + (Updater.enabled() ? "" : " (updates off in this build)"));
         ver.setTag("end");
