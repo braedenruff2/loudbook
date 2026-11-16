@@ -166,7 +166,10 @@ public class ReaderService extends Service {
 
     private final android.content.BroadcastReceiver noisyReceiver = new android.content.BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
-            if (playing && !paused) { pause(); status("Paused: headphones disconnected.", false); }
+            if (!playing) return;
+            // (paused by a call when the headphones went: the call's end mustn't start reading out loud on the speaker)
+            pausedForFocus = false;
+            if (!paused) { pause(); status("Paused: headphones disconnected.", false); }
         }
     };
 
@@ -433,11 +436,11 @@ public class ReaderService extends Service {
     void seek(int i) {
         if (chapter == null) return;
         boolean was = playing;
-        stopPlayback();
+        stopPlayback(!was);                  // (reading on: no "stopped" in between for the car and the lock screen)
         pos = Math.max(0, Math.min(i, chapter.size() - 1));
         saveProgress();
         if (listener != null) listener.onSpeaking(chapter, pos);
-        if (was) play(); else state();
+        if (was) { play(); if (!playing) state(); } else state();
     }
 
     // ---------------------------------------------------------------- reading mode (text only)
@@ -2584,7 +2587,7 @@ public class ReaderService extends Service {
                 | PlaybackState.ACTION_SEEK_TO | PlaybackState.ACTION_FAST_FORWARD | PlaybackState.ACTION_REWIND
                 | PlaybackState.ACTION_PLAY_FROM_SEARCH | PlaybackState.ACTION_PLAY_FROM_MEDIA_ID)
             .setState(on ? PlaybackState.STATE_PLAYING : playing ? PlaybackState.STATE_PAUSED : PlaybackState.STATE_STOPPED,
-                chapter != null ? msAt(chapter, pos) : PlaybackState.PLAYBACK_POSITION_UNKNOWN, on ? 1f : 0f).build());
+                chapter != null ? msAt(chapter, pos) : PlaybackState.PLAYBACK_POSITION_UNKNOWN, on ? speed : 0f).build());   // (the car's / lock screen's bar moves at the reading speed)
         // stays in the foreground while paused and across page turns (a background app may not
         // re-enter it); it lets go only when the story is finished or the reader is closed
         if (foreground) getSystemService(NotificationManager.class).notify(NOTIF_ID, buildNotification());

@@ -156,7 +156,8 @@ public final class BookPlayer extends Service {
     }
 
     private final BroadcastReceiver noisyReceiver = new BroadcastReceiver() {
-        @Override public void onReceive(Context c, Intent i) { if (playing) pause(); }   // (headphones out: don't carry on aloud)
+        // (headphones out: don't carry on aloud, nor after a call that had paused it)
+        @Override public void onReceive(Context c, Intent i) { pausedForFocus = false; if (playing) pause(); }
     };
 
     @Override public int onStartCommand(Intent i, int flags, int id) {

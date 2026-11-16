@@ -1,3 +1,4 @@
+Headphones taken off during a call: reading no longer starts on the speaker when the call ends. Skipping a sentence from the car or lock screen no longer flashes "stopped", and their progress bar follows your reading speed.
 Settings: tapping beside the window no longer closes it without saving (use Done), and the recorded PC voice you chose is no longer reset when Settings opens before the PC answers. "Check for updates" no longer sticks on "checking…".
 Web pages: scroll ahead or back while it reads and the page stays where you put it for a few seconds, instead of jumping back to the sentence straight away.
 Web pages: in chapters written as lines (a repeated "Ding!", fancy letters), the line being read is the one marked, and a very long paragraph no longer jumps the page about on every sentence.
