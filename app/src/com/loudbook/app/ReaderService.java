@@ -2356,8 +2356,24 @@ public class ReaderService extends Service {
         });
     }
 
-    private void turned(Chapter from, Chapter n) {
-        boolean go = !pendingPauseAfterTurn && !paused;
+    /**
+     * The next-chapter button: when the next chapter's text is loaded already (and maybe its first sentences made), go on
+     * to it now, reading if go, rather than waiting for the page to load and be read again on screen (the listener shows
+     * it). false: not loaded ahead; the caller opens the page as before. Main thread.
+     */
+    boolean turnNext(boolean go) {
+        Chapter cur = chapter, n = nextCh;
+        if (cur == null || n == null || cur.nextUrl == null || !cur.nextUrl.equals(nextFor) || "kindle".equals(cur.site)) return false;
+        saveProgress();
+        pendingPauseAfterTurn = !go;
+        Log.i("LoudbookTest", "next chapter button: " + n.url + " was loaded ahead, read now");
+        turned(cur, n, go);
+        return true;
+    }
+
+    private void turned(Chapter from, Chapter n) { turned(from, n, !pendingPauseAfterTurn && !paused); }
+    private void turned(Chapter from, Chapter n, boolean go) {
+        boolean byButton = pendingPauseAfterTurn && !go && from == chapter && !(playing && !paused);
         pendingPauseAfterTurn = false;
         Map<Integer, Future<Voice.Clip>> pre = null;
         synchronized (clips) {
@@ -2368,7 +2384,7 @@ public class ReaderService extends Service {
         turnedTo = n; turnedPre = pre != null ? pre.size() : 0;
         Log.i("LoudbookTest", "turned to " + n.url + " (" + (pre != null ? pre.size() : 0) + " sentences made ahead), play " + go);
         setChapter(n, 0, go, pre);
-        if (!go) status("Stopped at the end of the chapter. The next one is ready.", false);
+        if (!go && !byButton) status("Stopped at the end of the chapter. The next one is ready.", false);
         if (listener != null) listener.onTurned(from, n);
     }
 

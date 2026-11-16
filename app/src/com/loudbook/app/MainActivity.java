@@ -1049,6 +1049,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         String url = next ? ch.nextUrl : ch.prevUrl;
         if (url == null) { onStatus(next ? "No next chapter yet." : "No previous chapter.", false); return; }
         boolean was = svc != null && svc.isPlaying() && !svc.isPaused();
+        // (its text loaded ahead: straight on to it, its first sentences maybe made already; the page follows (onTurned))
+        if (next && svc != null && svc.chapter() != null && svc.turnNext(was)) { awaitingTurn = null; return; }
         if (svc != null) svc.pause();
         stepPausedAt = was ? svc.pausedAt() : -1;
         awaitingTurn = url;
