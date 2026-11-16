@@ -165,7 +165,7 @@
         const mine = a.book === b.name;
         make.textContent = mine && a.busy ? 'Stop making audio' : 'Make audio now';
         aline.hidden = !(mine && a.line); aline.textContent = a.line || '';
-        if (mine && a.busy && !$('lib').hidden) setTimeout(showAhead, 2000);
+        if (mine && a.busy && !$('lib').hidden && make.isConnected) setTimeout(showAhead, 2000);
       };
       make.onclick = () => {
         const a = json(call('aheadState'), {});
@@ -212,6 +212,14 @@
     pendingPlay = { book, file, resume }; route();
   }
   let pendingPlay = null;
+  // a play this page asked for: the player starts it a moment later (posted to its service). Until bookState says so (or 5 s),
+  // the page doesn't follow the chapter still playing (it jumped back to it, then forward again).
+  let asked = null;
+  const play = (book, idx, sec) => {
+    const b = books.find(x => x.name === book), c = b && b.chapters[idx];
+    asked = { book, file: c ? c.file : '', at: Date.now() };
+    call('bookPlay', book, idx, sec);
+  };
 
   function showChapter(book, file) {
     loadBooks();
@@ -249,7 +257,7 @@
       const p = pendingPlay; pendingPlay = null;
       if (p && p.book === r.b && p.file === r.f) {
         const st = json(call('bookState'), {});
-        if (!(st.book === p.book && st.file === p.file && st.playing)) call('bookPlay', p.book, shown.idx, p.resume ? -1 : 0);
+        if (!(st.book === p.book && st.file === p.file && st.playing)) play(p.book, shown.idx, p.resume ? -1 : 0);
       }
       tick();
     } else {
@@ -264,7 +272,7 @@
     const st = json(call('bookState'), {});
     const sent = shown.sentences[+s.dataset.i];
     if (st.book === shown.book && st.file === shown.file) { call('bookSeek', Math.round(sent.start * 1000)); if (!st.playing) call('bookToggle'); }
-    else call('bookPlay', shown.book, shown.idx, sent.start);
+    else play(shown.book, shown.idx, sent.start);
     follow = true; $('follow').hidden = true;
     setTimeout(tick, 120);
   });
@@ -283,7 +291,7 @@
   $('backBtn').onclick = () => { location.hash = LBBook.hash(K); };
   $('play').onclick = () => {
     const st = json(call('bookState'), {});
-    if (shown && !(st.book === shown.book && st.file === shown.file)) call('bookPlay', shown.book, shown.idx, -1);
+    if (shown && !(st.book === shown.book && st.file === shown.file)) play(shown.book, shown.idx, -1);
     else call('bookToggle');
     setTimeout(tick, 150);
   };
@@ -301,14 +309,20 @@
   const fs = (d) => { const v = Math.max(14, Math.min(30, (+store.get('lbFs', '19')) + d)); store.set('lbFs', String(v)); document.documentElement.style.setProperty('--fs', v + 'px'); scrollToLit(true); };
   $('smaller').onclick = () => fs(-1);
   $('bigger').onclick = () => fs(1);
-  $('seek').addEventListener('input', () => { dragging = true; const d = last.dur || 0; $('tNow').textContent = LBBook.clock(d / 1000 * $('seek').value / 1000); });
+  $('seek').addEventListener('input', () => {
+    dragging = true;
+    const d = shown && last.book === shown.book && last.file === shown.file && last.dur ? last.dur : shown ? shown.seconds * 1000 : 0;
+    $('tNow').textContent = LBBook.clock(d / 1000 * $('seek').value / 1000);
+  });
   $('seek').addEventListener('change', () => {
     dragging = false;
     if (!shown) return;
     const st = json(call('bookState'), {});
-    const sec = (st.dur || shown.seconds * 1000) / 1000 * $('seek').value / 1000;
-    if (st.book === shown.book && st.file === shown.file) call('bookSeek', Math.round(sec * 1000));
-    else call('bookPlay', shown.book, shown.idx, sec);
+    const mine = st.book === shown.book && st.file === shown.file;
+    // (this chapter's length: st.dur is the playing chapter's, maybe another one)
+    const sec = ((mine && st.dur) || shown.seconds * 1000) / 1000 * $('seek').value / 1000;
+    if (mine) call('bookSeek', Math.round(sec * 1000));
+    else play(shown.book, shown.idx, sec);
     follow = true; $('follow').hidden = true;
     setTimeout(tick, 150);
   });
@@ -320,8 +334,9 @@
     if (!shown || $('reader').hidden) return;
     const st = json(call('bookState'), {}); last = st;
     const mine = st.book === shown.book && st.file === shown.file;
+    if (asked && ((st.book === asked.book && st.file === asked.file) || Date.now() - asked.at > 5000)) asked = null;
     // the player went on to the next chapter by itself: the page goes with it (unless it's been scrolled by hand)
-    if (!mine && st.book === shown.book && st.file && st.playing && follow && Date.now() - touchedAt > 3000) {
+    if (!mine && !asked && st.book === shown.book && st.file && st.playing && follow && Date.now() - touchedAt > 3000) {
       location.hash = LBBook.hash(K, st.book, st.file);
       timer = setTimeout(tick, 300);
       return;

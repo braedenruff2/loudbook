@@ -76,7 +76,12 @@ async function page() {
     books(k) { if (k !== KEY) wrongKey.push('books'); return JSON.stringify(lib()); },
     chapter(k, b, f) { if (k !== KEY) wrongKey.push('chapter'); return JSON.stringify(chapters[f] || null); },
     bookState(k) { return JSON.stringify(player.file ? { book: player.book, ch: player.ch, file: player.file, ms: player.ms, dur: chapters[player.file].seconds * 1000, playing: player.playing, speed: player.speed, error: '' } : { playing: false, speed: 1, error: '' }); },
-    bookPlay(k, b, ch, sec) { player.calls.push(['play', ch, sec]); player.book = b; player.ch = ch; player.file = files[ch]; player.ms = Math.max(0, sec) * 1000; player.playing = true; },
+    bookPlay(k, b, ch, sec) {
+      player.calls.push(['play', ch, sec]);
+      // (the real one is posted to the main thread and the player service: player.delay ms before bookState says so)
+      const go = () => { player.book = b; player.ch = ch; player.file = files[ch]; player.ms = Math.max(0, sec) * 1000; player.playing = true; };
+      if (player.delay) setTimeout(go, player.delay); else go();
+    },
     bookToggle() { player.calls.push(['toggle']); player.playing = !player.playing; },
     bookSeek(k, ms) { player.calls.push(['seek', ms]); player.ms = ms; },
     bookJump(k, ms) { player.calls.push(['jump', ms]); player.ms += ms; },
@@ -141,6 +146,27 @@ async function page() {
   check('page: paused, continue shows the chapter and where in it', () => {
     const t = d.querySelector('.go').textContent;
     assert.ok(t.includes('Continue listening') && t.includes('One') && t.includes('1:15'), t);
+  });
+  // next chapter while one plays, the player taking a moment to start it: the page stays on the new chapter
+  // (it used to jump back to the old one, still playing, then forward again: the text drawn twice, the place lost)
+  d.querySelector('.go').click(); await wait(300);
+  player.playing = true; player.delay = 600;
+  const titles = [];
+  d.getElementById('nextCh').click();
+  for (let t = 0; t < 14; t++) { await wait(60); titles.push(d.getElementById('rTitle').textContent); }
+  check('page: next chapter while playing, the player slow to start it: no jump back', () => {
+    assert.ok(titles.every(t => t === 'Two'), titles.join(','));
+    assert.strictEqual(player.file, files[1]);
+  });
+  player.delay = 0;
+  // the slider on a chapter that isn't the one playing: its own length, not the playing chapter's
+  player.playing = false; await wait(800);
+  w.location.hash = B.hash(KEY, 'Test Book', files[0]); await wait(300);
+  const seek = d.getElementById('seek');
+  seek.value = 500; seek.dispatchEvent(new w.Event('input')); seek.dispatchEvent(new w.Event('change')); await wait(50);
+  check('page: slider on another chapter than the one playing uses this chapter\'s length', () => {
+    assert.strictEqual(d.getElementById('rTitle').textContent, 'One');
+    assert.deepStrictEqual(player.calls[player.calls.length - 1], ['play', 0, 7]);
   });
   check('page: every call used the page key', () => assert.deepStrictEqual(wrongKey, []));
   w.close();
