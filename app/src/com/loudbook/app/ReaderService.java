@@ -139,12 +139,12 @@ public class ReaderService extends Service {
             @Override public void onPlay() { play(); }
             @Override public void onPause() { pause(); }
             @Override public void onStop() { pause(); }
-            @Override public void onSkipToNext() { seek(pos + 1); }
-            @Override public void onSkipToPrevious() { seek(pos - 1); }
-            @Override public void onFastForward() { seek(pos + 1); }
-            @Override public void onRewind() { seek(pos - 1); }
+            @Override public void onSkipToNext() { step(pos + 1); }
+            @Override public void onSkipToPrevious() { step(pos - 1); }
+            @Override public void onFastForward() { step(pos + 1); }
+            @Override public void onRewind() { step(pos - 1); }
             // "Hey Google, rewind 30 seconds" / "start over": a time in the chapter, to its sentence
-            @Override public void onSeekTo(long ms) { Chapter c = chapter; if (c != null) seek(sentenceAt(c, ms)); }
+            @Override public void onSeekTo(long ms) { Chapter c = chapter; if (c != null) step(sentenceAt(c, ms)); }
             // "Hey Google, play Loudbook" / "resume"
             @Override public void onPlayFromSearch(String query, android.os.Bundle extras) { play(); }
             @Override public void onPlayFromMediaId(String id, android.os.Bundle extras) { play(); }
@@ -405,6 +405,22 @@ public class ReaderService extends Service {
         if (listener != null) listener.onSpeaking(chapter, pos);
         if (play) play(); else state();
         aheadAfter(ch);
+    }
+
+    /** Back/forward a sentence (the notification, headphones, the player's buttons, a voice command): reading goes on
+     *  reading from there; paused stays paused there (seek started reading aloud) and play starts that sentence. */
+    void step(int i) {
+        Chapter ch = chapter;
+        if (ch == null) return;
+        if (!(playing && paused)) { seek(i); return; }
+        long at = pausedAt;
+        stopPlayback();
+        pos = Math.max(0, Math.min(i, ch.size() - 1));
+        playing = true; paused = true; pausedAt = at;    // (play finds no player and starts from pos, as after resay)
+        saveProgress();
+        Log.i("LoudbookTest", "step to " + pos + " while paused: stays paused");
+        if (listener != null) listener.onSpeaking(ch, pos);
+        state();
     }
 
     void seek(int i) {
@@ -2502,10 +2518,10 @@ public class ReaderService extends Service {
         switch (word) {
             case "play": play(); break;
             case "pause": pause(); break;
-            case "back": seek(pos - 1); break;
-            case "forward": seek(pos + 1); break;
-            case "beginning": seek(0); break;
-            case "end": seek(chapter.size() - 1); break;
+            case "back": step(pos - 1); break;
+            case "forward": step(pos + 1); break;
+            case "beginning": step(0); break;
+            case "end": step(chapter.size() - 1); break;
             default: return;
         }
         status("Heard \u201c" + word + "\u201d", false);

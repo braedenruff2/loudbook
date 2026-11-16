@@ -21,6 +21,16 @@ sleep 8
 # used to stop without a word, still showing "playing")
 adb shell am start -n com.loudbook.app/.MainActivity --ez audiofail true
 sleep 4
+# paused, then a sentence on from the headphones / notification: stays paused there (it started reading, 2026-11-16);
+# play goes on from that sentence
+adb shell input keyevent KEYCODE_MEDIA_PAUSE
+sleep 2
+adb shell log -t LoudbookTest "=== paused, a sentence on ==="
+adb shell input keyevent KEYCODE_MEDIA_NEXT
+sleep 4
+adb shell log -t LoudbookTest "=== play after the step ==="
+adb shell input keyevent KEYCODE_MEDIA_PLAY
+sleep 3
 adb shell input keyevent KEYCODE_HOME
 sleep 2
 adb shell input keyevent KEYCODE_SLEEP
@@ -44,6 +54,11 @@ echo "app open (fancy text, emoji): sentences said: $(grep -a -c 'LoudbookTest: 
 awk '/test: the next audio write fails/{f=1} f' foreground.txt > audiofail.txt
 { grep -a -q "audio write failed" audiofail.txt && echo "audio output failed once: noticed" || echo "audio output failed once: NOT noticed (test hook not reached?)"
   grep -a -q "audio write failed" audiofail.txt && { sed -n '/audio write failed/,$p' logcat.txt | grep -a -q "LoudbookTest: speaking" && echo "reading went on after it: yes" || echo "reading went on after it: NO"; }; } > audio.txt
+awk '/=== paused, a sentence on ===/{f=1} /=== play after the step ===/{exit} f' foreground.txt > step.txt
+{ grep -a -q "step to [0-9]* while paused: stays paused" step.txt && ! grep -a -q "LoudbookTest: speaking" step.txt \
+    && echo "paused, a sentence on (media key): stays paused: yes" || echo "paused, a sentence on (media key): stays paused: NO ($(grep -a -c 'LoudbookTest: speaking' step.txt) sentences heard)"
+  awk '/=== play after the step ===/{f=1} f' foreground.txt | grep -a -q "LoudbookTest: speaking" \
+    && echo "play after it reads on: yes" || echo "play after it reads on: NO"; } >> audio.txt
 awk '/=== no signal from here ===/{f=1} f' logcat.txt > nosignal.txt
 echo "no signal: chapters shown from their copy: $(grep -a -c 'shown from the copy read ahead' nosignal.txt), sentences not found on the page: $(grep -a -c "words weren't found" nosignal.txt)" > offline.txt
 # cold start: Loudbook closed, opened again, play pressed with nothing open -> carries on with the last story

@@ -1686,7 +1686,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         pcStyle.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(android.widget.AdapterView<?> p, View v, int i, long id) {
                 String e = pse[Math.max(0, Math.min(pse.length - 1, i))];
-                if (!e.equals(prefs.getString("pcEngine", "natural"))) { prefs.edit().putString("pcEngine", e).apply(); if (svc != null && svc.isPlaying()) svc.seek(svc.pos()); }
+                if (!e.equals(prefs.getString("pcEngine", "natural"))) { prefs.edit().putString("pcEngine", e).apply(); if (svc != null && svc.isPlaying()) svc.restyle(); }   // (paused stays paused)
             }
             @Override public void onNothingSelected(android.widget.AdapterView<?> p) { }
         });
@@ -1981,8 +1981,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         for (View v : new View[]{prevCh, back, fwd, nextCh, playBtn}) if (Build.VERSION.SDK_INT >= 26) v.setTooltipText(v.getContentDescription());
         prevCh.setOnClickListener(v -> chapterStep(false));
         nextCh.setOnClickListener(v -> chapterStep(true));
-        back.setOnClickListener(v -> { if (svc != null) svc.seek(svc.pos() - 1); });
-        fwd.setOnClickListener(v -> { if (svc != null) svc.seek(svc.pos() + 1); });
+        back.setOnClickListener(v -> { if (svc != null) svc.step(svc.pos() - 1); });
+        fwd.setOnClickListener(v -> { if (svc != null) svc.step(svc.pos() + 1); });
         playBtn.setOnClickListener(v -> play());
         speedBtn = iconButton("1.0×");
         speedBtn.setTextSize(13);
