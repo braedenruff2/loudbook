@@ -1,3 +1,4 @@
+Web pages: in chapters written as lines (a repeated "Ding!", fancy letters), the line being read is the one marked, and a very long paragraph no longer jumps the page about on every sentence.
 The next and previous chapter buttons keep reading again (the new chapter opened paused, "Stopped at the end of the chapter").
 Settings: a voice tapped while reading is paused plays its sample (it was silent), and a sleep timer that is running shows as "On: N min left", so choosing Off turns it off.
 Reading aloud: sums like "10-3=7" and "5x5=25" are read as sums ("ten minus three equals seven"), and list items like (iii), viii and xiii are no longer cut to "ii" or "vi".

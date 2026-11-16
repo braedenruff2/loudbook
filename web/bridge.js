@@ -172,6 +172,7 @@
   // Run by the app after every page load. fixes: the pronunciation list; tidy: web-fiction clean-ups.
   async function run(fixes, tidy) {
     const url = location.href;                       // (the page this answer is about, even if the address changes meanwhile)
+    clear();                                         // (run again on the same page (a chapter changed in place): no old tint left)
     try {
       const r = await extract();
       if (r.stale || location.href !== url) return;   // (the text of the page before, sent with the new address: kept as the new one)
@@ -212,7 +213,15 @@
   let cur = null;
   // two characters side by side on the page: next to each other in one text node, or the last of one node and the first of
   // the next ("<em>Longbourn</em>.": the full stop after an italic word is still the sentence's)
-  const touch = ([n1, o1, l1], [n2, o2]) => (n1 === n2 ? o2 === o1 + (l1 || 1) : o1 + (l1 || 1) === n1.nodeValue.length && o2 === 0);
+  //  (not over a line break or a paragraph's edge: "him.<br>“Ding!”" marked the full stop of the line before)
+  const touch = ([n1, o1, l1], [n2, o2]) => (n1 === n2 ? o2 === o1 + (l1 || 1) : o1 + (l1 || 1) === n1.nodeValue.length && o2 === 0 && !brokenBetween(n1, n2));
+  function brokenBetween(n1, n2) {
+    try {
+      const r = document.createRange();
+      r.setStart(n1, n1.nodeValue.length); r.setEnd(n2, 0);
+      return !!r.cloneContents().querySelector('br,p,div,li,ul,ol,h1,h2,h3,h4,h5,h6,blockquote,tr,td,th,hr,section,article');
+    } catch (e) { return false; }
+  }
   const chOf = ([n, o, l]) => n.nodeValue.substr(o, l || 1);        // (the character at a place: two halves for 𝐁)
   function rangeOf(p, a, b) {                                     // letters a..b-1 of the piece -> a DOM range
     const [sn, so] = p.pos[p.map[p.at + a]];
@@ -359,9 +368,11 @@
     if (!b.shared) el.classList.add('lb-active');
     const marked = markSentence(el, text, (offset || 0) + (b.shared && b.base > 0 ? b.base : 0));
     if (cur) cur.chunk = chunk;
-    const r = (b.shared && markedRange ? markedRange : el).getBoundingClientRect();
+    // (the sentence marked, when there is one: a paragraph taller than the screen is never all on it, and centring it on
+    //  every piece moved the sentence being read off the screen)
+    const r = (markedRange || el).getBoundingClientRect();
     if (r.top < 60 || r.bottom > innerHeight - 60) {
-      if (b.shared && markedRange) window.scrollBy({ top: r.top - innerHeight / 3, behavior: 'smooth' });
+      if (markedRange) window.scrollBy({ top: r.top - innerHeight / 3, behavior: 'smooth' });
       else el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
     return marked;
