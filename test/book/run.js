@@ -200,6 +200,13 @@ async function page() {
   check('page: sleep timer counts down', () => assert.ok(moon.textContent === '\u263E 10m' && /10 minutes left/.test(moon.getAttribute('aria-label')), moon.textContent));
   for (let t = 0; t < 5; t++) moon.click();
   check('page: sleep timer round to off', () => { assert.deepStrictEqual(player.calls[player.calls.length - 1], ['sleep', 0, false]); assert.strictEqual(moon.textContent, '\u263E'); });
+  // delete: the first tap asks for a second; not given in 4 s, the button goes back to what it was
+  d.getElementById('backBtn').click(); await wait(100);
+  const delBtn = [...d.querySelectorAll('#books button')].find(x => x.textContent === 'Delete recordings');
+  delBtn.click();
+  check('page: delete asks for a second tap', () => assert.strictEqual(delBtn.textContent, 'Tap again to delete'));
+  await wait(4300);
+  check('page: delete not confirmed: the button is back', () => assert.strictEqual(delBtn.textContent, 'Delete recordings'));
   check('page: every call used the page key', () => assert.deepStrictEqual(wrongKey, []));
   w.close();
 }
