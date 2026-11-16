@@ -495,6 +495,30 @@ public class UnitTest {
                 check("chapter: tap on the story's first paragraph", tc.firstOfParagraph("The bridge groaned.", 1), 1);
                 check("chapter: tap on an unknown later paragraph", tc.firstOfParagraph("Nothing like it", 7), -1);
             }
+            {   // a saved place found again when the chapter comes back cut differently (a number line dropped, an author's note
+                // added at the top, a sentence cut in two): it went back to the same index, a sentence or more off
+                java.util.List<Chapter.Chunk> old = new java.util.ArrayList<>(), now = new java.util.ArrayList<>();
+                String[] o = {"Chapter 12", "The bridge groaned.", "Mara ran.", "Yes.", "The river took the rest of the night, and the town."};
+                for (String t : o) old.add(new Chapter.Chunk(0, t, t));
+                for (int i = 1; i < o.length; i++) now.add(new Chapter.Chunk(0, o[i], o[i]));
+                String spot = Chapter.spotText(old, 2);
+                check("place: saved text", spot, "Mara ran.");
+                check("place: a line dropped before it", Chapter.relocate(now, 2, spot), 1);
+                check("place: same chapter, same place", Chapter.relocate(old, 2, spot), 2);
+                check("place: nothing saved beside it (older place)", Chapter.relocate(now, 2, ""), 2);
+                check("place: sentence gone: the index as it was", Chapter.relocate(now, 2, "Gone now."), 2);
+                check("place: read to the end stays the end", Chapter.relocate(now, 5, Chapter.spotText(old, 5)), 5);
+                check("place: end, chapter grew", Chapter.relocate(old, 4, Chapter.END), 5);
+                java.util.List<Chapter.Chunk> note = new java.util.ArrayList<>();
+                note.add(new Chapter.Chunk(0, "A/N: thanks for reading!", "")); note.add(new Chapter.Chunk(0, "Please rate.", ""));
+                note.addAll(old);
+                check("place: an author's note added at the top", Chapter.relocate(note, 3, Chapter.spotText(old, 3)), 5);
+                check("place: repeated short line: the nearest", Chapter.relocate(note, 5, "Yes."), 5);
+                java.util.List<Chapter.Chunk> cut = new java.util.ArrayList<>(old.subList(0, 4));
+                cut.add(new Chapter.Chunk(0, "Then: The river took the rest of the night,", "")); cut.add(new Chapter.Chunk(0, "and the town.", ""));
+                check("place: sentence now joined after another: the one holding it", Chapter.relocate(cut, 4, Chapter.spotText(old, 4)), 4);
+                check("place: saved past the end of a shorter chapter, text found", Chapter.relocate(now, 9, "Yes."), 2);
+            }
             check("timing: \"Mr.\" isn't a place to pause", SpeechTiming.breaks("Mr. Collins then returned, slowly.").size(), 1);
             // a sentence that ends in "No." or "I." still ends there (the voice pauses): only "No. 5", "J. Smith" are short forms
             check("timing: \"No.\" ending a sentence is a pause", SpeechTiming.breaks("He said no. Then he left.").size(), 1);

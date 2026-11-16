@@ -2113,14 +2113,14 @@ public class ReaderService extends Service {
             if (destroyed) return;
             if (c == null) { status("Couldn't open your last chapter (" + err + "). Open it in Loudbook.", true); return; }
             if (chapter != null) return;                                   // something else was opened meanwhile
-            if (c.size() > 0 && savedPos(last) >= c.size()) {                // that chapter was read to the end
+            if (c.size() > 0 && savedPos(last, c) >= c.size()) {                // that chapter was read to the end
                 if (c.nextUrl != null) { resumeNext(c); return; }
                 setChapter(c, c.size() - 1, false);
                 if (listener != null) listener.onOpened(c);
                 status(caughtUpLine(c), false);
                 return;
             }
-            setChapter(c, Math.min(savedPos(last), Math.max(0, c.size() - 1)), true);
+            setChapter(c, Math.min(savedPos(last, c), Math.max(0, c.size() - 1)), true);
             if (listener != null) listener.onOpened(c);
         }));
     }
@@ -2139,7 +2139,7 @@ public class ReaderService extends Service {
                 return;
             }
             Log.i("LoudbookTest", "resumed with the next chapter: " + n.url);
-            setChapter(n, Math.min(savedPos(n.url), n.size() - 1), true);
+            setChapter(n, Math.min(savedPos(n.url, n), n.size() - 1), true);
             if (listener != null) listener.onOpened(n);
         });
     }
@@ -2693,7 +2693,7 @@ public class ReaderService extends Service {
     void saveProgress() {
         Chapter ch = chapter;
         if (ch == null || "kindle".equals(ch.site) || "text".equals(ch.site)) return;   // Kindle keeps its own place; shared text has none
-        prefs.edit().putInt("pos:" + ch.url, pos).putString("gemTrail", trailText())
+        prefs.edit().putInt("pos:" + ch.url, pos).putString("posText:" + ch.url, Chapter.spotText(ch.chunks, pos)).putString("gemTrail", trailText())
             .putString("lastUrl", ch.url).putString("lastTitle", ch.title).putString("lastFiction", ch.fiction)
             .putInt("lastPct", ch.size() > 0 ? Math.round(100f * pos / ch.size()) : 0).apply();
         shelve(ch, pos);
@@ -2722,6 +2722,14 @@ public class ReaderService extends Service {
         } catch (Exception e) { Log.w(TAG, "shelf", e); } }
     }
     int savedPos(String url) { return prefs.getInt("pos:" + url, 0); }
+    /** The place saved under url, found again in ch as it is now (Chapter.relocate: the chapter may be cut differently). */
+    int savedPos(String url, Chapter ch) {
+        int at = savedPos(url);
+        if (ch == null || "kindle".equals(ch.site)) return at;
+        int to = Chapter.relocate(ch.chunks, at, prefs.getString("posText:" + url, ""));
+        if (to != at) Log.i("Loudbook", "saved place " + at + " is sentence " + to + " now (" + url + ")");
+        return to;
+    }
 
     static void start(Context c) { c.startService(new Intent(c, ReaderService.class)); }
 }

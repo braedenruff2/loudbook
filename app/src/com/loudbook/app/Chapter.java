@@ -473,6 +473,38 @@ final class Chapter {
 
     int size() { return chunks.size(); }
 
+    /** What's saved beside a chapter's place (ReaderService "posText:"): the start of the sentence at it, or END when
+     *  read to the end, so the place can be found again when the chapter comes back cut differently. */
+    static final String END = "\u0000end";
+    static String spotText(List<Chunk> chunks, int pos) {
+        if (pos >= chunks.size()) return END;
+        if (pos < 0) return "";
+        String t = chunks.get(pos).text.trim();
+        return t.length() > 80 ? t.substring(0, 80) : t;
+    }
+
+    /** A saved place in a chapter as it is now: the sentence that starts with the saved text, nearest to the saved index
+     *  (an author's note added at the top, a title line now dropped, a reworded rule cutting sentences differently all
+     *  moved every later index). Unknown text (saved before this, or the sentence was reworded): the index as it was. */
+    static int relocate(List<Chunk> chunks, int pos, String text) {
+        int n = chunks.size();
+        if (text == null || text.isEmpty()) return pos;
+        if (END.equals(text)) return Math.max(pos, n);
+        if (pos >= 0 && pos < n && chunks.get(pos).text.trim().startsWith(text)) return pos;
+        int far = n + Math.abs(pos);
+        for (int d = 1; d <= far; d++) {
+            if (pos - d >= 0 && pos - d < n && chunks.get(pos - d).text.trim().startsWith(text)) return pos - d;
+            if (pos + d >= 0 && pos + d < n && chunks.get(pos + d).text.trim().startsWith(text)) return pos + d;
+        }
+        // (the sentence was cut in two or joined with the one before: the one that holds its start)
+        String key = text.length() > 30 ? text.substring(0, 30) : text;
+        for (int d = 0; d <= far; d++) {
+            if (pos - d >= 0 && pos - d < n && chunks.get(pos - d).text.contains(key)) return pos - d;
+            if (d > 0 && pos + d >= 0 && pos + d < n && chunks.get(pos + d).text.contains(key)) return pos + d;
+        }
+        return pos;
+    }
+
     /** The same shape the page script hands over (so it can be kept on the phone and read back). */
     JSONObject toJson() throws Exception {
         JSONObject o = new JSONObject();

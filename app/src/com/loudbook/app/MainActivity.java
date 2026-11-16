@@ -846,8 +846,8 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         if (asked != null) {
             resumeOnLoad = null;
             if (svc == null) return;
-            int at = svc.savedPos(ch.url);
-            if (at <= 0 && !ch.url.equals(asked)) at = svc.savedPos(asked);
+            int at = svc.savedPos(ch.url, ch);
+            if (at <= 0 && !ch.url.equals(asked)) at = svc.savedPos(asked, ch);
             if (ch.size() > 0 && at >= ch.size()) {                    // read to the end last time
                 if (ch.nextUrl != null) {                               // there's a chapter after it now: go on to that
                     onStatus("On to the next chapter\u2026", false);
@@ -871,7 +871,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         Chapter cur = svc.chapter();
         if (cur != null && cur.url.equals(ch.url)) { onSpeaking(cur, svc.pos()); return; }
         if (svc.isPlaying() && !svc.isPaused()) { readThisBtn.setVisibility(View.VISIBLE); return; }
-        int at = svc.savedPos(ch.url);
+        int at = svc.savedPos(ch.url, ch);
         svc.setChapter(ch, at > 0 && at < ch.size() - 1 ? at : 0, false);
         if (at > 0) onStatus("Picking up where you left off.", false);
     }
