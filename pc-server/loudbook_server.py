@@ -893,7 +893,9 @@ class Books:
             # (a Kindle book: only one listed for that book, from its Kindle folder)
             return dict(cls.kindle_files(parts[0])).get(parts[1])
         # (half-made files end ".part.mp3" / ".json.part"; a chapter can have ".part" in its name: "Vol 2.part 1")
-        if not (parts[1].endswith(".mp3") or parts[1].endswith(".json")) or parts[1].endswith(".part.mp3"): return None
+        # (lower case: Windows opens "X.PART.mp3" as the half-made "x.part.mp3")
+        low = parts[1].lower()
+        if not (low.endswith(".mp3") or low.endswith(".json")) or low.endswith(".part.mp3"): return None
         f = os.path.join(BOOKS, parts[0], parts[1])
         root = os.path.realpath(BOOKS)
         if not os.path.realpath(f).startswith(root + os.sep) or not os.path.isfile(f): return None
@@ -1130,11 +1132,16 @@ class Studio:
         if not (v in ("phone", "builtin") or isinstance(v, int) and 0 <= v <= 52 or isinstance(v, str) and (style_of(v) or voice_file(v))):
             raise ValueError("unknown voice")
         f = os.path.join(BOOKS, n)
-        with open(f, encoding="utf-8") as h: raw = json.load(h)
-        raw["voice"] = v
-        with open(f + ".part", "w", encoding="utf-8") as h: json.dump(raw, h, ensure_ascii=False, indent=1)
-        swap_in(f + ".part", f)
+        # (one change at a time, each through its own half-made file: two at once (a double tap) shared one ".part" and
+        #  one failed, or the job file came out mixed)
+        with cls.edit_lock:
+            with open(f, encoding="utf-8") as h: raw = json.load(h)
+            raw["voice"] = v
+            tmp = f"{f}.{threading.get_ident()}.part"
+            with open(tmp, "w", encoding="utf-8") as h: json.dump(raw, h, ensure_ascii=False, indent=1)
+            swap_in(tmp, f)
         Books.idle_until = 0
+    edit_lock = threading.Lock()
 
     @classmethod
     def add(cls, kind, name, k, i=-1, text=None):
@@ -1534,6 +1541,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def reply(self, code, body=b"", ctype="application/json", headers=None):
         if isinstance(body, (dict, list)): body = json.dumps(body).encode()
+        self.replied = True
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
@@ -1626,6 +1634,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.reply(404, {"error": "no such thing"})
 
     def do_POST(self):
+        # (a request field of an unexpected kind (a dict for "voice", an item without its text) raised in the handler: the
+        #  phone got no answer at all, the connection just closed)
+        self.replied = False
+        try: return self.post()
+        except (BrokenPipeError, ConnectionResetError): return
+        except Exception as e:
+            print(f"Loudbook PC voice: {self.path} failed: {e!r}"[:300], flush=True)
+            if not self.replied:
+                try: self.reply(500, {"error": "the PC couldn't do that: " + type(e).__name__})
+                except Exception: pass
+
+    def post(self):
         if not self.gate(): return
         if not Limits.busy.acquire(timeout=5): return self.reply(503, {"error": "busy"})
         try:
@@ -1661,6 +1681,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if not self.authed(): return
                 if not Handler.can_best(): return self.reply(409, {"error": "this PC has no natural voice (it needs an NVIDIA graphics card and Set up PC voice.bat)"})
                 vid = req.get("voice")
+                if vid is not None and not isinstance(vid, str): return self.reply(400, {"error": "bad request"})
                 if vid and (not voice_file(vid) or not os.path.exists(voice_file(vid))): return self.reply(404, {"error": "that recorded voice isn't on this PC"})
                 items = []
                 try:
@@ -1670,7 +1691,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         if sum(ch.isalpha() for ch in text) < 4: continue      # (a lone word or symbols: read live)
                         who = vid if vid else sid
                         items.append((ahead_key(text, who), text, ktext, who))
-                except (TypeError, ValueError, IndexError): return self.reply(400, {"error": "bad request"})
+                except (TypeError, ValueError, IndexError, KeyError): return self.reply(400, {"error": "bad request"})
                 total, done = Ahead.set(items)
                 return self.reply(200, {"total": total, "ready": done})
             if self.path == "/v1/speak":
@@ -1679,6 +1700,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 try: sid = max(0, min(52, int(req.get("sid", 3)))); speed = max(0.5, min(2.5, float(req.get("speed", 1.0))))
                 except (TypeError, ValueError): return self.reply(400, {"error": "bad request"})
                 if not text.strip(): return self.reply(400, {"error": "no text"})
+                if req.get("voice") is not None and not isinstance(req.get("voice"), str): return self.reply(400, {"error": "bad request"})
                 if req.get("engine") in ("best", "natural"): Books.remember_voice(req.get("voice") or sid)   # (for audiobooks "in the phone's voice")
                 t0 = time.time()
                 n = Handler.natural or Handler.best

@@ -57,6 +57,19 @@ function at(w, root, r) {                                   // where a range sta
     cs.forEach((c, i) => { w.LB.highlight(0, c.text, off, i); off += Array.from(c.text.replace(/\s+/g, '')).length; });
     check(`a tall paragraph, its sentence on screen: no scrolling (${cs.length} pieces)`, w.scrolls === 0, w.scrolls + ' scrolls');
   }
+  {
+    // his own scrolling (a finger on the page): the sentence off screen isn't scrolled to for a while; later it is again
+    const { w } = page('<article><p>One sentence here. Two sentences here.</p><p>Short one after it here.</p></article>', 'https://example.com/story/chapter-1',
+      small, { left: 0, top: 1500, right: 100, bottom: 1520, width: 100, height: 20 });
+    await w.eval("LB.run('', true)");
+    const c = w.ch.chunks;
+    w.dispatchEvent(new w.Event('touchmove'));
+    w.LB.highlight(c[0].block, c[0].text, 0, 0);
+    check('his own scrolling just now: the page left where he put it', w.scrolls === 0, w.scrolls + ' scrolls');
+    w.__lbUserScrollAt = Date.now() - 9000;
+    w.LB.highlight(c[1].block, c[1].text, 0, 1);
+    check('a while after it: the sentence brought back on screen', w.scrolls === 1, w.scrolls + ' scrolls');
+  }
   console.log(bad ? `lines: ${bad} wrong` : 'lines: all right');
   process.exit(bad ? 1 : 0);
 })();

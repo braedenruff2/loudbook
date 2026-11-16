@@ -125,6 +125,9 @@ try:
     check("'.part' in a chapter's name: listed", listed == ["B/0001 - Vol 2.part 1.json", "B/0001 - Vol 2.part 1.mp3"])
     check("'.part' in a chapter's name: every listed file handed out", all(ls.Books.file_for(x) for x in listed))
     check("half-made files still refused", ls.Books.file_for("B/0002 - Two.part.mp3") is None and ls.Books.file_for("B/0003 - x.json.part") is None)
+    # (Windows opens "X.PART.mp3" as the half-made "x.part.mp3": refused whatever its case)
+    with open(T + "/books2/B/0004 - Three.PART.mp3", "w") as f: f.write("x")
+    check("half-made files refused in capitals too", ls.Books.file_for("B/0004 - Three.PART.mp3") is None)
 finally:
     srv.kill()
 if fails:

@@ -326,6 +326,15 @@
   // the letter being said when a fraction f of a piece's n letters is said: at a pause (f exactly at a word's end) it's the
   // word just said, not the next one (floor(f * n) showed the next word, or sentence, all through a comma's or full stop's pause)
   const letterAt = (f, n) => Math.max(0, Math.min(n - 1, Math.ceil(f * n - 0.01) - 1));
+  // (his own scrolling, to read ahead or look back: the page isn't pulled back to the sentence for a while after it.
+  //  Only a finger or a wheel counts, never the page's own smooth scrolling)
+  let userScrollAt = 0;
+  const scrolledByHim = () => Date.now() - userScrollAt < 8000;
+  if (!window.__lbScrollWatch && typeof window.addEventListener === 'function') {
+    window.__lbScrollWatch = true;
+    for (const ev of ['touchmove', 'wheel']) window.addEventListener(ev, () => { window.__lbUserScrollAt = Date.now(); }, { passive: true, capture: true });
+  }
+  const noteScroll = () => { userScrollAt = window.__lbUserScrollAt || 0; };
   // how far through the piece being read the voice is (0..1): moves the marks on, and keeps them on screen
   function progress(f, chunk) {
     const p = cur;
@@ -333,7 +342,8 @@
     const k = letterAt(f, p.total);
     const before = p.lit;
     showPart(k);
-    if (p.lit !== before && markedRange) {
+    noteScroll();
+    if (p.lit !== before && markedRange && !scrolledByHim()) {
       const r = markedRange.getBoundingClientRect();
       if (r.top < 60 || r.bottom > innerHeight - 60) window.scrollBy({ top: r.top - innerHeight / 3, behavior: 'smooth' });
     }
@@ -371,7 +381,8 @@
     // (the sentence marked, when there is one: a paragraph taller than the screen is never all on it, and centring it on
     //  every piece moved the sentence being read off the screen)
     const r = (markedRange || el).getBoundingClientRect();
-    if (r.top < 60 || r.bottom > innerHeight - 60) {
+    noteScroll();
+    if (!scrolledByHim() && (r.top < 60 || r.bottom > innerHeight - 60)) {
       if (markedRange) window.scrollBy({ top: r.top - innerHeight / 3, behavior: 'smooth' });
       else el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }

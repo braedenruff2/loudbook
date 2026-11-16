@@ -44,6 +44,21 @@ public class AheadTest { public static void main(String[] a) throws Exception {
   // a recorded voice that isn't on the PC
   try { l.ahead(items, "abcdefabcdef", 10000); bad++; System.out.println("FAIL unknown voice accepted"); }
   catch (java.io.IOException e) { System.out.println("unknown voice refused: " + e.getMessage()); }
+  // requests with fields of the wrong kind: an answer (400), not a dropped connection (it gave none, 2026-11-16)
+  for (String[] q : new String[][]{{"/v1/speak", "{\"text\":\"Hello there friend.\",\"engine\":\"best\",\"voice\":{}}"},
+                                     {"/v1/ahead", "{\"items\":[{\"a\":1}]}"}, {"/v1/speak", "{\"text\":\"Hello there.\",\"voice\":[1]}"}}) {
+    int code;
+    try {
+      javax.net.ssl.HttpsURLConnection c = PcLink.open(l.host, l.port, q[0], l.fp, null, 10000);
+      c.setRequestMethod("POST"); c.setDoOutput(true); c.setRequestProperty("Content-Type", "application/json");
+      c.setRequestProperty("Authorization", "Bearer " + l.token);
+      byte[] b = q[1].getBytes(java.nio.charset.StandardCharsets.UTF_8);
+      try (java.io.OutputStream o = c.getOutputStream()) { o.write(b); }
+      code = c.getResponseCode();
+    } catch (java.io.IOException e) { code = -1; }
+    System.out.println("odd request " + q[0] + " " + q[1] + ": " + code);
+    if (code != 400) { bad++; System.out.println("FAIL expected 400"); }
+  }
   // the audiobook (test.job.json): both chapters made, listed, and copied whole
   java.util.List<PcLink.BookFile> bf = null;
   long end = System.currentTimeMillis() + 60000;
