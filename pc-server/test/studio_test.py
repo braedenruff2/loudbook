@@ -115,6 +115,16 @@ try:
         except PermissionError: check("swap_in gives up and removes its part file", not os.path.exists(T + "/y.part"))
     finally:
         ls.os.replace = real
+    # a chapter whose name has ".part" in it ("Vol 2.part 1") is finished like any other: listed and handed out
+    # (file_for refused any name containing ".part", so the phone listed it and then failed to copy it)
+    ls.BOOKS = T + "/books2"
+    os.makedirs(T + "/books2/B")
+    for n in ("0001 - Vol 2.part 1.mp3", "0001 - Vol 2.part 1.json", "0002 - Two.part.mp3", "0003 - x.json.part"):
+        with open(T + "/books2/B/" + n, "w") as f: f.write("x")
+    listed = [x["p"] for b in ls.Books.finished() for x in b["files"]]
+    check("'.part' in a chapter's name: listed", listed == ["B/0001 - Vol 2.part 1.json", "B/0001 - Vol 2.part 1.mp3"])
+    check("'.part' in a chapter's name: every listed file handed out", all(ls.Books.file_for(x) for x in listed))
+    check("half-made files still refused", ls.Books.file_for("B/0002 - Two.part.mp3") is None and ls.Books.file_for("B/0003 - x.json.part") is None)
 finally:
     srv.kill()
 if fails:

@@ -892,7 +892,8 @@ class Books:
         if parts[1].lower().endswith(".epub"):
             # (a Kindle book: only one listed for that book, from its Kindle folder)
             return dict(cls.kindle_files(parts[0])).get(parts[1])
-        if not (parts[1].endswith(".mp3") or parts[1].endswith(".json")) or ".part" in parts[1]: return None
+        # (half-made files end ".part.mp3" / ".json.part"; a chapter can have ".part" in its name: "Vol 2.part 1")
+        if not (parts[1].endswith(".mp3") or parts[1].endswith(".json")) or parts[1].endswith(".part.mp3"): return None
         f = os.path.join(BOOKS, parts[0], parts[1])
         root = os.path.realpath(BOOKS)
         if not os.path.realpath(f).startswith(root + os.sep) or not os.path.isfile(f): return None
