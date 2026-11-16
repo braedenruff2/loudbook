@@ -34,6 +34,16 @@ async function chunks(html, url) {
   check('fancy letters', L.titleRepeated('Chapter 7', '𝐂𝐡𝐚𝐩𝐭𝐞𝐫 𝟕'));
   check('only part of the title: not the same', !L.titleRepeated('Chapter 7 - The Old Well', 'The Old Well'));
   check('a longer first line: not the same', !L.titleRepeated('The Old Well', 'The Old Well was dry.'));
+  // the first paragraph only the chapter's number, the title "Chapter 12 - The Bridge": read once, in the title
+  const rr = page.replace('<p><span>Chapter 7 - The Old Well</span></p>', '<p><span>Chapter 7</span></p>');
+  const c3 = (await chunks(rr, 'https://www.wuxiaworld.com/novel/iron-lotus/il-chapter-7')).ch;
+  check('number line: title read, "Chapter 7" not again', c3.chunks[0].block === -1 && !c3.chunks.some(c => c.text === 'Chapter 7')
+    && c3.chunks[1].text === 'Wei Shan lowered the bucket into the old well and listened.');
+  check('number lines', L.titleNumber('Chapter 12 - The Bridge', 'Chapter 12') && L.titleNumber('Chapter XII: The Bridge', 'CHAPTER XII')
+    && L.titleNumber('12. The Bridge', '12') && L.titleNumber('Ch. 12 The Bridge', 'Ch. 12'));
+  check('story lines are not number lines', !L.titleNumber('Run', 'Run!') && !L.titleNumber('Civil War', 'Civil')
+    && !L.titleNumber('Chi Rises', 'Chi') && !L.titleNumber('The Bridge', 'The') && !L.titleNumber('Chapter 12', 'Chapter 12')
+    && !L.titleNumber('Chapter 12 - The Bridge', 'Chapter 13'));
   check('no title / no text', !L.titleRepeated('', '') && !L.titleRepeated('x', undefined));
   console.log(bad ? bad + ' FAILED' : 'title: all right');
   process.exit(bad ? 1 : 0);

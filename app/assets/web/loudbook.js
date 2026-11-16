@@ -1415,10 +1415,17 @@ return { parseFixes, makeSayer, tidy, plainLetters };
 
   /** Is the chapter's first paragraph its title again? Letters and numbers compared ("Chapter 7: The Old Well" and
    *  "CHAPTER 7 - The Old Well" are the same; "The Old Well" alone isn't: the title says more). */
+  const titleKey = (s) => LBSay.plainLetters(String(s || '')).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
   function titleRepeated(title, first) {
-    const key = (s) => LBSay.plainLetters(String(s || '')).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-    const t = key(title);
-    return !!t && t === key(first);
+    const t = titleKey(title);
+    return !!t && t === titleKey(first);
+  }
+  /** Is the first paragraph just the chapter's number, which the title starts with ("Chapter 12" under "Chapter 12 - The
+   *  Bridge")? Then it isn't read after the title said it. Only a number line: "Run!" under "Run" is story. */
+  function titleNumber(title, first) {
+    const t = titleKey(title), k = titleKey(first);
+    return !!k && k !== t && t.startsWith(k + ' ')
+      && /^(?:(?:chapter|part|book|volume|episode|arc) (?:[0-9]+|[ivxlc]+)|(?:ch|ep|vol) ?[0-9]+|[0-9]+)$/.test(k);
   }
 
   // Run by the app after every page load. fixes: the pronunciation list; tidy: web-fiction clean-ups.
@@ -1435,7 +1442,10 @@ return { parseFixes, makeSayer, tidy, plainLetters };
       // (a chapter whose text starts with its own title, as Wuxiaworld's and many Royal Road chapters do: the title isn't
       //  read on its own first as well, which said it twice)
       const head = titleRepeated(r.title, blocks[0] && blocks[0].text) ? [] : [{ block: -1, text: r.title }];
-      const chunks = [...head, ...LBChunk.chunkBlocks(blocks.map((b, i) => ({ i, text: b.text })))]
+      // (its first paragraph only the chapter's number the title has just said: not said again)
+      const skip0 = head.length && titleNumber(r.title, blocks[0] && blocks[0].text);
+      const chunks = [...head, ...LBChunk.chunkBlocks(blocks.map((b, i) => ({ i, text: b.text })))
+        .filter(c => !(skip0 && c.block === 0))]
         .map(c => ({ block: c.block, text: c.text, say: speakNumbers(say(c.text)) }))
         .filter(c => /[\p{L}\p{N}]/u.test(c.say));            // scene breaks ("* * *") aren't read
       LoudbookNative.onChapter(JSON.stringify({
@@ -1639,7 +1649,7 @@ return { parseFixes, makeSayer, tidy, plainLetters };
     const i = blockAt(x, y);
     return JSON.stringify({ i, text: i >= 0 && blocks[i] ? blocks[i].text : '' });
   }
-  window.LB = { run, titleRepeated, highlight, progress, letterAt, partsOf, clear, blockAt, blockInfo, speakNumbers, words, sayText, at: () => activeIndex, count: () => blocks.length };
+  window.LB = { run, titleRepeated, titleNumber, highlight, progress, letterAt, partsOf, clear, blockAt, blockInfo, speakNumbers, words, sayText, at: () => activeIndex, count: () => blocks.length };
 })();
 
 }
