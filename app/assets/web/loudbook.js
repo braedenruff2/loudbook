@@ -1419,7 +1419,25 @@ return { parseFixes, makeSayer, tidy, plainLetters };
       const el = document.querySelector(`p[data-p-id="${CSS.escape(b.pid)}"]`);
       if (el) { b.el = el; return el; }
     }
-    return null;
+    // (the site drew its paragraphs again after they were read (a theme or font switch, a late re-render): find them
+    //  again by their text, once per re-render, or every mark after it silently failed until the page was reloaded)
+    if (b.el && !b.el.isConnected && !b.shared) refind();
+    return b.el && b.el.isConnected ? b.el : null;
+  }
+  let refound = 0;
+  function refind() {
+    if (Date.now() - refound < 2000) return;
+    refound = Date.now();
+    try {
+      const r = S.extract(document, location.href, hiddenEl);
+      const free = new Map();
+      for (const nb of r.blocks) if (nb.el && !nb.shared) { const k = nb.text; if (!free.has(k)) free.set(k, []); free.get(k).push(nb.el); }
+      for (const b of blocks) {
+        if (!b.el || b.el.isConnected || b.shared) continue;
+        const list = free.get(b.text);
+        if (list && list.length) b.el = list.shift();
+      }
+    } catch (e) { /* keep what there is */ }
   }
 
   /** Is the chapter's first paragraph its title again? Letters and numbers compared ("Chapter 7: The Old Well" and

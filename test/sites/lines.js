@@ -70,6 +70,18 @@ function at(w, root, r) {                                   // where a range sta
     w.LB.highlight(c[1].block, c[1].text, 0, 1);
     check('a while after it: the sentence brought back on screen', w.scrolls === 1, w.scrolls + ' scrolls');
   }
+  {
+    // the site draws its paragraphs again after they were read (new nodes, same text): the marks find them again
+    const { w, marks } = page('<article><p>First paragraph is here.</p><p>Second paragraph is here.</p><p>Third one.</p></article>', 'https://example.com/story/chapter-1',
+      small, small());
+    await w.eval("LB.run('', true)");
+    const art = w.document.querySelector('article');
+    art.innerHTML = art.innerHTML.replace(/ data-lb[^=]*="[^"]*"/g, '').replace(/ class="[^"]*"/g, '');
+    const c = w.ch.chunks.find((x) => x.text.startsWith('Second'));
+    const ok = w.LB.highlight(c.block, c.text, 0, w.ch.chunks.indexOf(c));
+    const r = marks.get('loudbook-sentence');
+    check('paragraphs drawn again: the sentence still marked', ok && r && r.r.toString().startsWith('Second'), String(ok) + ' ' + (r ? JSON.stringify(r.r.toString()) : 'no mark'));
+  }
   console.log(bad ? `lines: ${bad} wrong` : 'lines: all right');
   process.exit(bad ? 1 : 0);
 })();
