@@ -907,6 +907,9 @@ function tidy(t) {
     .replace(/(?<!\b(?:his|her|their|my|your|our|the|The|early|mid|late|high|low|upper|lower|of|all|two|three|four|five|six|seven|eight|nine|ten|double|triple|some|few)\s)(?<![\d.,'’-])\b(\d{1,3}(?:\.\d+)?)s\b(?![\w'’])/g,
       (m, n, at, all) => {
         const after = all.slice(at + m.length);
+        // "80s music", "90s-style" with no "a" before: a decade when a word that goes with one follows (was "eighty seconds music")
+        if (/^[2-9]0$/.test(n) && /^(?:\s+|-)(?:music|songs?|hits?|pop|rock|bands?|movies?|films?|TV|cartoons?|anime|sitcoms?|shows?|fashion|style|styled|clothes|hair(?:cut|do|style)?s?|look|vibes?|aesthetic|nostalgia|kids?|babies|child(?:hood|ren)|slang|era|decor|synth(?:wave|s)?|disco|punk|grunge|tech|technology|cars?|games?|video\s+games?|arcade|action|horror|sci-fi|culture|retro|classics?|tunes|hip-hop|R&B|dance|prom)\b/i.test(after))
+          return GROUPS[+n];
         if (!/(?:^|\s)[Aa]n?\s$/.test(all.slice(0, at)) || !/^\s+(?!(?:of|and|or|to|in|on|at|by|for|from|later|ago|left|long|more|less|each|away|he|she|it|they|we|you|was|is|had)\b)\p{Ll}/u.test(after))
           return n + (n === '1' ? ' second' : ' seconds');
         // "a 90s song", "a 70s vibe": a decade (was "ninety seconds song"), unless a stretch of time follows ("a 30s timer")
@@ -1242,7 +1245,8 @@ function tidy(t) {
     .replace(/\b([Tt]he|[Hh]is|[Hh]er|[Tt]heir|[Oo]ur|[Mm]y|[Yy]our|[Tt]hose|[Tt]hese)\s~\s?(?=\d)/g, '$1 roughly ')   // the ~200 goblins (was "the about")
     .replace(/\b((?:[Aa]bout|[Aa]round|[Rr]oughly|[Nn]early|[Aa]pproximately|[Ss]ome)\s+)~\s?(?=\$?\d)/g, '$1')   // "about ~20" (was "about about")
     .replace(/(^|[\s(\["“])~\s?(?=[$£€¥]?\d)/g, '$1about ')               // ~5 minutes, ~$300, (~$35) (the voice says "tilde")
-    .replace(/(\d%)\s?[-–—]\s?(?=\d+(?:\.\d+)?%)/g, '$1 to ')            // a poll of 52%-48% (was "percent-forty-eight")
+    .replace(/(\d%)\s?[-–—]\s?(?=\d+(?:\.\d+)?%)/g, '$1 to ')
+    .replace(/(\d%)\/(s|sec|min|hr|h|turn|round|level|day|hour|minute|second)\b(?!\/)/g, (m, a, u) => a + ' per ' + ({ s: 'second', sec: 'second', min: 'minute', hr: 'hour', h: 'hour' }[u] || u))   // regen 5%/min (was "percent slash min")            // a poll of 52%-48% (was "percent-forty-eight")
     .replace(/\b(\d+(?:st|nd|rd|th))\s+St\.(?!\w)/g, '$1 Street')                          // 42nd St.
     .replace(/\bSt\.(?=\s+[A-Z])/g, 'Saint').replace(/(?<!\b(?:\d+\w*|[A-Z][a-z]+)\s)\bSt\s+(?=[A-Z][a-z])/g, 'Saint ').replace(/\b([A-Z][a-z]+)\s+St\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, w, mid) => w + ' Street' + (mid !== undefined ? '' : '.'))   // "on Patrick St." keeps its full stop
     .replace(/\b(\p{Lu}\p{Ll}+\s+)(Rd|Ln)\.(?!\w)(?=(\s*[,;:)]|\s+\p{Ll})?)/gu, (m, w, a, mid) => w + (a === 'Rd' ? 'Road' : 'Lane') + (mid !== undefined ? '' : '.'))   // Elm Rd., Oak Ln.
