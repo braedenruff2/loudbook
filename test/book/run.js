@@ -80,6 +80,7 @@ async function page() {
       player.calls.push(['play', ch, sec]);
       // (the real one is posted to the main thread and the player service: player.delay ms before bookState says so)
       const go = () => { player.book = b; player.ch = ch; player.file = files[ch]; player.ms = Math.max(0, sec) * 1000; player.playing = true; };
+      if (player.fail) return;
       if (player.delay) setTimeout(go, player.delay); else go();
     },
     bookToggle() { player.calls.push(['toggle']); player.playing = !player.playing; },
@@ -159,6 +160,17 @@ async function page() {
     assert.strictEqual(player.file, files[1]);
   });
   player.delay = 0;
+  // the asked chapter fails to open (the player keeps playing the old one): the page stays on the one tapped
+  player.fail = true;
+  d.getElementById('prevCh').click(); await wait(5800);
+  check('page: a chapter that fails to open: the page stays on it', () => {
+    assert.strictEqual(d.getElementById('rTitle').textContent, 'One');
+    assert.strictEqual(player.file, files[1]);
+    assert.ok(!d.getElementById('follow').hidden, 'follow button shown');
+  });
+  player.fail = false;
+  d.getElementById('follow').click(); await wait(1000);
+  check('page: follow goes back to the chapter playing', () => assert.strictEqual(d.getElementById('rTitle').textContent, 'Two'));
   // the slider on a chapter that isn't the one playing: its own length, not the playing chapter's
   player.playing = false; await wait(800);
   w.location.hash = B.hash(KEY, 'Test Book', files[0]); await wait(300);

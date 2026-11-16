@@ -334,7 +334,12 @@
     if (!shown || $('reader').hidden) return;
     const st = json(call('bookState'), {}); last = st;
     const mine = st.book === shown.book && st.file === shown.file;
-    if (asked && ((st.book === asked.book && st.file === asked.file) || Date.now() - asked.at > 5000)) asked = null;
+    if (asked && st.book === asked.book && st.file === asked.file) asked = null;
+    else if (asked && Date.now() - asked.at > 5000) {
+      // (the player never started it: that chapter failed to open. The page stays on it, with the error, rather than
+      //  going back to the chapter still playing; "follow" takes it there)
+      asked = null; follow = false; $('follow').hidden = false;
+    }
     // the player went on to the next chapter by itself: the page goes with it (unless it's been scrolled by hand)
     if (!mine && !asked && st.book === shown.book && st.file && st.playing && follow && Date.now() - touchedAt > 3000) {
       location.hash = LBBook.hash(K, st.book, st.file);

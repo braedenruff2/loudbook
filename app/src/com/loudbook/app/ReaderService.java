@@ -299,7 +299,7 @@ public class ReaderService extends Service {
         if (!playing) return;
         if (!paused) { seek(pos); return; }
         long at = pausedAt;
-        stopPlayback();
+        stopPlayback(false);
         playing = true; paused = true; pausedAt = at;    // (play finds no player and starts from pos)
         state();
     }
@@ -415,7 +415,7 @@ public class ReaderService extends Service {
         // (Kindle as before: its highlight and page turns follow the sentence being heard (heardIdx), which only a player moves)
         if (!(playing && paused) || "kindle".equals(ch.site)) { seek(i); return; }
         long at = pausedAt;
-        stopPlayback();
+        stopPlayback(false);
         pos = Math.max(0, Math.min(i, ch.size() - 1));
         playing = true; paused = true; pausedAt = at;    // (play finds no player and starts from pos, as after resay)
         saveProgress();
@@ -519,7 +519,10 @@ public class ReaderService extends Service {
      *  mustn't restart the app now. (It installed on leaving the app during a call: the service was killed, no reading after.) */
     boolean holdsUpdate() { return playing && (!paused || pausedForFocus || System.currentTimeMillis() - pausedAt < 10 * 60_000); }
 
-    private void stopPlayback() {
+    private void stopPlayback() { stopPlayback(true); }
+    /** publish false: the caller sets the state again straight after (paused, a sentence on): no "stopped" in between for
+     *  the notification, the media session (cars, headphones) and the screen. */
+    private void stopPlayback(boolean publish) {
         gen++;
         playing = false; paused = false;
         AudioTrack t = track;
@@ -528,7 +531,7 @@ public class ReaderService extends Service {
         if (p != null) { p.interrupt(); prevPlayer = p; }
         player = null;
         if (wake.isHeld()) wake.release();
-        state();
+        if (publish) state();
     }
 
     /** Forgets every sentence made or being made (new chapter, voice or engine). */
