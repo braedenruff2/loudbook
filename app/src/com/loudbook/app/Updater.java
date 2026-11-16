@@ -53,7 +53,17 @@ final class Updater {
 
     /** Looks for a newer release and downloads it. Off the main thread; quiet on failure. */
     static void check(final Context app, boolean force, final Listener l) {
-        if (!enabled() || busy) return;
+        if (!enabled()) return;
+        if (busy) {
+            // (a check already under way (the one on opening the app, maybe downloading): tell this one when it ends too.
+            //  "Check for updates" stayed on "checking…" for good)
+            if (force && l != null) new Thread(() -> {
+                long until = System.currentTimeMillis() + 15 * 60_000;
+                while (busy && System.currentTimeMillis() < until) { try { Thread.sleep(500); } catch (InterruptedException e) { return; } }
+                l.onUpdateState();
+            }, "lb-update-wait").start();
+            return;
+        }
         final SharedPreferences p = prefs(app);
         long now = System.currentTimeMillis();
         if (!force && now - p.getLong("checked", 0) < CHECK_EVERY_MS) return;

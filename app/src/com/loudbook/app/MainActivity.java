@@ -304,7 +304,9 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             updateBtn.setText("Update " + Updater.readyName(this) + " is ready — tap to restart into it (it also installs by itself when you leave the app).");
             updateBtn.setOnClickListener(v -> {
                 if (svc != null && svc.isPlaying() && !svc.isPaused()) svc.pause();
-                if (!Updater.install(getApplicationContext())) onStatus("The update couldn't start: " + Updater.lastError(this), true);
+                // (off the main thread: install copies the whole file, and waits for the copy onStop may be making)
+                android.content.Context app = getApplicationContext();
+                new Thread(() -> { if (!Updater.install(app)) main.post(() -> onStatus("The update couldn't start: " + Updater.lastError(app), true)); }, "lb-update-install").start();
             });
         }
     }
@@ -335,7 +337,9 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         if (i == null) return false;
         String url = null;
         if (Intent.ACTION_SEND.equals(i.getAction())) {
-            String shared = i.getStringExtra(Intent.EXTRA_TEXT);
+            // (styled text shared from some apps is a CharSequence, not a String: getStringExtra gave null and nothing happened)
+            CharSequence sharedCs = i.getCharSequenceExtra(Intent.EXTRA_TEXT);
+            String shared = sharedCs == null ? null : sharedCs.toString();
             url = firstUrl(shared);
             // text shared from any app (an article, a passage, notes): read it out. A link with a
             // line or two around it is still opened as a page.
@@ -395,7 +399,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         }
         if (i.getBooleanExtra("openBooks", false)) { i.removeExtra("openBooks"); web.loadUrl(booksUrl()); return true; }   // (the audiobook's notification)
         if (i.getBooleanExtra("home", false)) { i.removeExtra("home"); web.loadUrl(homeUrl()); return true; }      // (screenshots in CI)
-        if (i.getBooleanExtra("settings", false)) { i.removeExtra("settings"); main.postDelayed(this::showSettings, 1500); }   // (screenshots in CI)
+        if (i.getBooleanExtra("settings", false)) { i.removeExtra("settings"); settingsWhenReady(8); }   // (screenshots in CI)
         if (url == null) return false;
         go(url);
         if (i.getBooleanExtra("play", false)) askResume(url);     // "open and read" (used by the tests)
@@ -1134,7 +1138,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                     prefs.edit().putString("pcHost", l.host).putInt("pcPort", l.port).putString("pcFp", l.fp).putString("pcToken", l.token)
                         .putString("pcName", name).putBoolean("pcOn", true).apply();
                     main.post(() -> {
-                        dlg.dismiss();
+                        try { dlg.dismiss(); } catch (Exception ignored) { }      // (the screen may have gone meanwhile)
                         if (svc != null) svc.pcChanged();
                         onStatus("Paired with your PC. It does the reading when it's on and you're home.", false);
                         main.postDelayed(refresh, 3500);
@@ -1389,7 +1393,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                     String id = l.addVoice(who, wav);
                     prefs.edit().putString("pcVoice", id).apply();
                     main.post(() -> {
-                        dlg.dismiss();
+                        try { dlg.dismiss(); } catch (Exception ignored) { }
                         onStatus("Loudbook now reads in " + who + "'s voice on your PC. Playing a sample\u2026", false);
                         if (svc != null) { svc.restyle(); svc.preview(); }
                         done.run();
@@ -1435,7 +1439,17 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             .show();
     }
 
+    /** (CI screenshots) Settings once the reading service is bound, trying a few times. */
+    private void settingsWhenReady(int tries) {
+        main.postDelayed(() -> {
+            if (isFinishing() || isDestroyed()) return;
+            if (svc == null && tries > 0) settingsWhenReady(tries - 1); else showSettings();
+        }, 1500);
+    }
+
     private void showSettings() {
+        // (opened before the reading service is there: its voice and pause showed the defaults, and Done wrote them over his)
+        if (svc == null) { onStatus("Loudbook is still starting: open Settings again in a moment.", false); return; }
         LinearLayout box = vbox(dp(20), dp(8));
         box.addView(header("Voice"));
         Spinner voices = new Spinner(this);
@@ -1587,6 +1601,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 try { Thread.sleep(5000); } catch (InterruptedException ignored) { }
                 String d = k.dump();
                 main.post(() -> {
+                    if (isFinishing() || isDestroyed()) return;            // (a dialog on a closed screen crashed the app)
                     TextView t = text(11, C_INK, false);
                     t.setText(d); t.setTextIsSelectable(true); t.setTypeface(Typeface.MONOSPACE); t.setPadding(dp(12), dp(8), dp(12), dp(8));
                     ScrollView sv = new ScrollView(this); sv.addView(t);
@@ -1712,6 +1727,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         Button pcRecord = smallButton("Record a voice (for example, someone in your family)");
         Button pcVoiceDel = smallButton("Remove this recorded voice");
         Runnable[] loadRecs = new Runnable[1];
+        boolean[] recsLoaded = {false};      // (the spinner's first selection, before the PC answered, cleared the chosen voice)
         Runnable fillRecs = () -> {
             java.util.List<String> rnames = new java.util.ArrayList<>();
             rnames.add("Read with: the voice chosen above");
@@ -1730,7 +1746,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             new Thread(() -> {
                 try {
                     java.util.List<PcLink.Recorded> got = l.voices(4000);
-                    main.post(() -> { recs.clear(); recs.addAll(got); fillRecs.run(); });
+                    main.post(() -> { recs.clear(); recs.addAll(got); recsLoaded[0] = true; fillRecs.run(); });
                 } catch (Exception e) { Log.i(TAG, "recorded voices: " + e.getMessage()); }
             }, "lb-voices").start();
         };
@@ -1740,6 +1756,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             @Override public void onItemSelected(android.widget.AdapterView<?> p, View v, int i, long id) {
                 String want = i == 0 || i - 1 >= recs.size() ? "" : recs.get(i - 1).id;
                 pcVoiceDel.setVisibility(i > 0 ? View.VISIBLE : View.GONE);
+                if (!recsLoaded[0]) return;
                 if (want.equals(prefs.getString("pcVoice", ""))) return;
                 prefs.edit().putString("pcVoice", want).apply();
                 if (svc != null) svc.restyle();
@@ -1885,7 +1902,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         foldSections(box);
         ScrollView sv = new ScrollView(this);
         sv.addView(box);
-        new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        AlertDialog settingsDlg = new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle("Loudbook")
             .setView(sv)
             .setPositiveButton("Done", (d, w) -> {
@@ -1905,7 +1922,10 @@ public class MainActivity extends Activity implements ReaderService.Listener {
                 prefs.edit().putString("fixes", f).putBoolean("tidy", tidy.isChecked()).apply();
                 if (changed && svc != null) svc.refreshSay();
             })
-            .show();
+            .create();
+        // (a tap beside the long dialog closed it without Done: a pasted key or a new sleep timer silently lost)
+        settingsDlg.setCanceledOnTouchOutside(false);
+        settingsDlg.show();
     }
 
     // ---------------------------------------------------------------- layout (built in code)
