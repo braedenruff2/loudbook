@@ -503,6 +503,9 @@ final class Chapter {
         }
         if (best >= 0) return best;
         for (int i = 0; i < chunks.size(); i++) if (chunks.get(i).block == block) return i;
+        // (the first paragraph, left out because the title just said it ("Chapter 12" under "Chapter 12 - The Bridge",
+        //  bridge.js titleNumber): a tap on it starts at the title)
+        if (block == 0 && !chunks.isEmpty() && chunks.get(0).block < 0) return 0;
         return -1;
     }
     private static String squash(String s) { return s == null ? "" : s.replaceAll("[\\s\u200b-\u200d\ufeff]+", ""); }

@@ -412,7 +412,8 @@ public class ReaderService extends Service {
     void step(int i) {
         Chapter ch = chapter;
         if (ch == null) return;
-        if (!(playing && paused)) { seek(i); return; }
+        // (Kindle as before: its highlight and page turns follow the sentence being heard (heardIdx), which only a player moves)
+        if (!(playing && paused) || "kindle".equals(ch.site)) { seek(i); return; }
         long at = pausedAt;
         stopPlayback();
         pos = Math.max(0, Math.min(i, ch.size() - 1));

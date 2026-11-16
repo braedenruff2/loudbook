@@ -486,6 +486,15 @@ public class UnitTest {
                 cs.add(new Chapter.Chunk(0, "He smiled \ud83d\ude00 at her.", "")); cs.add(new Chapter.Chunk(0, "She left.", ""));
                 check("chapter: offset in the paragraph counts an emoji once", new Chapter("u", "", "t", "", cs).offsetInBlock(1), 15);
             }
+            {   // a first paragraph that is only the chapter's number, not read after the title (bridge.js titleNumber): a tap on
+                // it on the page starts at the title (it did nothing: no sentence of paragraph 0)
+                java.util.List<Chapter.Chunk> cs = new java.util.ArrayList<>();
+                cs.add(new Chapter.Chunk(-1, "Chapter 12 - The Bridge", "")); cs.add(new Chapter.Chunk(1, "The bridge groaned.", ""));
+                Chapter tc = new Chapter("u", "", "Chapter 12 - The Bridge", "", cs);
+                check("chapter: tap on the dropped number line starts at the title", tc.firstOfParagraph("Chapter 12", 0), 0);
+                check("chapter: tap on the story's first paragraph", tc.firstOfParagraph("The bridge groaned.", 1), 1);
+                check("chapter: tap on an unknown later paragraph", tc.firstOfParagraph("Nothing like it", 7), -1);
+            }
             check("timing: \"Mr.\" isn't a place to pause", SpeechTiming.breaks("Mr. Collins then returned, slowly.").size(), 1);
             // a sentence that ends in "No." or "I." still ends there (the voice pauses): only "No. 5", "J. Smith" are short forms
             check("timing: \"No.\" ending a sentence is a pause", SpeechTiming.breaks("He said no. Then he left.").size(), 1);
