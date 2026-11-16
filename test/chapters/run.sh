@@ -178,12 +178,21 @@ sed -n '/=== make audio now ===/,$p' logcat.txt > ahead-log.txt
 # extra samples at the start are measured ("times moved": RecMatch.shift)
 adb shell log -t LoudbookTest "=== made chapter played ==="
 adb shell am start -n com.loudbook.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "https://book.loudbook.invalid/Ahead%20Book/0001%20-%20Ahead%20One.text.json" --ez play true > made-start.txt 2>&1
-sleep 25
+sleep 3
+# the next-chapter button while reading: the next chapter reads on (it opened paused, "Stopped at the end of the
+# chapter", 2026-11-16: the button's own pause was taken for his)
+adb shell log -t LoudbookTest "=== next chapter button ==="
+adb shell am start -n com.loudbook.app/.MainActivity --ez nextch true > nextch-start.txt 2>&1
+sleep 22
 snap
 sed -n '/=== made chapter played ===/,$p' logcat.txt > made-log.txt
 {
   grep -a -o 'book: [0-9]* of [0-9]* sentences are in the .*' made-log.txt | head -1
   grep -a -q -E 'book: ([1-9][0-9]*) of \1 sentences are in' made-log.txt && echo "make audio now: the made chapter plays from what was made: yes" || echo "make audio now: the made chapter plays from what was made: NO"
   grep -a -o 'book: made-ahead chapter decoded: .*' made-log.txt | head -1
+  sed -n '/=== next chapter button ===/,$p' made-log.txt > nextch-log.txt
+  if ! grep -a -q "test: next chapter button" nextch-log.txt; then echo "next chapter button while reading: test hook not reached"
+  elif grep -a -q "LoudbookTest: speaking.*The boats came home" nextch-log.txt; then echo "next chapter button while reading: reads on: yes"
+  else echo "next chapter button while reading: reads on: NO"; grep -a -E "LoudbookTest|Stopped" nextch-log.txt | tail -6 | sed 's/^/  /'; fi
 } >> ahead.txt
 kill $LOGPID 2>/dev/null || true

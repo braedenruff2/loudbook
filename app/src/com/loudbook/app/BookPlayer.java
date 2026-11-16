@@ -269,7 +269,7 @@ public final class BookPlayer extends Service {
             Log.w(TAG, "book: opening " + c.mp3, e);
             error = "Couldn't open \"" + c.title + "\" (" + e.getMessage() + ").";
             if (mp == mine) { mine.release(); mp = null; }
-            playing = false; update();
+            playing = false; letGo(); update();           // (the wake lock too: it was held on for hours)
             return;
         }
         playing = go;                                     // (shown as playing while it opens)

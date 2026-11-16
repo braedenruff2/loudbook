@@ -88,6 +88,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     private final java.util.ArrayDeque<String> seenPages = new java.util.ArrayDeque<>();   // chapters read on this screen lately
     private void seen(String u) { if (u == null) return; seenPages.remove(u); seenPages.addLast(u); while (seenPages.size() > 8) seenPages.removeFirst(); }
     private boolean resumeAfterTurn = true;
+    private long stepPausedAt = -1;         // (the pause chapterStep made, so the new chapter doesn't take it as his)
     private float lastTouchX, lastTouchY;
 
     private final ServiceConnection conn = new ServiceConnection() {
@@ -361,6 +362,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             if (svc != null) svc.cloudChanged();
         }
         if (KindleService.testBuild() && i.getBooleanExtra("audiofail", false) && svc != null) { i.removeExtra("audiofail"); svc.testAudioFail(); }   // (chapter-test)
+        if (KindleService.testBuild() && i.getBooleanExtra("nextch", false)) { i.removeExtra("nextch"); Log.i("LoudbookTest", "test: next chapter button"); chapterStep(true); return true; }   // (chapter-test)
         if (KindleService.testBuild() && i.hasExtra("bookplay")) {
             // (chapter-test: a fake two-chapter audiobook pushed into Loudbook's files, played from its first chapter)
             String bk = i.getStringExtra("bookplay"); i.removeExtra("bookplay");
@@ -828,7 +830,9 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             // the page we opened because the last chapter ended
             awaitingTurn = null;
             // (and not if he paused while the page loaded: it started reading anyway)
-            boolean go = resumeAfterTurn && !(svc != null && (svc.pendingPauseAfterTurn || svc.isPaused()));
+            // (the chapter buttons pause while the page loads: that pause isn't his, unless he paused again since)
+            boolean userPaused = svc != null && svc.isPaused() && svc.pausedAt() != stepPausedAt;
+            boolean go = resumeAfterTurn && !(svc != null && (svc.pendingPauseAfterTurn || userPaused));
             if (svc != null) { svc.pendingPauseAfterTurn = false; svc.setChapter(ch, 0, go); }
             if (!go) onStatus("Stopped at the end of the chapter. The next one is ready.", false);
             return;
@@ -988,6 +992,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
     }
 
     @Override public void onNeedChapter(String url) {
+        stepPausedAt = -1;
         awaitingTurn = url;
         resumeAfterTurn = true;
         web.loadUrl(url);
@@ -1036,6 +1041,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
         if (url == null) { onStatus(next ? "No next chapter yet." : "No previous chapter.", false); return; }
         boolean was = svc != null && svc.isPlaying() && !svc.isPaused();
         if (svc != null) svc.pause();
+        stepPausedAt = was ? svc.pausedAt() : -1;
         awaitingTurn = url;
         resumeAfterTurn = was;
         web.loadUrl(url);
@@ -1510,10 +1516,14 @@ public class MainActivity extends Activity implements ReaderService.Listener {
 
         box.addView(label("Sleep timer"));
         Spinner sleep = new Spinner(this);
-        String[] sl = {"Off", "End of this chapter", "15 minutes", "30 minutes", "45 minutes", "1 hour"};
-        int[] mins = {0, 0, 15, 30, 45, 60};
+        // (a minutes timer running shows as its own line, so "Off" then Done turns it off: it showed "Off" and couldn't be)
+        long left = svc != null && svc.sleepAt() > 0 ? svc.sleepAt() - System.currentTimeMillis() : 0;
+        String[] sl = left > 0
+            ? new String[]{"Off", "End of this chapter", "15 minutes", "30 minutes", "45 minutes", "1 hour", "On: " + Math.max(1, (left + 59_999) / 60_000) + " min left"}
+            : new String[]{"Off", "End of this chapter", "15 minutes", "30 minutes", "45 minutes", "1 hour"};
+        int[] mins = {0, 0, 15, 30, 45, 60, 0};
         sleep.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, sl));
-        final int sleepWas = svc != null && svc.stopAtChapterEnd ? 1 : 0;
+        final int sleepWas = svc != null && svc.stopAtChapterEnd ? 1 : left > 0 ? 6 : 0;
         sleep.setSelection(sleepWas);
         box.addView(sleep);
 

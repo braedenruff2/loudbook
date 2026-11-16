@@ -298,9 +298,13 @@ public class ReaderService extends Service {
     private void resay() {
         if (!playing) return;
         if (!paused) { seek(pos); return; }
+        holdPaused();
+    }
+    /** Paused: the player let go (its queued sound too), still paused at pos; play finds no player and starts from pos. */
+    private void holdPaused() {
         long at = pausedAt;
         stopPlayback(false);
-        playing = true; paused = true; pausedAt = at;    // (play finds no player and starts from pos)
+        playing = true; paused = true; pausedAt = at;
         state();
     }
         void setAutoNext(boolean on) { autoNext = on; prefs.edit().putBoolean("autoNext", on).apply(); }
@@ -314,7 +318,9 @@ public class ReaderService extends Service {
 
     /** A short sample in the chosen voice. */
     void preview() {
-        if ((!voice.ready() && !cloudAsk()) || playing) return;
+        if ((!voice.ready() && !cloudAsk()) || playing && !paused) return;
+        // (paused: the sample still plays (a voice tapped in Settings while paused was silent); reading stays paused)
+        if (playing) holdPaused();
         final int myGen = ++gen;
         synth.submit(() -> {
             String hello = "Hello. This is how I sound when I read your chapters to you.";
@@ -514,6 +520,7 @@ public class ReaderService extends Service {
     }
 
     boolean isPaused() { return paused; }
+    long pausedAt() { return pausedAt; }
     private volatile long pausedAt;
     /** Reading, or paused in a way that will go on soon (a call took the sound; paused in the last 10 minutes): an update
      *  mustn't restart the app now. (It installed on leaving the app during a call: the service was killed, no reading after.) */
@@ -1941,7 +1948,7 @@ public class ReaderService extends Service {
         //  sentence (about half a second) came at the new one's rate)
         if (Math.abs(c.madeAt - rateMadeAt) > 0.001) {
             long until = System.currentTimeMillis() + 3000;
-            while (gen == myGen && System.currentTimeMillis() < until && t.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
+            while (gen == myGen && System.currentTimeMillis() < until && (paused || t.getPlayState() == AudioTrack.PLAYSTATE_PLAYING)) {
                 if (paused) { sleep(40); until += 40; continue; }
                 if ((t.getPlaybackHeadPosition() & 0xffffffffL) >= framesWritten - 32) break;
                 sleep(10);
@@ -2367,14 +2374,13 @@ public class ReaderService extends Service {
         int off = 0;
         while (off < s.length) {
             if (gen != myGen) return false;
-            if (paused) { sleep(40); continue; }
+            // (no wait while paused: only samples come here, and a sample tapped while reading is paused plays anyway)
             int n = t.write(s, off, Math.min(4096, s.length - off), AudioTrack.WRITE_BLOCKING);
             if (n < 0) return false;
             off += n;
         }
         framesWritten += s.length;
         while (gen == myGen) {
-            if (paused) { sleep(40); continue; }
             long head = t.getPlaybackHeadPosition() & 0xffffffffL;
             if (head >= framesWritten - 32) return true;
             sleep(15);
