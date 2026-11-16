@@ -2688,7 +2688,7 @@ public class ReaderService extends Service {
                 b.append("• ").append(e.getKey()).append(" — ").append(e.getValue()).append(e.getValue() == 1 ? " sentence" : " sentences").append("\n");
         }
         String rec = BookAudio.describe(this, ch, sid);
-        if (rec != null) b.append("\nRecording on this phone: ").append(rec).append("\n");
+        if (rec != null) b.append("\nRecording: ").append(rec).append("\n");
         else if (BookPages.isBook(ch.url)) b.append("\nNo recording of this chapter is on this phone: it's read live.\n");
         if (!chapterStart.isEmpty()) b.append("\nStart: ").append(chapterStart)
             .append(ch == turnedTo ? "; " + turnedPre + (turnedPre == 1 ? " sentence was" : " sentences were") + " made ahead" : "").append(".\n");
