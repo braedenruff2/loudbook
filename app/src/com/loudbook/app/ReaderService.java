@@ -441,8 +441,9 @@ public class ReaderService extends Service {
                     synchronized (clips) { if (clips.containsKey(at)) return; }
                     Log.i("LoudbookTest", "opened paused: making sentence " + at + " and the next ahead, for play");
                     quickNext = at; quickRamp = new KindleText.Ramp();
-                    clipFor(at);
-                    if (at + 1 < ch.size()) clipFor(at + 1);
+                    // (the first two, and on while the quick start still cuts (a title, then a short sentence): play went on
+                    //  to a long third sentence made whole, seconds of silence, where a quick start from nothing cut it)
+                    for (int k = 0; at + k < ch.size() && k < READ_AHEAD && (k < 2 || quickRamp != null); k++) clipFor(at + k);
                     quickRamp = null;
                 });
             } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
@@ -595,7 +596,7 @@ public class ReaderService extends Service {
             for (Future<Voice.Clip> f : clips.values()) f.cancel(false);
             for (Future<Voice.Clip> f : fills.values()) f.cancel(false);
             for (java.util.List<Future<Voice.Clip>> l : rests.values()) for (Future<Voice.Clip> f : l) f.cancel(false);
-            clips.clear(); fills.clear(); rests.clear(); restText.clear(); phoneRead.clear(); clipsGen++; filling = false;
+            clips.clear(); fills.clear(); rests.clear(); restText.clear(); restHow.clear(); phoneRead.clear(); clipsGen++; filling = false;
             srcOf.clear(); clipOffset.clear();
             book = null;
         }
@@ -692,7 +693,7 @@ public class ReaderService extends Service {
                     f = synth.submit(() -> learned(makeHere(head, v, sp), want));
                     java.util.List<Future<Voice.Clip>> more = new ArrayList<>();
                     for (int k = 1; k < ps.size(); k++) { final String piece = ps.get(k); more.add(synth.submit(() -> learned(makeHere(piece, v, sp), want))); }
-                    rests.put(i, more); restText.put(i, ps);
+                    rests.put(i, more); restText.put(i, ps); restHow.put(i, new float[]{v, sp});
                     clips.put(i, f);
                     return f;
                 }
@@ -712,6 +713,8 @@ public class ReaderService extends Service {
     private int headLetters(int i, int dflt) { java.util.List<String> t = restText.get(i); return t != null && !t.isEmpty() ? t.get(0).length() : dflt; }
     /** Such a sentence's pieces of text (its mark is stretched over the rest by letters until the rest is made). */
     private final Map<Integer, java.util.List<String>> restText = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Such a sentence's voice and speed {voice, speed} (a piece made again is made in them: a quote's second voice). */
+    private final Map<Integer, float[]> restHow = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * The rest of sentence i after its first piece (quick start), each piece written as it's made; then the sentence is
@@ -735,16 +738,19 @@ public class ReaderService extends Service {
             while (gen == myGen) {
                 try { c = f.get(20, java.util.concurrent.TimeUnit.MILLISECONDS); break; }
                 catch (java.util.concurrent.TimeoutException te) { heard(ch, marks, myGen); }
-                catch (java.util.concurrent.CancellationException ce) {
+                catch (Exception e) {
                     // (dropped while this sentence played, with reading going on (a pronunciation update or Gemini switched
-                    //  while paused): the piece is made again, as the loop does for a whole sentence; it was skipped)
+                    //  while paused), or it failed once: the piece is made again, as the loop does for a whole sentence, in the
+                    //  sentence's own voice (a quote's second voice); it was skipped, and a failed one cut every replay short)
+                    if (e instanceof InterruptedException) { Thread.currentThread().interrupt(); break; }   // (stopped)
+                    if (!(e instanceof java.util.concurrent.CancellationException)) Log.w(TAG, "quick start: a piece failed", e);
                     String piece = texts != null && n < texts.size() ? texts.get(n) : null;
                     if (again || piece == null) break;
                     again = true;
-                    final int want = sid; final float sp = speed;
-                    f = synth.submit(() -> learned(makeHere(piece, want, sp), want));
+                    float[] how = restHow.get(i);
+                    final int want = sid, pv = how != null ? (int) how[0] : want; final float sp = how != null ? how[1] : speed;
+                    f = synth.submit(() -> learned(makeHere(piece, pv, sp), want));
                 }
-                catch (Exception e) { Log.w(TAG, "quick start: a piece failed", e); break; }
             }
             if (gen != myGen) return false;
             if (c == null || c.rate != head.rate) { whole = false; break; }
@@ -763,14 +769,21 @@ public class ReaderService extends Service {
         for (float[] x : got) { System.arraycopy(x, 0, all, o, x.length); o += x.length; }
         Voice.Clip joined = new Voice.Clip(all, head.rate, head.madeAt, head.ms).from(head.src);
         SpeechTiming st = null;
-        try { st = SpeechTiming.of(ch.chunks.get(i).text, ch.chunks.get(i).say, all, head.rate); timings.put(i, st); } catch (Throwable e) { timings.remove(i); }
+        // (cut short: not timed as if it were the whole sentence)
+        if (whole) try { st = SpeechTiming.of(ch.chunks.get(i).text, ch.chunks.get(i).say, all, head.rate); timings.put(i, st); } catch (Throwable e) { timings.remove(i); }
+        else timings.remove(i);
         // (the highlight: the mark covers the whole sentence now, timed by its sound)
         hm[2] = total; if (st != null) hm[3] = 1;
         if (heardIdx == i && heardStart == hm[0]) { heardLen = total; heardTiming = st; }
-        if (whole) {
-            synchronized (clips) {
-                rests.remove(i); restText.remove(i);
+        synchronized (clips) {
+            if (whole) {
+                rests.remove(i); restText.remove(i); restHow.remove(i);
                 if (clips.containsKey(i)) clips.put(i, java.util.concurrent.CompletableFuture.completedFuture(joined));
+            } else if (rests.get(i) == more) {
+                // (a piece failed twice: forgotten, so going back to the sentence makes it again whole; kept, every replay
+                //  stopped at the same failed piece)
+                rests.remove(i); restText.remove(i); restHow.remove(i); clips.remove(i);
+                for (Future<Voice.Clip> x : more) x.cancel(false);
             }
         }
         Log.i("LoudbookTest", "quick start: sentence " + i + " played in " + got.size() + " pieces" + (whole ? "" : " (cut short: a piece failed)"));
@@ -1999,7 +2012,10 @@ public class ReaderService extends Service {
                 // Kindle: the rest of the page is all asked for: the next page's first words next (after them, on the same voice thread)
                 if (kt != null && "kindle".equals(ch.site) && next + READ_AHEAD >= ch.size() - 1 && splitIdx != ch.size() - 1) makeNextPageAhead(ch);
                 final int keepFrom = next - 1;
-                synchronized (clips) { clips.keySet().removeIf(k -> k < keepFrom); fills.keySet().removeIf(k -> k < keepFrom); rests.keySet().removeIf(k -> k < keepFrom); restText.keySet().removeIf(k -> k < keepFrom); }
+                // (only the reading still current: an old player thread outliving a seek or a new chapter removed the new
+                //  reading's pieces and its quick start)
+                if (gen != myGen) return;
+                synchronized (clips) { clips.keySet().removeIf(k -> k < keepFrom); fills.keySet().removeIf(k -> k < keepFrom); rests.keySet().removeIf(k -> k < keepFrom); restText.keySet().removeIf(k -> k < keepFrom); restHow.keySet().removeIf(k -> k < keepFrom); }
                 quickRamp = null;                              // (the quick start covers the first sentences asked for only)
                 if (f == null) return;
                 Voice.Clip c = null;
@@ -2024,7 +2040,7 @@ public class ReaderService extends Service {
                         synchronized (clips) {
                             if (clips.get(next) == f) clips.remove(next);
                             // (its first piece failed: made again whole, so not followed by the rest of the pieces)
-                            java.util.List<Future<Voice.Clip>> rs = rests.remove(next); restText.remove(next);
+                            java.util.List<Future<Voice.Clip>> rs = rests.remove(next); restText.remove(next); restHow.remove(next);
                             if (rs != null) for (Future<Voice.Clip> x : rs) x.cancel(false);
                         }
                         if (failAt != next) { failAt = next; fails = 0; }

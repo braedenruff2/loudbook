@@ -122,6 +122,8 @@ sed -n '/=== opened paused, play ===/,$p' logcat.txt > paused-log.txt
     && echo "opened paused: first sentences made before play: yes" \
     || { echo "opened paused: first sentences made before play: NO"; grep -a -E "opened paused|quick start|play:|speaking" paused-all.txt | head -8 | sed 's/^/  /'; }
   grep -a -o "start: first sound after [0-9]* ms" paused-log.txt | head -1 | sed 's/^/opened paused, then play: /'
+  # (made before play, cut as the quick start cuts them: on while it still cuts, not only the first two, 2026-11-17)
+  awk '/=== opened paused, play ===/{exit} 1' paused-all.txt | grep -a -o "quick start: sentence [0-9]* in .*" | head -4 | sed 's/^/opened paused, made before play: /'
 } >> quick.txt
 # a new chapter comes out for the story read to the end: the background check notices it
 adb shell log -t LoudbookTest "=== new chapter published ==="
