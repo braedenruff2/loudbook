@@ -641,16 +641,25 @@ public class ReaderService extends Service {
                 // (reading starts here: the first sentences are cut into pieces that each take less time to make than the one
                 //  before takes to say, the first one short, so the first words come in about a second and nothing waits after
                 //  them (a long sentence, or the chapter's title then a 200-letter piece, was made whole first: seconds of
-                //  silence). As Kindle's page starts do (KindleText.Ramp). Not with two voices or the PC)
+                //  silence). As Kindle's page starts do (KindleText.Ramp). Not with the PC's voice)
                 quickNext++;
-                java.util.List<String> ps = twoVoices() || voice.pcLink() != null || "kindle".equals(ch.site) ? null : ramp.pieces(KindleText.sentencesIn(text));
+                java.util.List<String> ps = voice.pcLink() != null || "kindle".equals(ch.site) ? null : ramp.pieces(KindleText.sentencesIn(text));
                 if (ps == null || ramp.said() >= 200) quickRamp = null;
+                // (with the second voice: only a piece all in one voice (the reader's, or all a character's words) is cut; one
+                //  with quotes in it is made whole, as its parts are told apart over the whole of it)
+                int pv = want;
+                if (ps != null && ps.size() > 1 && twoVoices()) {
+                    java.util.List<String[]> parts = Dialogue.split(text, Dialogue.openAt(ch, i), Dialogue.singles(ch, i), Dialogue.after(ch, i), Dialogue.dashes(ch, i));
+                    if (parts.size() != 1) ps = null;
+                    else if ("q".equals(parts.get(0)[1])) pv = dialogueVoice(want);
+                }
                 if (ps != null && ps.size() > 1) {
                     Log.i("LoudbookTest", "quick start: sentence " + i + " in " + ps.size() + " pieces, first " + ps.get(0).length() + " of " + text.length() + " letters");
                     final String head = ps.get(0);
-                    f = synth.submit(() -> learned(makeHere(head, want, sp), want));
+                    final int v = pv;
+                    f = synth.submit(() -> learned(makeHere(head, v, sp), want));
                     java.util.List<Future<Voice.Clip>> more = new ArrayList<>();
-                    for (int k = 1; k < ps.size(); k++) { final String piece = ps.get(k); more.add(synth.submit(() -> learned(makeHere(piece, want, sp), want))); }
+                    for (int k = 1; k < ps.size(); k++) { final String piece = ps.get(k); more.add(synth.submit(() -> learned(makeHere(piece, v, sp), want))); }
                     rests.put(i, more); restText.put(i, ps);
                     clips.put(i, f);
                     return f;
