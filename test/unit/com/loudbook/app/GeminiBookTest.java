@@ -68,6 +68,15 @@ public class GeminiBookTest {
         }
         check("resampled in small pieces: as many samples as all at once (" + got + " vs " + one.length + ")", Math.abs(got - one.length) <= 1 && Math.abs(one.length - 320000) <= 1);
         check("...and the same samples", worst < 1e-5);
+        // a stream whose audio came in one burst at the end (as reported of Google's TTS streams) vs a real stream
+        GeminiBook.Made bm = new GeminiBook.Made(); bm.streamed = true; bm.seconds = 90; bm.firstAudioMs = 48_000; bm.totalMs = 48_400;
+        check("a stream that came all at once at the end is a burst", GeminiBook.burst(bm));
+        GeminiBook.Made sm = new GeminiBook.Made(); sm.streamed = true; sm.seconds = 110; sm.firstAudioMs = 6_600; sm.totalMs = 69_500;
+        check("a real stream (110 s over a minute) isn't", !GeminiBook.burst(sm));
+        GeminiBook.Made tm = new GeminiBook.Made(); tm.streamed = true; tm.seconds = 8; tm.firstAudioMs = 5_000; tm.totalMs = 5_100;
+        check("a short recording isn't judged (too little to tell)", !GeminiBook.burst(tm));
+        GeminiBook.Made wm = new GeminiBook.Made(); wm.streamed = false; wm.seconds = 90; wm.firstAudioMs = 40_000; wm.totalMs = 40_100;
+        check("a whole recording (not streamed) isn't", !GeminiBook.burst(wm));
         if (fails > 0) { System.out.println(fails + " FAILED"); System.exit(1); }
         System.out.println("ALL OK");
     }

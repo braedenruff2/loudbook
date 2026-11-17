@@ -7,6 +7,10 @@ at once when it's all made). Writes where every sentence starts in each recordin
 checking the app's sentence timing) and one line per request to LOG.
 
   python3 fake_gemini.py PORT KOKORO_DIR   (env: LATENCY, SPEED, TRUTH, LOG, CUT_AFTER)
+
+MODE (a JSON file, read at each request; run.sh writes it between parts of the test): {"latency": s, "burst": true}.
+burst: a stream whose audio all comes at once when the whole recording is made, as people report of Google's real
+speech streams (a long silent wait, then every chunk within milliseconds; 2026).
 """
 import base64, http.server, io, json, os, random, re, socketserver, sys, threading, time, wave
 import numpy as np
@@ -18,6 +22,12 @@ SPEED = float(os.environ.get("SPEED", "2"))
 TRUTH = os.environ.get("TRUTH", "/tmp/gem-truth.tsv")
 LOG = os.environ.get("LOG", "/tmp/gem-requests.log")
 RATE = 24000
+MODE = os.environ.get("MODE", "/tmp/gem-mode.json")
+
+def mode():
+    try:
+        with open(MODE) as f: return json.load(f)
+    except Exception: return {}
 
 tts = sherpa_onnx.OfflineTts(sherpa_onnx.OfflineTtsConfig(model=sherpa_onnx.OfflineTtsModelConfig(
     kokoro=sherpa_onnx.OfflineTtsKokoroModelConfig(model=f"{KOKORO}/model.onnx", voices=f"{KOKORO}/voices.bin",
@@ -60,7 +70,10 @@ class H(http.server.BaseHTTPRequestHandler):
         except Exception: text = body["contents"][0]["parts"][0]["text"]
         streamed = body.get("stream") is True or "streamGenerateContent" in self.path
         cut = float(os.environ.get("CUT_AFTER", "0"))
-        time.sleep(LATENCY)
+        md = mode()
+        latency = float(md.get("latency", LATENCY))
+        burst = bool(md.get("burst")) and streamed
+        time.sleep(latency)
         at, first = 0, None
         truth = []
         if streamed:
@@ -71,19 +84,30 @@ class H(http.server.BaseHTTPRequestHandler):
             truth.append((at / RATE, s))
             if cut and at / RATE > cut: break
             if streamed:
+                if burst: chunks.append(pcm); at += len(pcm) // 2; continue
                 for k in range(0, len(pcm), RATE):                       # half a second at a time
                     piece = pcm[k:k + RATE]
-                    due = t0 + LATENCY + (at + k // 2) / RATE / SPEED     # made at SPEED x listening speed
+                    due = t0 + latency + (at + k // 2) / RATE / SPEED     # made at SPEED x listening speed
                     if due > time.time(): time.sleep(due - time.time())
                     ev = {"event_type": "step.delta", "index": 0, "delta": {"type": "audio", "mime_type": "audio/l16", "data": base64.b64encode(piece).decode()}}
                     self.wfile.write(b"data: " + json.dumps(ev).encode() + b"\n\n"); self.wfile.flush()
                     if first is None: first = time.time() - t0
             else: chunks.append(pcm)
             at += len(pcm) // 2
+        if burst:
+            # (all of it at once, once it's all made)
+            due = t0 + latency + at / RATE / SPEED
+            if due > time.time(): time.sleep(due - time.time())
+            allpcm = b"".join(chunks)
+            for k in range(0, len(allpcm), RATE):
+                ev = {"event_type": "step.delta", "index": 0, "delta": {"type": "audio", "mime_type": "audio/l16", "data": base64.b64encode(allpcm[k:k + RATE]).decode()}}
+                self.wfile.write(b"data: " + json.dumps(ev).encode() + b"\n\n")
+                if first is None: first = time.time() - t0
+            self.wfile.flush()
         if streamed:
             self.wfile.write(b'data: {"event_type":"interaction.complete"}\n\n')
         else:
-            due = t0 + LATENCY + at / RATE / SPEED
+            due = t0 + latency + at / RATE / SPEED
             if due > time.time(): time.sleep(due - time.time())
             buf = io.BytesIO()
             with wave.open(buf, "wb") as w: w.setnchannels(1); w.setsampwidth(2); w.setframerate(RATE); w.writeframes(b"".join(chunks))
@@ -94,7 +118,7 @@ class H(http.server.BaseHTTPRequestHandler):
         with open(TRUTH, "a") as f:
             for t, s in truth: f.write(f"{n}\t{t:.3f}\t{s}\n")
         with open(LOG, "a") as f:
-            f.write(f"request {n}: {'streamed' if streamed else 'all at once'}, {len(text)} letters, {len(truth)} sentences, "
+            f.write(f"request {n}: {('streamed in one burst' if burst else 'streamed') if streamed else 'all at once'}, {len(text)} letters, {len(truth)} sentences, "
                     f"{at / RATE:.0f} s of audio, first audio after {first:.1f} s, done after {time.time() - t0:.1f} s; starts: {truth[0][1][:50] if truth else ''}\n")
         self.close_connection = True
 

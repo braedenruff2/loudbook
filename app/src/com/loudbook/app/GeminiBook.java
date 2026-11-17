@@ -357,6 +357,18 @@ final class GeminiBook {
         String note = "";                  // for the timing report: how the end of the recording was told
     }
 
+    /**
+     * A streamed request whose audio came all at once at the end (people report Google's speech streams doing this: a long
+     * silent wait, then every chunk within milliseconds). Streaming gains nothing then, while a streamed request is made as
+     * big as Google allows, so its wait is the whole recording's: such a day is better asked for in smaller whole recordings.
+     */
+    static boolean burst(Made m) {
+        if (!m.streamed || m.broke || m.firstAudioMs <= 0 || m.totalMs <= 0 || m.seconds < 20) return false;
+        long spread = m.totalMs - m.firstAudioMs;
+        // (streamed for real, the audio arrives over about its length divided by Google's speed: 110 s over a minute)
+        return spread < Math.max(1500, m.totalMs / 5) && spread * 4 < m.seconds * 1000;
+    }
+
     /** Part of a request: sentences [from, to) of a chapter, filed in that chapter's book. */
     static final class Span {
         final Chapter ch; final GeminiBook book; final int from, to;

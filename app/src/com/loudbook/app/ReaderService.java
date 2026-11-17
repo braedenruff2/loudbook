@@ -1407,14 +1407,22 @@ public class ReaderService extends Service {
             int missing = made.asked - made.count - made.extra;
             boolean short_ = missing >= 2;
             boolean cutOff = made.streamed && short_ && !made.broke && made.seconds < 150;
-            if (cutOff) prefs.edit().putString("gemNoStream", today).apply();
+            // (streamed, but the audio came all at once at the end: no gain from streaming, and streamed requests are the
+            //  biggest, so the wait was the whole recording's: smaller whole recordings for the rest of today)
+            boolean burst = !cutOff && GeminiBook.burst(made);
+            if (burst) {
+                made.note = (made.note.isEmpty() ? "" : made.note + "; ") + "streamed, but the audio came all at once at the end";
+                Log.i("LoudbookTest", "gemini: the stream's audio came all at once (first audio " + made.firstAudioMs / 1000 + " s, all in " + made.totalMs / 1000 + " s): whole recordings for today");
+            }
+            if (cutOff || burst) prefs.edit().putString("gemNoStream", today).apply();
+            else if (made.streamed && !short_ && !made.broke) prefs.edit().putString("gemStreamOk", today).apply();
             // how much a request can hold: when Google stops one early, that's the most (a little
             // less, to be safe); when a long one comes back whole, it can hold at least that much
             else if (short_ && !made.broke && made.chars > 3000) prefs.edit().putInt("gemCapChars", Math.max(4000, made.chars * 95 / 100)).apply();
             else if (!short_ && made.chars > capChars() * 0.85) prefs.edit().putInt("gemCapChars", Math.min(60000, made.chars * 115 / 100)).apply();
             if (pace[0] > 0) prefs.edit().putFloat("gemPace:" + cVoice(), (float) pace[0]).apply();
             learnSpeed(made, short_);
-            noteTiming(made, short_, cutOff);
+            noteTiming(made, short_, cutOff || burst);
             trail("Google's recording: sentences " + from + "-" + (from + made.count - 1) + (made.extra > 0 ? " + " + made.extra + " of the next chapter" : "")
                 + (missing > 0 ? ", " + missing + " left out" : "") + (made.note.isEmpty() ? "" : " (" + made.note + ")"));
             cloudError = "";
@@ -1471,7 +1479,8 @@ public class ReaderService extends Service {
         if (m.firstAudioMs <= 0 || m.seconds < 5) return;
         SharedPreferences.Editor e = prefs.edit();
         double first = m.firstAudioMs / 1000.0;
-        if (m.streamed) e.putFloat("gemLat", (float) (0.6 * gemLatency() + 0.4 * Math.min(60, first)));
+        // (a stream that came all at once is learned from as a whole recording: its first audio is the whole wait)
+        if (m.streamed && !GeminiBook.burst(m)) e.putFloat("gemLat", (float) (0.6 * gemLatency() + 0.4 * Math.min(60, first)));
         else {
             // all at once: the audio comes once the whole recording is made
             double r = m.seconds / Math.max(1, first - Math.min(gemLatency(), first * 0.5));
@@ -1519,7 +1528,10 @@ public class ReaderService extends Service {
      */
     private int sizeFor(Chapter ch, GeminiBook b, int i) {
         int cap = capChars();
-        if (willStream()) return cap;
+        // (streamed as big as Google allows only once a stream has come as a stream today: the day's first is sized like a
+        //  whole recording, as Google sometimes sends a "stream" all at once at the end, and the wait was then the whole
+        //  chapter's, about a minute. One more request a day at most)
+        if (willStream() && today().equals(prefs.getString("gemStreamOk", ""))) return cap;
         double ahead = readyAhead(ch, b, i);
         // (the first: smaller when nothing else reads meanwhile, so Gemini's voice comes sooner)
         boolean fill = prefs.getBoolean("gemFill", false);

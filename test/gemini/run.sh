@@ -21,5 +21,13 @@ adb logcat -d > logcat1.txt
 adb shell log -t LoudbookTest "'=== all at once: play chapter one again, a new address, so nothing is recorded yet ==='"   # (quoted twice: adb shell runs it through sh)
 adb shell am start -n com.loudbook.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "http://localhost:8000/g1.html?again=1" --ez play true --ez gemwhole true $G
 sleep 150
+adb logcat -d > logcat2.txt
+# 3. Google as people report it on real phones (2026): a "stream" whose audio all comes at once, after a long wait. The app
+#    should notice and ask for smaller whole recordings, and the day's first request isn't the biggest: no minute of silence
+echo '{"latency": 12, "burst": true}' > /tmp/gem-mode.json
+adb shell log -t LoudbookTest "'=== stream in one burst: play chapter two, a new address ==='"
+adb shell am start -n com.loudbook.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "http://localhost:8000/g2.html?burst=1" --ez play true $G
+sleep 170
+rm -f /tmp/gem-mode.json
 adb shell am force-stop com.loudbook.app
 adb logcat -d > logcat.txt

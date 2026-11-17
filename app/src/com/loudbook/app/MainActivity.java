@@ -361,7 +361,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date());
             prefs.edit().putBoolean("cloudOn", true).putString("cloudKey", "test-key").putString("gemHost", i.getStringExtra("gemhost"))
                 .putString("gemNoStream", i.getBooleanExtra("gemwhole", false) ? today : "").putBoolean("gemFill", i.getBooleanExtra("gemfill", false))
-                .putLong("gemRetryAt", 0).apply();
+                .putLong("gemRetryAt", 0).remove("gemStreamOk").apply();     // (each part of the test as a new day)
             CloudVoice.HOST = i.getStringExtra("gemhost");
             if (svc != null) svc.cloudChanged();
         }
