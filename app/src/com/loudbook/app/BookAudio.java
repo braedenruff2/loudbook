@@ -302,67 +302,9 @@ final class BookAudio {
         decoding.put(name, r);
         r.decodeFrom = System.currentTimeMillis();
         Thread th = new Thread(() -> {
-            MediaExtractor ex = new MediaExtractor();
-            MediaCodec dec = null;
             try (FileOutputStream out = new FileOutputStream(r.pcm)) {
-                ex.setDataSource(ctx, r.mp3, null);
-                int track = -1;
-                MediaFormat fmt = null;
-                for (int i = 0; i < ex.getTrackCount(); i++) {
-                    MediaFormat f = ex.getTrackFormat(i);
-                    String mime = f.getString(MediaFormat.KEY_MIME);
-                    if (mime != null && mime.startsWith("audio/")) { track = i; fmt = f; break; }
-                }
-                if (track < 0) throw new IllegalStateException("no audio in the recording");
-                ex.selectTrack(track);
-                dec = MediaCodec.createDecoderByType(fmt.getString(MediaFormat.KEY_MIME));
-                dec.configure(fmt, null, null, 0);
-                dec.start();
-                int channels = fmt.containsKey(MediaFormat.KEY_CHANNEL_COUNT) ? fmt.getInteger(MediaFormat.KEY_CHANNEL_COUNT) : 1;
-                int rate = fmt.containsKey(MediaFormat.KEY_SAMPLE_RATE) ? fmt.getInteger(MediaFormat.KEY_SAMPLE_RATE) : 24000;
-                boolean floats = false;
-                MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-                boolean inDone = false;
-                long frames = 0;
-                while (true) {
-                    if (!inDone) {
-                        int ii = dec.dequeueInputBuffer(10_000);
-                        if (ii >= 0) {
-                            ByteBuffer in = dec.getInputBuffer(ii);
-                            int n = ex.readSampleData(in, 0);
-                            if (n < 0) { dec.queueInputBuffer(ii, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM); inDone = true; }
-                            else { dec.queueInputBuffer(ii, 0, n, ex.getSampleTime(), 0); ex.advance(); }
-                        }
-                    }
-                    int oi = dec.dequeueOutputBuffer(info, 10_000);
-                    if (oi == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                        MediaFormat of = dec.getOutputFormat();
-                        if (of.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) channels = of.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
-                        if (of.containsKey(MediaFormat.KEY_SAMPLE_RATE)) rate = of.getInteger(MediaFormat.KEY_SAMPLE_RATE);
-                        if (of.containsKey(MediaFormat.KEY_PCM_ENCODING)) floats = of.getInteger(MediaFormat.KEY_PCM_ENCODING) == android.media.AudioFormat.ENCODING_PCM_FLOAT;
-                        continue;
-                    }
-                    if (oi < 0) continue;
-                    ByteBuffer o = dec.getOutputBuffer(oi);
-                    if (info.size > 0 && o != null) {
-                        o.position(info.offset); o.limit(info.offset + info.size);
-                        o.order(ByteOrder.LITTLE_ENDIAN);
-                        int per = floats ? 4 : 2;
-                        int n = info.size / per / Math.max(1, channels);
-                        ByteBuffer mono = ByteBuffer.allocate(n * 2).order(ByteOrder.LITTLE_ENDIAN);
-                        for (int k = 0; k < n; k++) {
-                            float sum = 0;
-                            for (int c = 0; c < channels; c++) sum += floats ? o.getFloat() * 32767f : o.getShort();
-                            mono.putShort((short) Math.max(-32768, Math.min(32767, Math.round(sum / channels))));
-                        }
-                        out.write(mono.array());
-                        frames += n;
-                        r.rate = rate;
-                        r.frames = frames;
-                    }
-                    dec.releaseOutputBuffer(oi, false);
-                    if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) break;
-                }
+                long frames = decodeInto(ctx, r.mp3, out, r);
+                int rate = r.rate;
                 out.flush();
                 r.rate = rate;
                 r.shift = shiftOf(ctx, r, frames, rate);
@@ -375,13 +317,98 @@ final class BookAudio {
                 r.failedAt = System.currentTimeMillis();
                 r.failed = true;
             } finally {
-                try { if (dec != null) { dec.stop(); dec.release(); } } catch (Exception ignored) { }
-                ex.release();
                 synchronized (BookAudio.class) { decoding.remove(name); }
             }
         }, "lb-bookaudio");
         th.setPriority(Thread.NORM_PRIORITY - 1);
         th.start();
+    }
+
+    /** Decodes the recording src into out as 16-bit mono samples, keeping r.rate / r.frames up to date as it goes (the
+     *  sentences wait on them). The number of samples. */
+    static long decodeInto(Context ctx, Uri src, java.io.OutputStream out, Rec r) throws Exception {
+        MediaExtractor ex = new MediaExtractor();
+        MediaCodec dec = null;
+        try {
+            ex.setDataSource(ctx, src, null);
+            int track = -1;
+            MediaFormat fmt = null;
+            for (int i = 0; i < ex.getTrackCount(); i++) {
+                MediaFormat f = ex.getTrackFormat(i);
+                String mime = f.getString(MediaFormat.KEY_MIME);
+                if (mime != null && mime.startsWith("audio/")) { track = i; fmt = f; break; }
+            }
+            if (track < 0) throw new IllegalStateException("no audio in the recording");
+            ex.selectTrack(track);
+            dec = MediaCodec.createDecoderByType(fmt.getString(MediaFormat.KEY_MIME));
+            dec.configure(fmt, null, null, 0);
+            dec.start();
+            int channels = fmt.containsKey(MediaFormat.KEY_CHANNEL_COUNT) ? fmt.getInteger(MediaFormat.KEY_CHANNEL_COUNT) : 1;
+            int rate = fmt.containsKey(MediaFormat.KEY_SAMPLE_RATE) ? fmt.getInteger(MediaFormat.KEY_SAMPLE_RATE) : 24000;
+            boolean floats = false;
+            MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+            boolean inDone = false;
+            long frames = 0;
+            while (true) {
+                if (!inDone) {
+                    int ii = dec.dequeueInputBuffer(10_000);
+                    if (ii >= 0) {
+                        ByteBuffer in = dec.getInputBuffer(ii);
+                        int n = ex.readSampleData(in, 0);
+                        if (n < 0) { dec.queueInputBuffer(ii, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM); inDone = true; }
+                        else { dec.queueInputBuffer(ii, 0, n, ex.getSampleTime(), 0); ex.advance(); }
+                    }
+                }
+                int oi = dec.dequeueOutputBuffer(info, 10_000);
+                if (oi == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                    MediaFormat of = dec.getOutputFormat();
+                    if (of.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) channels = of.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+                    if (of.containsKey(MediaFormat.KEY_SAMPLE_RATE)) rate = of.getInteger(MediaFormat.KEY_SAMPLE_RATE);
+                    if (of.containsKey(MediaFormat.KEY_PCM_ENCODING)) floats = of.getInteger(MediaFormat.KEY_PCM_ENCODING) == android.media.AudioFormat.ENCODING_PCM_FLOAT;
+                    continue;
+                }
+                if (oi < 0) continue;
+                ByteBuffer o = dec.getOutputBuffer(oi);
+                if (info.size > 0 && o != null) {
+                    o.position(info.offset); o.limit(info.offset + info.size);
+                    o.order(ByteOrder.LITTLE_ENDIAN);
+                    int per = floats ? 4 : 2;
+                    int n = info.size / per / Math.max(1, channels);
+                    ByteBuffer mono = ByteBuffer.allocate(n * 2).order(ByteOrder.LITTLE_ENDIAN);
+                    for (int k = 0; k < n; k++) {
+                        float sum = 0;
+                        for (int c = 0; c < channels; c++) sum += floats ? o.getFloat() * 32767f : o.getShort();
+                        mono.putShort((short) Math.max(-32768, Math.min(32767, Math.round(sum / channels))));
+                    }
+                    out.write(mono.array());
+                    frames += n;
+                    r.rate = rate;
+                    r.frames = frames;
+                }
+                dec.releaseOutputBuffer(oi, false);
+                if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) break;
+            }
+            r.rate = rate;
+            return frames;
+        } finally {
+            try { if (dec != null) { dec.stop(); dec.release(); } } catch (Exception ignored) { }
+            ex.release();
+        }
+    }
+
+    /** Test builds (chapter-test): how fast this phone unpacks a recording, the way a chapter's is (into a cache file). */
+    static String speedTest(Context ctx, File f) {
+        Rec r = new Rec("speedtest", Uri.fromFile(f));
+        File tmp = new File(ctx.getCacheDir(), "speedtest.pcm");
+        long t0 = System.currentTimeMillis();
+        try (FileOutputStream out = new FileOutputStream(tmp)) {
+            long n = decodeInto(ctx, r.mp3, out, r);
+            long ms = Math.max(1, System.currentTimeMillis() - t0);
+            double secs = n / (double) Math.max(1, r.rate);
+            return String.format(java.util.Locale.US, "%.0f s of sound in %d ms (%.0fx)", secs, ms, secs * 1000 / ms);
+        } catch (Exception e) {
+            return "failed: " + e;
+        } finally { tmp.delete(); }
     }
 
     /** Only the last few chapters' sound is kept (each is about 2.6 MB a minute). */

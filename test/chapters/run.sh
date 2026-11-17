@@ -134,6 +134,7 @@ sed -n '/=== audiobook ===/,$p' logcat.txt > book-log.txt
 {
   grep -a -o 'book: test book .*' book-log.txt | head -1
   grep -a -q "book: playing chapter 1 at" book-log.txt && echo "audiobook: chapter 1 plays: yes" || echo "audiobook: chapter 1 plays: NO"
+  grep -a -o 'book: chapter [0-9]* ready to play in [0-9]* ms' book-log.txt | head -2 | sed 's/^/audiobook: /'
   grep -a -q "book: chapter 1 ended" book-log.txt && grep -a -q "book: playing chapter 2 at" book-log.txt && echo "audiobook: on to chapter 2 by itself: yes" || echo "audiobook: on to chapter 2 by itself: NO"
   grep -a -q "Loudbook audiobook" book-session.txt && echo "audiobook: media session there (headphones, car): yes" || echo "audiobook: media session there: NO"
   grep -a -E "book: (player error|opening|couldn't)" book-log.txt | head -3
@@ -200,4 +201,20 @@ sed -n '/=== made chapter played ===/,$p' logcat.txt > made-log.txt
   elif grep -a -q "LoudbookTest: speaking.*The boats came home" nextch-log.txt; then echo "next chapter button while reading: reads on: yes"
   else echo "next chapter button while reading: reads on: NO"; grep -a -E "LoudbookTest|Stopped" nextch-log.txt | tail -6 | sed 's/^/  /'; fi
 } >> ahead.txt
+# how fast the phone unpacks a long PC recording (BookAudio.decodeInto: a chapter's sentences wait for it; 2026-11-17, his
+# "a new chapter took ~30 s to start"): 20-minute MP3s as the PC makes them (mono 24 kHz) and a typical stereo audiobook
+if command -v ffmpeg >/dev/null; then
+  SP=/tmp/lbspeed; rm -rf $SP; mkdir -p $SP
+  ffmpeg -loglevel error -f lavfi -i "anoisesrc=d=1200:c=pink:a=0.1" -ac 1 -ar 24000 -b:a 48k $SP/mono24-cbr.mp3
+  ffmpeg -loglevel error -f lavfi -i "anoisesrc=d=1200:c=pink:a=0.1" -ac 1 -ar 24000 -q:a 5 $SP/mono24-vbr.mp3
+  ffmpeg -loglevel error -f lavfi -i "anoisesrc=d=1200:c=pink:a=0.1" -ac 2 -ar 44100 -b:a 128k $SP/stereo44-cbr.mp3
+  adb shell mkdir -p "$D/speed"
+  for f in $SP/*.mp3; do adb push "$f" "$D/speed/" >/dev/null; done
+  adb shell log -t LoudbookTest "=== decode speed ==="
+  adb shell am start -n com.loudbook.app/.MainActivity --es decodetest "mono24-cbr.mp3,mono24-vbr.mp3,stereo44-cbr.mp3" > decode-start.txt 2>&1
+  for t in $(seq 1 60); do sleep 3; snap; sed -n '/=== decode speed ===/,$p' logcat.txt | grep -a -q "decode speed: done" && break; done
+  sed -n '/=== decode speed ===/,$p' logcat.txt | grep -a -o 'decode speed [^ ]*: .*' > decode.txt
+  [ -s decode.txt ] || echo "decode speed: no answer" > decode.txt
+  adb shell rm -rf "$D/speed"
+else echo "decode speed: no ffmpeg on the runner" > decode.txt; fi
 kill $LOGPID 2>/dev/null || true

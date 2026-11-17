@@ -384,6 +384,19 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             }
             return true;
         }
+        if (KindleService.testBuild() && i.hasExtra("decodetest")) {
+            // (chapter-test: how fast the phone unpacks a long recording, as a PC chapter's is before its sentences play)
+            String[] names = i.getStringExtra("decodetest").split(","); i.removeExtra("decodetest");
+            android.content.Context ctx = getApplicationContext();
+            new Thread(() -> {
+                for (String n : names) {
+                    java.io.File f = new java.io.File(ctx.getExternalFilesDir(null), "speed/" + n.trim());
+                    Log.i("LoudbookTest", "decode speed " + n.trim() + ": " + BookAudio.speedTest(ctx, f));
+                }
+                Log.i("LoudbookTest", "decode speed: done");
+            }, "lb-decodetest").start();
+            return true;
+        }
         if (KindleService.testBuild() && i.hasExtra("bookahead") && svc != null) {
             // (chapter-test: "Make audio now" on a text book pushed into Loudbook's files; when the job ends, the Audiobooks
             //  list as the page gets it, to check each chapter now says "made on phone")

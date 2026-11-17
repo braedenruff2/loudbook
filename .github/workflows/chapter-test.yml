@@ -62,7 +62,7 @@ jobs:
           {
             echo '## Next chapter, in the background (Android 15)'; echo
             echo "commit ${GITHUB_SHA::7}, run ${{ github.run_id }}, emulator step: ${{ steps.emu.outcome }}, retry: ${{ steps.emu2.outcome }}"; echo
-            cat newchapter.txt jobs.txt fancy.txt dual.txt audio.txt offline.txt recents.txt book.txt ahead.txt 2>/dev/null; echo
+            cat newchapter.txt jobs.txt fancy.txt dual.txt audio.txt offline.txt recents.txt book.txt ahead.txt decode.txt 2>/dev/null; echo
             echo 'Pages served:'; echo '```'; grep -a -o 'GET [^ ]*' /tmp/http.log; echo '```'; echo
             echo '```'
             grep -a -E "LoudbookTest|Loudbook|AndroidRuntime|FATAL| F DEBUG" logcat.txt 2>/dev/null | grep -a -v "SearchServiceCore\|ResourcesManager\|Choreographer" | tail -150
