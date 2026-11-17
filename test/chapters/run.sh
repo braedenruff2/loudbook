@@ -238,6 +238,25 @@ sed -n '/=== made chapter played ===/,$p' logcat.txt > made-log.txt
   elif grep -a -q "LoudbookTest: speaking.*The boats came home" nextch-log.txt; then echo "next chapter button while reading: reads on: yes"
   else echo "next chapter button while reading: reads on: NO"; grep -a -E "LoudbookTest|Stopped" nextch-log.txt | tail -6 | sed 's/^/  /'; fi
 } >> ahead.txt
+# pictures in a text book (tools\\volumes.py, his request 2026-11-17): the cover and a chapter's picture are shown under
+# the block that says so, and "Picture below." is read aloud
+adb shell log -t LoudbookTest "=== book pictures ==="
+PB=/tmp/lbpics; rm -rf $PB; mkdir -p $PB
+echo 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' | base64 -d > $PB/cover.png
+cp $PB/cover.png "$PB/0001 - Pic One.pic1.png"
+echo '{"title": "Pic One", "seconds": 4, "book": "Pic Book", "blocks": ["Cover picture below.", "The gate stood open.", "Picture below.", "They walked in."], "pictures": [{"block": 0, "file": "cover.png"}, {"block": 2, "file": "0001 - Pic One.pic1.png"}]}' > "$PB/0001 - Pic One.text.json"
+adb shell mkdir -p "'$D/books/Pic Book'"
+for f in "$PB"/*; do adb push "$f" "$D/books/Pic Book/"; done
+adb shell am start -n com.loudbook.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "https://book.loudbook.invalid/Pic%20Book/0001%20-%20Pic%20One.text.json" --ez play true > pics-start.txt 2>&1
+sleep 15
+snap
+sed -n '/=== book pictures ===/,$p' logcat.txt > pics-log.txt
+{ grep -a -q "book picture shown: cover.png" pics-log.txt && grep -a -q "book picture shown: 0001 - Pic One.pic1.png" pics-log.txt \
+    && echo "book pictures: cover and chapter picture shown: yes" \
+    || { echo "book pictures: cover and chapter picture shown: NO"; grep -a -E "book picture|book page" pics-log.txt | head -4 | sed 's/^/  /'; }
+  grep -a -q -i "speaking.*Picture below" pics-log.txt && echo "book pictures: \"Picture below.\" read aloud: yes" \
+    || { echo "book pictures: \"Picture below.\" read aloud: NO"; grep -a "LoudbookTest: speaking" pics-log.txt | head -4 | sed 's/^/  /'; }
+} >> ahead.txt
 # how fast the phone unpacks a long PC recording (BookAudio.decodeInto: a chapter's sentences wait for it; 2026-11-17, his
 # "a new chapter took ~30 s to start"): 20-minute MP3s as the PC makes them (mono 24 kHz) and a typical stereo audiobook
 command -v lame >/dev/null || { sudo apt-get install -y -qq lame || { sudo apt-get update -qq && sudo apt-get install -y -qq lame; }; } >/dev/null 2>&1 || true

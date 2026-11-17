@@ -57,10 +57,39 @@ final class BookPages {
         } catch (Exception e) { return null; }
     }
 
+    /** A chapter's picture or the book's cover (tools\\volumes.py), by its file name. */
+    static boolean isPicture(String f) {
+        String l = f == null ? "" : f.toLowerCase(java.util.Locale.ROOT);
+        return l.endsWith(".png") || l.endsWith(".jpg") || l.endsWith(".jpeg") || l.endsWith(".webp") || l.endsWith(".gif");
+    }
+
+    /** [book, file] of a book picture's address, or null. */
+    static String[] parsePicture(String url) {
+        if (!isBook(url)) return null;
+        String rest = url.substring(BASE.length());
+        int cut = rest.indexOf('#'); if (cut >= 0) rest = rest.substring(0, cut);
+        cut = rest.indexOf('?'); if (cut >= 0) rest = rest.substring(0, cut);
+        String[] p = rest.split("/");
+        if (p.length != 2) return null;
+        try {
+            String b = java.net.URLDecoder.decode(p[0].replace("+", "%2B"), "UTF-8"), f = java.net.URLDecoder.decode(p[1].replace("+", "%2B"), "UTF-8");
+            return Books.safe(b) && Books.safe(f) && isPicture(f) ? new String[]{b, f} : null;
+        } catch (Exception e) { return null; }
+    }
+
     /** For the browsers: a book page, or null for every other address. */
     static WebResourceResponse intercept(Context ctx, WebResourceRequest r) {
         String u = r.getUrl().toString();
         if (!isBook(u)) return null;
+        String[] pic = parsePicture(u);
+        if (pic != null) {
+            // (a picture in a chapter: from the book's files on the phone, copied from the PC with its chapters)
+            java.io.File f = new java.io.File(new java.io.File(Books.root(ctx), pic[0]), pic[1]);
+            String l = pic[1].toLowerCase(java.util.Locale.ROOT);
+            String mime = l.endsWith(".png") ? "image/png" : l.endsWith(".webp") ? "image/webp" : l.endsWith(".gif") ? "image/gif" : "image/jpeg";
+            try { WebResourceResponse res = new WebResourceResponse(mime, null, new java.io.FileInputStream(f)); Log.i("LoudbookTest", "book picture shown: " + pic[1]); return res; }
+            catch (Exception e) { Log.w(TAG, "book picture " + pic[1] + ": " + e); return new WebResourceResponse(mime, null, 404, "Not here", null, new ByteArrayInputStream(new byte[0])); }
+        }
         String html = null;
         try { String[] bf = parse(u); if (bf != null) html = html(ctx, bf[0], bf[1]); }
         catch (Exception e) { Log.w(TAG, "book page " + u, e); }
@@ -102,11 +131,19 @@ final class BookPages {
             .append("html,body{background:#14120F;color:#EDE6DA}body{font:19px/1.65 Georgia,'Noto Serif',serif;margin:0 auto;padding:12px 18px 40px;max-width:720px;overflow-wrap:break-word}")
             .append("h1{font-size:1.35em;line-height:1.3;margin:.3em 0 .8em}.lb-note{font:13px/1.4 system-ui,sans-serif;color:#A79E90;letter-spacing:.06em;text-transform:uppercase}")
             .append("p{margin:0 0 .8em}.lb-nav{display:flex;justify-content:space-between;gap:12px;margin:2em 0 1em;font:16px/1.4 system-ui,sans-serif}")
-            .append(".lb-nav a{color:#E8AA46;text-decoration:none;border:1px solid #2E2A24;border-radius:18px;padding:10px 16px}</style></head><body>");
+            .append(".lb-nav a{color:#E8AA46;text-decoration:none;border:1px solid #2E2A24;border-radius:18px;padding:10px 16px}")
+            .append(".lb-pic{margin:0 0 1em;text-align:center}.lb-pic img{max-width:100%;height:auto;border-radius:6px}</style></head><body>");
         h.append("<div class=\"lb-note\">").append(TextUtils.htmlEncode(o.optString("book", "") + " · " + vol))
             .append(at >= 0 ? " · chapter " + (at + 1) + " of " + chs.size() : "").append("</div>");
         h.append("<h1>").append(TextUtils.htmlEncode(title)).append("</h1>");
-        for (int i = 0; i < blocks.length(); i++) h.append("<p data-lb-block>").append(TextUtils.htmlEncode(blocks.optString(i, ""))).append("</p>");
+        // (pictures: shown under the block that says so, "Picture below." / "Cover picture below.", which is read aloud)
+        Map<Integer, java.util.List<String>> pics = pictures(o);
+        for (int i = 0; i < blocks.length(); i++) {
+            h.append("<p data-lb-block>").append(TextUtils.htmlEncode(blocks.optString(i, ""))).append("</p>");
+            java.util.List<String> under = pics.get(i);
+            if (under != null) for (String f : under)
+                h.append("<figure class=\"lb-pic\"><img src=\"").append(TextUtils.htmlEncode(url(book, f))).append("\" alt=\"\" loading=\"lazy\"></figure>");
+        }
         // (for reading it yourself: the chapters before and after; not read aloud, only the paragraphs are)
         h.append("<div class=\"lb-nav\">")
             .append(prev.isEmpty() ? "<span></span>" : "<a href=\"" + TextUtils.htmlEncode(prev) + "\">\u2190 Previous chapter</a>")
@@ -114,6 +151,23 @@ final class BookPages {
             .append("</div>");
         h.append("</body></html>");
         return h.toString();
+    }
+
+    /** The chapter's pictures by the block they go under: {"pictures": [{"block": i, "file": name}]} (only safe names). */
+    static Map<Integer, java.util.List<String>> pictures(JSONObject o) {
+        Map<Integer, java.util.List<String>> out = new HashMap<>();
+        JSONArray a = o.optJSONArray("pictures");
+        if (a == null) return out;
+        for (int k = 0; k < a.length(); k++) {
+            JSONObject p = a.optJSONObject(k);
+            if (p == null) continue;
+            String f = p.optString("file", "");
+            if (!Books.safe(f) || !isPicture(f)) continue;
+            int b = p.optInt("block", -1);
+            if (!out.containsKey(b)) out.put(b, new java.util.ArrayList<>());
+            out.get(b).add(f);
+        }
+        return out;
     }
 
     /** The first chapter of the next volume of the same book (the books are named in reading order), or "". */

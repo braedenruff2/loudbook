@@ -132,6 +132,15 @@ try:
     # (Windows opens "X.PART.mp3" as the half-made "x.part.mp3": refused whatever its case)
     with open(T + "/books2/B/0004 - Three.PART.mp3", "w") as f: f.write("x")
     check("half-made files refused in capitals too", ls.Books.file_for("B/0004 - Three.PART.mp3") is None)
+    # chapter pictures and the cover (tools\\volumes.py) are listed beside the text chapters and handed out; half-made ones not
+    ls.BOOKS = T + "/books3"
+    os.makedirs(T + "/books3/P")
+    for n in ("0001 - One.text.json", "0001 - One.pic1.png", "cover.JPG", "0002 - Two.pic1.png.part", "0003 - x.part.png", "notes.txt"):
+        with open(T + "/books3/P/" + n, "w") as f: f.write("x")
+    listed = sorted(x["p"] for b in ls.Books.finished() for x in b["files"])
+    check("pictures listed with their chapters", listed == ["P/0001 - One.pic1.png", "P/0001 - One.text.json", "P/cover.JPG"])
+    check("pictures handed out", all(ls.Books.file_for(x) for x in listed))
+    check("half-made pictures and other files refused", all(ls.Books.file_for("P/" + n) is None for n in ("0002 - Two.pic1.png.part", "0003 - x.part.png", "notes.txt")))
 finally:
     srv.kill()
 if fails:

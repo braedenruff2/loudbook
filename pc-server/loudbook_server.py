@@ -876,13 +876,23 @@ class Books:
             files = []
             for f in sorted(os.listdir(os.path.join(BOOKS, d))):
                 full = os.path.join(BOOKS, d, f)
-                if (f.endswith(".mp3") and not f.endswith(".part.mp3")) or f.endswith(".text.json") or (f.endswith(".json") and os.path.exists(full[:-5] + ".mp3")):
+                if (f.endswith(".mp3") and not f.endswith(".part.mp3")) or f.endswith(".text.json") or (f.endswith(".json") and os.path.exists(full[:-5] + ".mp3")) \
+                        or (cls.is_picture(f) and os.path.isfile(full)):
                     files.append({"p": d + "/" + f, "bytes": os.path.getsize(full)})
             if any(x["p"].endswith(".mp3") or x["p"].endswith(".text.json") for x in files):
                 if kindle:
                     for n, full in cls.kindle_files(d): files.append({"p": d + "/" + n, "bytes": os.path.getsize(full)})
                 out.append({"name": d, "files": files})
         return out
+
+    PICTURES = (".png", ".jpg", ".jpeg", ".webp", ".gif")
+
+    @classmethod
+    def is_picture(cls, name):
+        """A chapter's picture or the book's cover (tools\\volumes.py: "NNNN - name.pic1.png", "cover.png"), shown by the phone
+        where the chapter's .text.json says, after its spoken "Picture below." (half-made ".part" files never)."""
+        low = str(name).lower()
+        return low.endswith(cls.PICTURES) and ".part." not in low
 
     @classmethod
     def file_for(cls, p):
@@ -895,7 +905,7 @@ class Books:
         # (half-made files end ".part.mp3" / ".json.part"; a chapter can have ".part" in its name: "Vol 2.part 1")
         # (lower case: Windows opens "X.PART.mp3" as the half-made "x.part.mp3")
         low = parts[1].lower()
-        if not (low.endswith(".mp3") or low.endswith(".json")) or low.endswith(".part.mp3"): return None
+        if not (low.endswith(".mp3") or low.endswith(".json") or cls.is_picture(low)) or low.endswith(".part.mp3"): return None
         f = os.path.join(BOOKS, parts[0], parts[1])
         root = os.path.realpath(BOOKS)
         if not os.path.realpath(f).startswith(root + os.sep) or not os.path.isfile(f): return None

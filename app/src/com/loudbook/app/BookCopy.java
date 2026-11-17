@@ -78,10 +78,10 @@ final class BookCopy {
             + ". Play them in any audiobook app or in the car, with no connection.";
     }
 
-    /** Only the chapters (MP3 and its .json). */
+    /** Only the chapters (MP3 and its .json, or a chapter's text) and their pictures. */
     static List<PcLink.BookFile> chapterFiles(List<PcLink.BookFile> files) {
         List<PcLink.BookFile> out = new java.util.ArrayList<>();
-        for (PcLink.BookFile f : files) if (f.path.endsWith(".mp3") || f.path.endsWith(".json")) out.add(f);
+        for (PcLink.BookFile f : files) if (f.path.endsWith(".mp3") || f.path.endsWith(".json") || BookPages.isPicture(f.path)) out.add(f);
         return out;
     }
 
