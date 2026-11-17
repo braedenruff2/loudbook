@@ -87,6 +87,20 @@ sleep 30
 adb shell log -t LoudbookTest "=== shared text ==="
 adb shell am start -n com.loudbook.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "'Mr. Hale walked to the market on a cold morning. He bought 3 apples and a loaf of bread before heading home.'"
 sleep 20
+# quick start (2026-11-17, his "faster chapter starts"): a long first sentence is made as a short first piece and the
+# rest, so its first words come sooner; the rest plays straight after it, and the sentence is timed whole
+adb shell log -t LoudbookTest "=== quick start ==="
+adb shell am start -n com.loudbook.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "'Under a sky the colour of old pewter, the riders came down from the hills in a long and slow line, their horses tired and their banners hanging limp in the heavy air of the valley. They stopped by the river.'"
+sleep 30
+snap
+sed -n '/=== quick start ===/,$p' logcat.txt > quick-log.txt
+{ grep -a -q "quick start: sentence 0 in [2-9] pieces" quick-log.txt && grep -a -q "quick start: sentence 0 played in [2-9] pieces$" quick-log.txt \
+    && echo "quick start: a long first sentence starts with a short first piece, then the rest: yes" \
+    || { echo "quick start: a long first sentence starts with a short first piece, then the rest: NO"; grep -a -E "quick start|first sound|voice:" quick-log.txt | head -8 | sed 's/^/  /'; }
+  grep -a -o "start: first sound after [0-9]* ms" quick-log.txt | head -1 | sed 's/^/quick start: /'
+  grep -a -o "voice: [0-9]* letters in [0-9]* ms.*" quick-log.txt | head -4 | sed 's/^/quick start: /'
+  grep -a -o "timing 0 (whole.*" quick-log.txt | head -2 | sed 's/^/quick start: /'
+} > quick.txt
 # a new chapter comes out for the story read to the end: the background check notices it
 adb shell log -t LoudbookTest "=== new chapter published ==="
 sed -i 's#<nav>#<nav><a href="ch4.html">Next chapter</a> #' test/chapters/ch3.html

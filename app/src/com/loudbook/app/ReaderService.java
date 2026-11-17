@@ -519,6 +519,7 @@ public class ReaderService extends Service {
           if (offsetIdx == pos) trail(line); else trailStart(line); }
         // (Gemini: the recogniser that finds the sentences, loaded now rather than when the request goes)
         if (cloudOn() && !asr.loaded()) asrThread.submit(() -> { asrReady(); return null; });
+        quickAt = pos;
         player = new Thread(() -> loop(myGen), "loudbook-player");
         player.start();
         state();
@@ -561,7 +562,8 @@ public class ReaderService extends Service {
         synchronized (clips) {
             for (Future<Voice.Clip> f : clips.values()) f.cancel(false);
             for (Future<Voice.Clip> f : fills.values()) f.cancel(false);
-            clips.clear(); fills.clear(); phoneRead.clear(); clipsGen++; filling = false;
+            for (java.util.List<Future<Voice.Clip>> l : rests.values()) for (Future<Voice.Clip> f : l) f.cancel(false);
+            clips.clear(); fills.clear(); rests.clear(); phoneRead.clear(); clipsGen++; filling = false;
             srcOf.clear(); clipOffset.clear();
             book = null;
         }
@@ -633,10 +635,76 @@ public class ReaderService extends Service {
                 return f;
             }
             final int at = i;
+            if (i == quickAt) {
+                // (reading starts here, nothing made yet: a long sentence is made as a short first piece and the rest, so the
+                //  first words come in about a second rather than after the whole sentence is made; the rest is made while
+                //  the first piece plays. As Kindle's page starts do (KindleText.quickStart). Not with two voices or the PC)
+                quickAt = -1;
+                java.util.List<String> ps = twoVoices() || voice.pcLink() != null || "kindle".equals(ch.site) ? null : KindleText.quickStart(text);
+                if (ps != null && ps.size() > 1) {
+                    Log.i("LoudbookTest", "quick start: sentence " + i + " in " + ps.size() + " pieces, first " + ps.get(0).length() + " of " + text.length() + " letters");
+                    final String head = ps.get(0);
+                    f = synth.submit(() -> learned(makeHere(head, want, sp), want));
+                    java.util.List<Future<Voice.Clip>> more = new ArrayList<>();
+                    for (int k = 1; k < ps.size(); k++) { final String piece = ps.get(k); more.add(synth.submit(() -> learned(makeHere(piece, want, sp), want))); }
+                    rests.put(i, more);
+                    clips.put(i, f);
+                    return f;
+                }
+            }
             f = synth.submit(() -> learned(makeVoiced(ch, at, text, want, sp), want));
             clips.put(i, f);
             return f;
         }
+    }
+
+    /** play() starts reading at this sentence (-1: none): clipFor makes it in pieces if it's long (quick start). */
+    private volatile int quickAt = -1;
+    /** A sentence made in pieces: its clip in clips is the first piece; these are the rest, played straight after it. */
+    private final Map<Integer, java.util.List<Future<Voice.Clip>>> rests = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * The rest of sentence i after its first piece (quick start), each piece written as it's made; then the sentence is
+     * timed on all of it (the highlight) and kept whole, so going back to it plays all of it. hm: the first piece's mark.
+     * false: stopped (a new reading began).
+     */
+    private boolean streamRest(int i, Voice.Clip head, long[] hm, AudioTrack t, int myGen, Chapter ch, java.util.ArrayDeque<long[]> marks) {
+        java.util.List<Future<Voice.Clip>> more = rests.get(i);
+        if (more == null) return true;
+        java.util.List<float[]> got = new ArrayList<>();
+        got.add(head.samples);
+        int total = head.samples.length;
+        boolean whole = true;
+        for (Future<Voice.Clip> f : more) {
+            Voice.Clip c = null;
+            while (gen == myGen) {
+                try { c = f.get(20, java.util.concurrent.TimeUnit.MILLISECONDS); break; }
+                catch (java.util.concurrent.TimeoutException te) { heard(ch, marks, myGen); }
+                catch (Exception e) { Log.w(TAG, "quick start: a piece failed", e); break; }
+            }
+            if (gen != myGen) return false;
+            if (c == null || c.rate != head.rate) { whole = false; break; }
+            if (!stream(t, c, myGen, ch, marks)) return false;
+            got.add(c.samples); total += c.samples.length;
+        }
+        float[] all = new float[total];
+        int o = 0;
+        for (float[] x : got) { System.arraycopy(x, 0, all, o, x.length); o += x.length; }
+        Voice.Clip joined = new Voice.Clip(all, head.rate, head.madeAt, head.ms).from(head.src);
+        SpeechTiming st = null;
+        try { st = SpeechTiming.of(ch.chunks.get(i).text, ch.chunks.get(i).say, all, head.rate); timings.put(i, st); } catch (Throwable e) { timings.remove(i); }
+        // (the highlight: the mark covers the whole sentence now, timed by its sound)
+        hm[2] = total; if (st != null) hm[3] = 1;
+        if (heardIdx == i && heardStart == hm[0]) { heardLen = total; heardTiming = st; }
+        if (whole) {
+            synchronized (clips) {
+                rests.remove(i);
+                if (clips.containsKey(i)) clips.put(i, java.util.concurrent.CompletableFuture.completedFuture(joined));
+            }
+        }
+        Log.i("LoudbookTest", "quick start: sentence " + i + " played in " + got.size() + " pieces" + (whole ? "" : " (cut short: a piece failed)"));
+        if (st != null) Log.i("LoudbookTest", "timing " + i + " (whole, " + got.size() + " pieces): speech " + st.speechStart * 1000 / head.rate + "-" + st.speechEnd * 1000 / head.rate + " ms of " + total * 1000L / head.rate + ", " + st.matched + " of " + SpeechTiming.breaks(ch.chunks.get(i).text).size() + " pauses matched");
+        return true;
     }
 
     /** Sentences of a Gemini chapter that the phone's voice read instead (so the log and status say so). */
@@ -1840,7 +1908,8 @@ public class ReaderService extends Service {
                 // Kindle: the rest of the page is all asked for: the next page's first words next (after them, on the same voice thread)
                 if (kt != null && "kindle".equals(ch.site) && next + READ_AHEAD >= ch.size() - 1 && splitIdx != ch.size() - 1) makeNextPageAhead(ch);
                 final int keepFrom = next - 1;
-                synchronized (clips) { clips.keySet().removeIf(k -> k < keepFrom); fills.keySet().removeIf(k -> k < keepFrom); }
+                synchronized (clips) { clips.keySet().removeIf(k -> k < keepFrom); fills.keySet().removeIf(k -> k < keepFrom); rests.keySet().removeIf(k -> k < keepFrom); }
+                quickAt = -1;
                 if (f == null) return;
                 Voice.Clip c = null;
                 boolean gem = geminiReads(ch), byPhone = false, retry = false, failed = false;
@@ -1861,7 +1930,12 @@ public class ReaderService extends Service {
                         // made again rather than skipped: a sentence cancelled while it was waited for (a pronunciation fix or
                         // Gemini switched while paused drops every clip) was skipped without a word, and a failed one stayed
                         // kept, so going back to it skipped it again
-                        synchronized (clips) { if (clips.get(next) == f) clips.remove(next); }
+                        synchronized (clips) {
+                            if (clips.get(next) == f) clips.remove(next);
+                            // (its first piece failed: made again whole, so not followed by the rest of the pieces)
+                            java.util.List<Future<Voice.Clip>> rs = rests.remove(next);
+                            if (rs != null) for (Future<Voice.Clip> x : rs) x.cancel(false);
+                        }
                         if (failAt != next) { failAt = next; fails = 0; }
                         fails++;
                         retry = e instanceof java.util.concurrent.CancellationException ? fails < 20 : fails <= 1;
@@ -1942,8 +2016,15 @@ public class ReaderService extends Service {
                         Log.i("LoudbookTest", "timing " + next + ": speech " + st.speechStart * 1000 / c.rate + "-" + st.speechEnd * 1000 / c.rate + " ms of "
                             + c.samples.length * 1000L / c.rate + ", " + st.matched + " of " + SpeechTiming.breaks(ch.chunks.get(next).text).size() + " pauses matched");
                     } catch (Throwable e) { timings.remove(next); }
-                    marks.add(new long[]{framesWritten, next, c.samples.length, 1});   // (1: a whole clip, timed by its sound)
+                    boolean pieces = whole == null && rests.containsKey(next);
+                    // (the first piece of a sentence made in pieces: its mark is stretched over the rest by letters, and timed
+                    //  on the whole sentence once the rest is made; streamRest)
+                    if (pieces) timings.remove(next);
+                    long[] hm = new long[]{framesWritten, next, c.samples.length, 1};   // (1: a whole clip, timed by its sound)
+                    if (pieces) { int letters = ch.chunks.get(next).say.length(), first = Math.max(1, KindleText.quickStart(ch.chunks.get(next).say).get(0).length()); hm[2] = (long) c.samples.length * Math.max(letters, first) / first; hm[3] = 0; }
+                    marks.add(hm);
                     if (!stream(t, c, myGen, ch, marks)) return;
+                    if (pieces && !streamRest(next, c, hm, t, myGen, ch, marks)) return;
                     if (!rest(t, gapAfter(ch, next), myGen, ch, marks)) return;
                 }
                 next++;
