@@ -64,6 +64,8 @@ public final class BookPlayer extends Service {
     private long openedAt;
     private volatile long openMs = -1;
     private boolean pausedForFocus, foreground;
+    /** When it was paused (0: not paused, or moved by hand since): play goes back a little after a long pause (Rewind). */
+    private long pausedSince;
     private volatile String book = "";
     private volatile List<Books.Chapter> chapters;
     private volatile int ch = -1;
@@ -238,6 +240,7 @@ public final class BookPlayer extends Service {
         startAt = ms;
         prepared = false;
         openedAt = System.currentTimeMillis(); openMs = -1;
+        pausedSince = 0;
         mp = new MediaPlayer();
         mp.setWakeMode(this, PowerManager.PARTIAL_WAKE_LOCK);
         mp.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
@@ -305,6 +308,13 @@ public final class BookPlayer extends Service {
         volume(1f);                                       // (after a sleep-timer fade)
         // (a timer that ran out while paused by hand: it's over, and this Play plays; it used to pause again at once)
         if (sleepAt > 0 && System.currentTimeMillis() >= sleepAt) { sleepAt = 0; sleepEnd = false; }
+        long away = pausedSince > 0 ? System.currentTimeMillis() - pausedSince : 0;
+        pausedSince = 0;
+        int back = Rewind.backMs(away, posMs());
+        if (back > 0) {
+            try { mp.seekTo(posMs() - back); } catch (Exception e) { Log.w(TAG, "book: back", e); }
+            Log.i("LoudbookTest", "book: paused " + away / 1000 + " s: back " + back / 1000 + " s");
+        }
         try { mp.start(); } catch (Exception e) { Log.w(TAG, "book: start", e); }
         playing = true; pausedForFocus = false;
         if (!wake.isHeld()) wake.acquire(6 * 3600 * 1000L);
@@ -347,6 +357,7 @@ public final class BookPlayer extends Service {
 
     private void pause() {
         if (mp != null && prepared) { try { mp.pause(); } catch (Exception ignored) { } }
+        if (playing || pausedSince == 0) pausedSince = System.currentTimeMillis();
         playing = false;
         save();
         letGo();
@@ -357,6 +368,7 @@ public final class BookPlayer extends Service {
     private void letGo() { try { if (wake != null && wake.isHeld()) wake.release(); } catch (Exception ignored) { } }
 
     private void seek(int ms) {
+        pausedSince = 0;                                  // (a place chosen by hand is where play starts)
         if (mp == null || !prepared) { startAt = Math.max(0, ms); return; }
         int d = mp.getDuration();
         if (ms >= d - 300) {                              // (forward past the end: the next chapter)

@@ -337,6 +337,12 @@ public class UnitTest {
         }
         // "Which voice?": a PC recording's voice in words
         {
+            check("rewind: short pause, none", Rewind.backMs(20_000, 60_000), 0);
+            check("rewind: two minutes, 3 s", Rewind.backMs(120_000, 60_000), 3_000);
+            check("rewind: ten minutes, 5 s", Rewind.backMs(600_000, 60_000), 5_000);
+            check("rewind: an hour, 10 s", Rewind.backMs(3_600_000, 60_000), 10_000);
+            check("rewind: not past the chapter's start", Rewind.backMs(3_600_000, 4_000), 4_000);
+            check("rewind: at the start", Rewind.backMs(3_600_000, 0), 0);
             check("voice name: speaker number", VoiceNames.pc("17"), "Onyx");
             check("voice name: number as 17.0", VoiceNames.pc("17.0"), "Onyx");
             check("voice name: style", VoiceNames.pc("s17/e0.75"), "Onyx (expressiveness 0.75)");
