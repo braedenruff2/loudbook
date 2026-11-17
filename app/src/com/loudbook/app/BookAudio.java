@@ -49,6 +49,8 @@ final class BookAudio {
         volatile long decodeFrom, decodeMs = -1, waitedMs;
         /** Sentences the voice read because the unpacking was still far from them. */
         volatile int farMisses;
+        /** When the decoder gave its first sound (ms): its speed is measured from there, not from opening the file. */
+        volatile long firstOutAt;
         Rec(String key, Uri mp3) { this.key = key; this.mp3 = mp3; }
     }
 
@@ -183,8 +185,8 @@ final class BookAudio {
                 // (far ahead of the decoding, as when a long chapter is opened part way in: the voice reads this sentence
                 //  now rather than leaving silence while the recording is unpacked up to it; the sentences after come
                 //  from the recording again once it has got there)
-                long ran = now - r.decodeFrom;
-                if (r.rate > 0 && r.decodeFrom > 0 && ran > 1500 && f > 0) {
+                long ran = now - (r.firstOutAt > 0 ? r.firstOutAt : r.decodeFrom);
+                if (r.rate > 0 && r.decodeFrom > 0 && now - r.decodeFrom > 1500 && ran > 700 && f > 0) {
                     long need = (long) (t[1] * r.rate) + guess + r.rate / 10 - f;
                     if (need * ran / f > FAR_MS) {
                         Log.i("LoudbookTest", "book: sentence " + i + " is " + need / r.rate + " s of sound past the unpacking (about "
@@ -304,7 +306,7 @@ final class BookAudio {
         }
         Rec twin = decoding.get(name);
         if (twin != null) {
-            r.decodeFrom = twin.decodeFrom;
+            r.decodeFrom = twin.decodeFrom; r.firstOutAt = twin.firstOutAt;
             // (the same recording, already being decoded for a Rec forgotten meanwhile: follow that one)
             Thread w = new Thread(() -> {
                 while (!twin.done && !twin.failed) {
@@ -371,13 +373,17 @@ final class BookAudio {
             byte[] buf = new byte[0];
             // (every free input buffer is filled, then every ready output taken, without waiting while either moves: one
             //  frame in and a 10 ms wait for one out per turn kept a long chapter's first sentences waiting)
+            long moved = System.currentTimeMillis();
             while (!outDone) {
+                // (a decoder that gives nothing for half a minute is broken: the recording fails, the voice reads)
+                if (System.currentTimeMillis() - moved > 30_000) throw new IllegalStateException("the decoder stopped");
                 boolean fed = false;
                 while (!inDone) {
                     int ii = dec.dequeueInputBuffer(0);
                     if (ii < 0) break;
                     ByteBuffer in = dec.getInputBuffer(ii);
-                    int n = in == null ? -1 : ex.readSampleData(in, 0);
+                    if (in == null) throw new IllegalStateException("no input buffer from the decoder");
+                    int n = ex.readSampleData(in, 0);
                     if (n < 0) { dec.queueInputBuffer(ii, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM); inDone = true; }
                     else { dec.queueInputBuffer(ii, 0, n, ex.getSampleTime(), 0); ex.advance(); }
                     fed = true;
@@ -394,6 +400,7 @@ final class BookAudio {
                     }
                     if (oi < 0) break;                     // (none ready: feed more, or wait a little next turn)
                     got = true;
+                    moved = System.currentTimeMillis();
                     ByteBuffer o = dec.getOutputBuffer(oi);
                     if (info.size > 0 && o != null) {
                         o.position(info.offset); o.limit(info.offset + info.size);
@@ -411,6 +418,7 @@ final class BookAudio {
                             }
                         }
                         out.write(buf, 0, n * 2);
+                        if (frames == 0) r.firstOutAt = System.currentTimeMillis();
                         frames += n;
                         r.rate = rate;
                         r.frames = frames;
@@ -454,7 +462,7 @@ final class BookAudio {
                 boolean inUse = decoding.containsKey(base);
                 for (Rec r : recs.values()) if (r.pcm != null && r.pcm.equals(fs[i]) && !r.done) inUse = true;
                 if (inUse) continue;
-                for (Rec r : recs.values()) if (r.pcm != null && r.pcm.equals(fs[i])) { r.started = false; r.done = false; r.frames = 0; r.rate = 0; }
+                for (Rec r : recs.values()) if (r.pcm != null && r.pcm.equals(fs[i])) { r.started = false; r.done = false; r.frames = 0; r.rate = 0; r.decodeMs = -1; r.waitedMs = 0; r.farMisses = 0; r.firstOutAt = 0; }
             }
             fs[i].delete();
             new File(d, base + ".ok").delete();
