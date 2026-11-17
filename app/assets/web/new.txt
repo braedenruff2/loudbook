@@ -1,3 +1,4 @@
+Faster starts: a chapter you open without playing (tapped in the list, or the app reopened where you left off) now has its first sentences ready a moment later, so play starts reading at once.
 Audiobooks from the PC: pictures in a chapter (and the book's cover at the start of each volume) now show in the chapter where they belong, and the reader says "Picture below." just before one.
 Gemini: while it records, the message now says about how long until it starts reading ("about 30 s"), from how Google has been doing.
 Gemini: if Google sends a "streamed" recording all at once at the end (it does this some days), Loudbook notices and asks for smaller recordings for the rest of the day, and the day's first request is smaller, so a chapter no longer waits about a minute for Gemini to start.

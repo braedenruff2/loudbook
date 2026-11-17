@@ -416,7 +416,39 @@ public class ReaderService extends Service {
         if (play) play(); else state();
         // (a chapter with a recording (the PC's, or made ahead) opened paused: it's unpacked meanwhile, ready for play)
         if (!play && !"kindle".equals(ch.site)) { final int want = sid; waiters.submit(() -> { try { BookAudio.warm(this, ch, want); } catch (Throwable e) { Log.w(TAG, "book: warm", e); } return null; }); }
+        if (!play) premakeStart(ch);
         aheadAfter(ch);
+    }
+
+    /**
+     * A chapter opened paused (tapped in the list, the app reopened where it was left, the next-chapter button while
+     * paused): after a moment its first sentences are made, cut as play's quick start cuts them, so play starts at once.
+     * Not on Kindle (its pages), with Gemini (each request is one of the day's few), in reading mode, before the voice is
+     * loaded, or for a chapter with a recording on the phone (BookAudio.warm unpacks that). Only if it's still the chapter
+     * open, paused at the same sentence, after 1.5 s: pages flicked through make nothing.
+     */
+    private void premakeStart(Chapter ch) {
+        if ("kindle".equals(ch.site) || geminiReads(ch)) return;
+        final int at = pos, want = sid;
+        waiters.submit(() -> {
+            try {
+                Thread.sleep(1500);
+                if (chapter != ch || playing || pos != at || quiet) return null;
+                if (BookAudio.covers(this, ch, at, want)) return null;
+                main.post(() -> {
+                    if (chapter != ch || playing || pos != at || quiet || sid != want || geminiReads(ch)) return;
+                    if (!voice.localReady() && voice.pcLink() == null) return;
+                    synchronized (clips) { if (clips.containsKey(at)) return; }
+                    Log.i("LoudbookTest", "opened paused: making sentence " + at + " and the next ahead, for play");
+                    quickNext = at; quickRamp = new KindleText.Ramp();
+                    clipFor(at);
+                    if (at + 1 < ch.size()) clipFor(at + 1);
+                    quickRamp = null;
+                });
+            } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+            catch (Throwable e) { Log.w(TAG, "premake start", e); }
+            return null;
+        });
     }
 
     /** Back/forward a sentence (the notification, headphones, the player's buttons, a voice command): reading goes on

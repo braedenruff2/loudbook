@@ -103,6 +103,26 @@ sed -n '/=== quick start ===/,$p' logcat.txt > quick-log.txt
   grep -a -o "voice: [0-9]* letters in [0-9]* ms.*" quick-log.txt | head -4 | sed 's/^/quick start: /'
   grep -a -o "timing [0-9] (whole.*" quick-log.txt | head -2 | sed 's/^/quick start: /'
 } > quick.txt
+# opened paused, then play (2026-11-17, faster starts): a chapter opened while paused has its first sentences made after a
+# moment, so play starts at once (it waited for the voice to make them after play)
+adb shell input keyevent KEYCODE_MEDIA_PAUSE
+sleep 2
+sed 's/Chapter Nine: The Ford/Chapter Ten: The Bank/g' test/chapters/quick.html > test/chapters/quick2.html
+adb shell log -t LoudbookTest "=== opened paused ==="
+adb shell am start -n com.loudbook.app/.MainActivity -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "http://localhost:8000/quick2.html"
+sleep 15
+adb shell log -t LoudbookTest "=== opened paused, play ==="
+adb shell input keyevent KEYCODE_MEDIA_PLAY
+sleep 8
+adb shell input keyevent KEYCODE_MEDIA_PAUSE
+snap
+sed -n '/=== opened paused ===/,$p' logcat.txt > paused-all.txt
+sed -n '/=== opened paused, play ===/,$p' logcat.txt > paused-log.txt
+{ awk '/=== opened paused, play ===/{exit} 1' paused-all.txt | grep -a -q "opened paused: making sentence" \
+    && echo "opened paused: first sentences made before play: yes" \
+    || { echo "opened paused: first sentences made before play: NO"; grep -a -E "opened paused|quick start|play:|speaking" paused-all.txt | head -8 | sed 's/^/  /'; }
+  grep -a -o "start: first sound after [0-9]* ms" paused-log.txt | head -1 | sed 's/^/opened paused, then play: /'
+} >> quick.txt
 # a new chapter comes out for the story read to the end: the background check notices it
 adb shell log -t LoudbookTest "=== new chapter published ==="
 sed -i 's#<nav>#<nav><a href="ch4.html">Next chapter</a> #' test/chapters/ch3.html
