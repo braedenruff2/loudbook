@@ -343,6 +343,9 @@ public class UnitTest {
             check("rewind: an hour, 10 s", Rewind.backMs(3_600_000, 60_000), 10_000);
             check("rewind: not past the chapter's start", Rewind.backMs(3_600_000, 4_000), 4_000);
             check("rewind: at the start", Rewind.backMs(3_600_000, 0), 0);
+            check("rewind, reader: short pause goes on", Rewind.sentencesBack(30_000), -1);
+            check("rewind, reader: two minutes, the sentence again", Rewind.sentencesBack(120_000), 0);
+            check("rewind, reader: an hour, one more", Rewind.sentencesBack(3_600_000), 1);
             check("voice name: speaker number", VoiceNames.pc("17"), "Onyx");
             check("voice name: number as 17.0", VoiceNames.pc("17.0"), "Onyx");
             check("voice name: style", VoiceNames.pc("s17/e0.75"), "Onyx (expressiveness 0.75)");

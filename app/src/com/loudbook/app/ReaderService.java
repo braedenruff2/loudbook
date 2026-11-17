@@ -475,11 +475,20 @@ public class ReaderService extends Service {
                         return;
                     }
                 }
-                paused = false; if (track != null) track.play(); state(); return;
+                // (after a minute or more away, the sentence paused in again from its start, and after half an hour the
+                //  one before it too, to pick up the thread; not on Kindle, whose pages follow the player)
+                Chapter cp = chapter;
+                int back = cp == null || "kindle".equals(cp.site) || pausedAt <= 0 ? -1 : Rewind.sentencesBack(System.currentTimeMillis() - pausedAt);
+                if (back < 0) { paused = false; if (track != null) track.play(); state(); return; }
+                int from = Math.max(0, Math.min(pos, cp.size() - 1) - back);
+                Log.i("LoudbookTest", "play after " + (System.currentTimeMillis() - pausedAt) / 1000 + " s paused: from sentence " + from + " (was " + pos + ")");
+                stopPlayback(false);
+                pos = from; offsetIdx = -1;
+            } else {
+                // (the sleep timer ended the player: the unheard end of its last sentence is flushed, or it played, then the
+                // sentence again from its start)
+                stopPlayback();
             }
-            // (the sleep timer ended the player: the unheard end of its last sentence is flushed, or it played, then the
-            // sentence again from its start)
-            stopPlayback();
         }
         if (playing) return;
         playing = true; paused = false;
@@ -1948,6 +1957,12 @@ public class ReaderService extends Service {
     private int audioFails;
     /** Test builds (chapter-test): the next write to the audio output fails as if the audio server had died. */
     private volatile boolean failNextWrite;
+    /** Test builds (chapter-test): paused two minutes ago, as far as play is concerned. */
+    void testPausedLong() {
+        if (paused && pausedAt > 0) pausedAt -= 120_000;
+        Log.i("LoudbookTest", "test: paused two minutes (" + (paused ? "paused" : "not paused") + ")");
+    }
+
     void testAudioFail() { if (KindleService.testBuild()) { failNextWrite = true; Log.i("LoudbookTest", "test: the next audio write fails"); } }
     /**
      * The audio output refused what was written (AudioTrack error, e.g. -6 dead object: the phone's audio server restarted,

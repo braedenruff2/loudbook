@@ -31,6 +31,14 @@ sleep 4
 adb shell log -t LoudbookTest "=== play after the step ==="
 adb shell input keyevent KEYCODE_MEDIA_PLAY
 sleep 3
+# paused a long while (two minutes, by a test hook), then play: the sentence paused in is read again from its start
+adb shell input keyevent KEYCODE_MEDIA_PAUSE
+sleep 1
+adb shell am start -n com.loudbook.app/.MainActivity --ez pausedlong true
+sleep 1
+adb shell log -t LoudbookTest "=== play after a long pause ==="
+adb shell input keyevent KEYCODE_MEDIA_PLAY
+sleep 3
 adb shell input keyevent KEYCODE_HOME
 sleep 2
 adb shell input keyevent KEYCODE_SLEEP
@@ -58,7 +66,10 @@ awk '/=== paused, a sentence on ===/{f=1} /=== play after the step ===/{exit} f'
 { grep -a -q "step to [0-9]* while paused: stays paused" step.txt && ! grep -a -q "LoudbookTest: speaking" step.txt \
     && echo "paused, a sentence on (media key): stays paused: yes" || echo "paused, a sentence on (media key): stays paused: NO ($(grep -a -c 'LoudbookTest: speaking' step.txt) sentences heard)"
   awk '/=== play after the step ===/{f=1} f' foreground.txt | grep -a -q "LoudbookTest: speaking" \
-    && echo "play after it reads on: yes" || echo "play after it reads on: NO"; } >> audio.txt
+    && echo "play after it reads on: yes" || echo "play after it reads on: NO"
+  if ! grep -a -q "test: paused two minutes (paused)" foreground.txt; then echo "play after a long pause: not tested (not paused: $(grep -a -o 'test: paused two minutes.*' foreground.txt | head -1))"
+  elif awk '/=== play after a long pause ===/{f=1} f' foreground.txt | grep -a -q "play after 1[0-9][0-9] s paused: from sentence"; then echo "play after a long pause: the sentence again from its start: yes"
+  else echo "play after a long pause: the sentence again from its start: NO"; fi; } >> audio.txt
 awk '/=== no signal from here ===/{f=1} f' logcat.txt > nosignal.txt
 echo "no signal: chapters shown from their copy: $(grep -a -c 'shown from the copy read ahead' nosignal.txt), sentences not found on the page: $(grep -a -c "words weren't found" nosignal.txt)" > offline.txt
 # cold start: Loudbook closed, opened again, play pressed with nothing open -> carries on with the last story

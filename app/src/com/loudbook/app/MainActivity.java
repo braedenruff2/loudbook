@@ -365,6 +365,7 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             CloudVoice.HOST = i.getStringExtra("gemhost");
             if (svc != null) svc.cloudChanged();
         }
+        if (KindleService.testBuild() && i.getBooleanExtra("pausedlong", false) && svc != null) { i.removeExtra("pausedlong"); svc.testPausedLong(); return true; }   // (chapter-test)
         if (KindleService.testBuild() && i.getBooleanExtra("audiofail", false) && svc != null) { i.removeExtra("audiofail"); svc.testAudioFail(); }   // (chapter-test)
         if (KindleService.testBuild() && i.getBooleanExtra("whichvoice", false)) {   // (chapter-test: what "Voice" by the title says)
             i.removeExtra("whichvoice");
