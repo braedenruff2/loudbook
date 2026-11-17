@@ -47,6 +47,8 @@ final class BookAudio {
         /** For "Which voice?": when its decoding began, how long it took (0: decoded before, from the cache; -1: not yet),
          *  and the longest a sentence waited for it (ms). */
         volatile long decodeFrom, decodeMs = -1, waitedMs;
+        /** Sentences the voice read because the unpacking was still far from them. */
+        volatile int farMisses;
         Rec(String key, Uri mp3) { this.key = key; this.mp3 = mp3; }
     }
 
@@ -155,6 +157,9 @@ final class BookAudio {
         return r != null && !r.failed && (r.sid < 0 || r.sid == sid) && boundAt(r, ch, i) != null;
     }
 
+    /** A sentence the decoding would take longer than this to reach is read by the voice instead (ms). */
+    static final long FAR_MS = 3000;
+
     /** Sentence i from the recording, or null (not in it, or the recording can't be played): the voice reads it. */
     static Voice.Clip clip(Context ctx, Chapter ch, int i, int sid) {
         long t0 = System.currentTimeMillis();
@@ -175,6 +180,19 @@ final class BookAudio {
             while (!r.failed && (r.rate == 0 || (!r.done && r.frames < (long) (t[1] * r.rate) + guess + r.rate / 10))) {
                 long now = System.currentTimeMillis(), f = r.frames;
                 if (f != seen) { seen = f; moved = now; }
+                // (far ahead of the decoding, as when a long chapter is opened part way in: the voice reads this sentence
+                //  now rather than leaving silence while the recording is unpacked up to it; the sentences after come
+                //  from the recording again once it has got there)
+                long ran = now - r.decodeFrom;
+                if (r.rate > 0 && r.decodeFrom > 0 && ran > 1500 && f > 0) {
+                    long need = (long) (t[1] * r.rate) + guess + r.rate / 10 - f;
+                    if (need * ran / f > FAR_MS) {
+                        Log.i("LoudbookTest", "book: sentence " + i + " is " + need / r.rate + " s of sound past the unpacking (about "
+                            + need * ran / f / 1000 + " s more): the voice reads it");
+                        r.farMisses++;
+                        return null;
+                    }
+                }
                 if (now > until || now - moved > 6_000) {
                     r.waitedMs = Math.max(r.waitedMs, now - t0);
                     Log.w(TAG, "book: the recording's decoding is stuck or slow: the voice reads sentence " + i);
@@ -213,7 +231,8 @@ final class BookAudio {
     /** How the recording's decoding went, for "Which voice?" (a slow start may be waiting for it). */
     static String unpacking(Rec r) {
         if (r.failed || !r.started) return "";
-        String w = r.waitedMs > 1000 ? String.format(java.util.Locale.US, "; a sentence waited %.1f s for it", r.waitedMs / 1000.0) : "";
+        String w = (r.waitedMs > 1000 ? String.format(java.util.Locale.US, "; a sentence waited %.1f s for it", r.waitedMs / 1000.0) : "")
+            + (r.farMisses > 0 ? "; " + r.farMisses + (r.farMisses == 1 ? " sentence was" : " sentences were") + " read by the voice while it was still being unpacked" : "");
         long d = r.decodeMs;
         if (r.done && d == 0) return ". Unpacked before (ready at once)" + w;
         if (r.done && d > 0) return String.format(java.util.Locale.US, ". Unpacked in %.1f s (%d min of sound)", d / 1000.0, r.frames / Math.max(1, r.rate) / 60) + w;
@@ -347,46 +366,58 @@ final class BookAudio {
             int rate = fmt.containsKey(MediaFormat.KEY_SAMPLE_RATE) ? fmt.getInteger(MediaFormat.KEY_SAMPLE_RATE) : 24000;
             boolean floats = false;
             MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
-            boolean inDone = false;
+            boolean inDone = false, outDone = false;
             long frames = 0;
-            while (true) {
-                if (!inDone) {
-                    int ii = dec.dequeueInputBuffer(10_000);
-                    if (ii >= 0) {
-                        ByteBuffer in = dec.getInputBuffer(ii);
-                        int n = ex.readSampleData(in, 0);
-                        if (n < 0) { dec.queueInputBuffer(ii, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM); inDone = true; }
-                        else { dec.queueInputBuffer(ii, 0, n, ex.getSampleTime(), 0); ex.advance(); }
+            byte[] buf = new byte[0];
+            // (every free input buffer is filled, then every ready output taken, without waiting while either moves: one
+            //  frame in and a 10 ms wait for one out per turn kept a long chapter's first sentences waiting)
+            while (!outDone) {
+                boolean fed = false;
+                while (!inDone) {
+                    int ii = dec.dequeueInputBuffer(0);
+                    if (ii < 0) break;
+                    ByteBuffer in = dec.getInputBuffer(ii);
+                    int n = in == null ? -1 : ex.readSampleData(in, 0);
+                    if (n < 0) { dec.queueInputBuffer(ii, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM); inDone = true; }
+                    else { dec.queueInputBuffer(ii, 0, n, ex.getSampleTime(), 0); ex.advance(); }
+                    fed = true;
+                }
+                boolean got = false;
+                while (true) {
+                    int oi = dec.dequeueOutputBuffer(info, got || fed ? 0 : 5_000);
+                    if (oi == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        MediaFormat of = dec.getOutputFormat();
+                        if (of.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) channels = of.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+                        if (of.containsKey(MediaFormat.KEY_SAMPLE_RATE)) rate = of.getInteger(MediaFormat.KEY_SAMPLE_RATE);
+                        if (of.containsKey(MediaFormat.KEY_PCM_ENCODING)) floats = of.getInteger(MediaFormat.KEY_PCM_ENCODING) == android.media.AudioFormat.ENCODING_PCM_FLOAT;
+                        continue;
                     }
-                }
-                int oi = dec.dequeueOutputBuffer(info, 10_000);
-                if (oi == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    MediaFormat of = dec.getOutputFormat();
-                    if (of.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) channels = of.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
-                    if (of.containsKey(MediaFormat.KEY_SAMPLE_RATE)) rate = of.getInteger(MediaFormat.KEY_SAMPLE_RATE);
-                    if (of.containsKey(MediaFormat.KEY_PCM_ENCODING)) floats = of.getInteger(MediaFormat.KEY_PCM_ENCODING) == android.media.AudioFormat.ENCODING_PCM_FLOAT;
-                    continue;
-                }
-                if (oi < 0) continue;
-                ByteBuffer o = dec.getOutputBuffer(oi);
-                if (info.size > 0 && o != null) {
-                    o.position(info.offset); o.limit(info.offset + info.size);
-                    o.order(ByteOrder.LITTLE_ENDIAN);
-                    int per = floats ? 4 : 2;
-                    int n = info.size / per / Math.max(1, channels);
-                    ByteBuffer mono = ByteBuffer.allocate(n * 2).order(ByteOrder.LITTLE_ENDIAN);
-                    for (int k = 0; k < n; k++) {
-                        float sum = 0;
-                        for (int c = 0; c < channels; c++) sum += floats ? o.getFloat() * 32767f : o.getShort();
-                        mono.putShort((short) Math.max(-32768, Math.min(32767, Math.round(sum / channels))));
+                    if (oi < 0) break;                     // (none ready: feed more, or wait a little next turn)
+                    got = true;
+                    ByteBuffer o = dec.getOutputBuffer(oi);
+                    if (info.size > 0 && o != null) {
+                        o.position(info.offset); o.limit(info.offset + info.size);
+                        o.order(ByteOrder.LITTLE_ENDIAN);
+                        int per = floats ? 4 : 2, ch = Math.max(1, channels);
+                        int n = info.size / per / ch;
+                        if (buf.length < n * 2) buf = new byte[n * 2];
+                        if (!floats && ch == 1) o.get(buf, 0, n * 2);         // (already 16-bit mono: as it is)
+                        else {
+                            for (int k = 0; k < n; k++) {
+                                float sum = 0;
+                                for (int c = 0; c < ch; c++) sum += floats ? o.getFloat() * 32767f : o.getShort();
+                                int v = Math.max(-32768, Math.min(32767, Math.round(sum / ch)));
+                                buf[2 * k] = (byte) v; buf[2 * k + 1] = (byte) (v >> 8);
+                            }
+                        }
+                        out.write(buf, 0, n * 2);
+                        frames += n;
+                        r.rate = rate;
+                        r.frames = frames;
                     }
-                    out.write(mono.array());
-                    frames += n;
-                    r.rate = rate;
-                    r.frames = frames;
+                    dec.releaseOutputBuffer(oi, false);
+                    if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) { outDone = true; break; }
                 }
-                dec.releaseOutputBuffer(oi, false);
-                if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) break;
             }
             r.rate = rate;
             return frames;
