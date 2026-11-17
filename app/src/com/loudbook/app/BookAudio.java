@@ -88,6 +88,13 @@ final class BookAudio {
         return r != null && r.sid < 0 && !r.failed;
     }
 
+    /** A chapter was opened: its recording, if it has one on the phone, starts being unpacked now, so play finds it ready
+     *  (opened part way in and played later, its first sentences came from the voice while it was unpacked). */
+    static void warm(Context ctx, Chapter ch) {
+        Rec r = rec(ctx, ch);
+        if (r != null && !r.failed) decode(ctx, r);
+    }
+
     /** The chapter made ahead on the phone (AheadMaker), or null. */
     private static Rec made(Context ctx, String url) {
         File info = AheadMaker.infoFile(ctx, url), audio = AheadMaker.audioFile(ctx, url);
