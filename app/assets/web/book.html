@@ -127,7 +127,8 @@
       const total = b.chapters.reduce((t, c) => t + (c.seconds || 0), 0);
       info.textContent = b.text
         ? b.chapters.length + ' chapters · about ' + LBBook.clock(total) + ' · ' + LBBook.recSummary(b.chapters)
-        : b.chapters.length + ' chapters · ' + LBBook.clock(total) + (withAudio < b.chapters.length ? ' · ' + (b.chapters.length - withAudio) + ' without their recording' : '');
+        : b.chapters.length + ' chapters · ' + LBBook.clock(total) + (LBBook.leftLabel(b, st.speed) ? ' · ' + LBBook.leftLabel(b, st.speed) : '')
+          + (withAudio < b.chapters.length ? ' · ' + (b.chapters.length - withAudio) + ' without their recording' : '');
       const bar = document.createElement('div'); bar.className = 'bar';
       const fill = document.createElement('i'); fill.style.width = Math.max(1, Math.round(LBBook.progress(b) * 100)) + '%'; bar.appendChild(fill);
       card.append(name, info, bar);

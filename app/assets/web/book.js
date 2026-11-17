@@ -50,6 +50,14 @@
       if (!book.at || !seen) done = 0;
       return total > 0 ? done / total : 0;
     },
+    /** "2 h 10 min left" (at the listening speed), or '' when not started or finished. */
+    leftLabel(book, speed) {
+      const total = (book.chapters || []).reduce((t, c) => t + (c.seconds || 0), 0);
+      const p = LBBook.progress(book);
+      if (!(total > 0) || p <= 0 || p >= 0.999) return '';
+      const min = Math.max(1, Math.round(total * (1 - p) / Math.max(0.5, speed || 1) / 60));
+      return (min >= 60 ? Math.floor(min / 60) + ' h ' + (min % 60 ? (min % 60) + ' min' : '').trim() : min + ' min').trim() + ' left';
+    },
     /** A text chapter's line in the list: what it plays with ("PC voice", "made on this phone · Heart", or read live). */
     recLabel(c) {
       const t = '~' + LBBook.clock(c.seconds);

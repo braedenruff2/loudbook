@@ -49,6 +49,17 @@ check('progress', () => {
   assert.strictEqual(B.progress({ chapters: book.chapters, at: { file: 'gone', sec: 5 } }), 0);
   assert.strictEqual(B.progress({ chapters: [] }), 0);
 });
+check('time left', () => {
+  const chs = [{ file: 'a', seconds: 3600 }, { file: 'b', seconds: 3600 }];
+  assert.strictEqual(B.leftLabel({ chapters: chs, at: { file: 'b', sec: 1800 } }, 1), '30 min left');
+  assert.strictEqual(B.leftLabel({ chapters: chs, at: { file: 'a', sec: 600 } }, 1), '1 h 50 min left');
+  assert.strictEqual(B.leftLabel({ chapters: chs, at: { file: 'a', sec: 600 } }, 2), '55 min left');
+  assert.strictEqual(B.leftLabel({ chapters: chs, at: { file: 'a', sec: 0.5 * 3600 } }, 1.5), '1 h left');
+  assert.strictEqual(B.leftLabel({ chapters: chs }, 1), '');
+  assert.strictEqual(B.leftLabel({ chapters: chs, at: { file: 'b', sec: 3600 } }, 1), '');
+  assert.strictEqual(B.leftLabel({ chapters: chs, at: { file: 'b', sec: 3599.9 } }, 1), '');
+  assert.strictEqual(B.leftLabel({ chapters: [{ file: 'a', seconds: 100 }], at: { file: 'a', sec: 90 } }, 1), '1 min left');
+});
 check('voice names (as VoiceNames.java)', () => {
   assert.strictEqual(B.voiceName(17), 'Onyx'); assert.strictEqual(B.voiceName('17'), 'Onyx');
   assert.strictEqual(B.voiceName('s17/e0.75'), 'Onyx (expressiveness 0.75)');
