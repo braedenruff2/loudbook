@@ -330,6 +330,9 @@
     else { line('Recorded on your PC with ' + vs.length + ' voices' + (shown.engine ? ' \u00b7 ' + shown.engine : '') + ':'); for (const v of vs) line('\u2022 ' + v.name + ' \u2014 ' + v.n + (v.n === 1 ? ' sentence' : ' sentences')); }
     const cur = lit >= 0 ? shown.sentences[lit] : null;
     if (cur && 'voice' in cur && vs.length > 1) line('Now: ' + ((shown.voiceNames && shown.voiceNames[String(cur.voice)]) || LBBook.voiceName(cur.voice)) + '.');
+    // (how long the player took to open it: a slow chapter start shows here)
+    const st = json(call('bookState'), {});
+    if (st.book === shown.book && st.file === shown.file && st.openMs >= 0) line('Ready to play ' + (st.openMs / 1000).toFixed(1) + ' s after it was opened.');
     $('vinfo').hidden = false;
   }
   $('voiceBtn').onclick = () => { if ($('vinfo').hidden) showVoice(); else $('vinfo').hidden = true; };

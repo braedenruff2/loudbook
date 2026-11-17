@@ -101,7 +101,7 @@ async function page() {
   const native = {
     books(k) { if (k !== KEY) wrongKey.push('books'); return JSON.stringify(lib()); },
     chapter(k, b, f) { if (k !== KEY) wrongKey.push('chapter'); return JSON.stringify(chapters[f] || null); },
-    bookState(k) { return JSON.stringify(player.file ? { book: player.book, ch: player.ch, file: player.file, ms: player.ms, dur: chapters[player.file].seconds * 1000, playing: player.playing, speed: player.speed, error: '', sleepLeft: player.sleepLeft, sleepEnd: player.sleepEnd } : { playing: false, speed: 1, error: '', sleepLeft: player.sleepLeft, sleepEnd: player.sleepEnd }); },
+    bookState(k) { return JSON.stringify(player.file ? { book: player.book, ch: player.ch, file: player.file, ms: player.ms, dur: chapters[player.file].seconds * 1000, playing: player.playing, speed: player.speed, error: '', sleepLeft: player.sleepLeft, sleepEnd: player.sleepEnd, openMs: player.openMs } : { playing: false, speed: 1, error: '', sleepLeft: player.sleepLeft, sleepEnd: player.sleepEnd }); },
     bookSleep(k, m, end) { if (k !== KEY) wrongKey.push('bookSleep'); player.calls.push(['sleep', m, end]); player.sleepLeft = m * 60000; player.sleepEnd = end; },
     bookPlay(k, b, ch, sec) {
       player.calls.push(['play', ch, sec]);
@@ -229,6 +229,15 @@ async function page() {
   check('page: a recording that doesn\'t say its voice', () => assert.ok(/doesn't say which voice/.test(d.getElementById('vinfoT').textContent), d.getElementById('vinfoT').textContent));
   d.getElementById('vinfoX').click();
   check('page: Voice closes', () => assert.ok(d.getElementById('vinfo').hidden));
+  // how long the player took to open the chapter playing (only for that chapter)
+  { const was = [player.book, player.file]; player.book = 'Test Book'; player.file = files[0]; player.openMs = 2400;
+    d.getElementById('voiceBtn').click(); await wait(20);
+    check('page: Voice says how long the chapter took to open', () => assert.ok(/Ready to play 2\.4 s after it was opened\./.test(d.getElementById('vinfoT').textContent), d.getElementById('vinfoT').textContent));
+    d.getElementById('vinfoX').click();
+    player.file = files[1]; d.getElementById('voiceBtn').click(); await wait(20);
+    check('page: not for another chapter than the one shown', () => assert.ok(!/Ready to play/.test(d.getElementById('vinfoT').textContent)));
+    d.getElementById('vinfoX').click();
+    player.openMs = undefined; player.book = was[0]; player.file = was[1]; }
   // delete: the first tap asks for a second; not given in 4 s, the button goes back to what it was
   d.getElementById('backBtn').click(); await wait(100);
   const delBtn = [...d.querySelectorAll('#books button')].find(x => x.textContent === 'Delete recordings');

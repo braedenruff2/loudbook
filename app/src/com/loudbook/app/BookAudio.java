@@ -44,6 +44,9 @@ final class BookAudio {
         int sid = -1; float madeAt = 1f; String stamp = "";
         /** Its voice in words, for "Which voice?" */
         String who = "";
+        /** For "Which voice?": when its decoding began, how long it took (0: decoded before, from the cache; -1: not yet),
+         *  and the longest a sentence waited for it (ms). */
+        volatile long decodeFrom, decodeMs = -1, waitedMs;
         Rec(String key, Uri mp3) { this.key = key; this.mp3 = mp3; }
     }
 
@@ -172,8 +175,17 @@ final class BookAudio {
             while (!r.failed && (r.rate == 0 || (!r.done && r.frames < (long) (t[1] * r.rate) + guess + r.rate / 10))) {
                 long now = System.currentTimeMillis(), f = r.frames;
                 if (f != seen) { seen = f; moved = now; }
-                if (now > until || now - moved > 6_000) { Log.w(TAG, "book: the recording's decoding is stuck or slow: the voice reads sentence " + i); return null; }
+                if (now > until || now - moved > 6_000) {
+                    r.waitedMs = Math.max(r.waitedMs, now - t0);
+                    Log.w(TAG, "book: the recording's decoding is stuck or slow: the voice reads sentence " + i);
+                    return null;
+                }
                 Thread.sleep(40);
+            }
+            long waited = System.currentTimeMillis() - t0;
+            if (waited > 1000) {
+                r.waitedMs = Math.max(r.waitedMs, waited);
+                Log.i("LoudbookTest", "book: sentence " + i + " waited " + waited + " ms for the recording to be unpacked (" + (r.frames / Math.max(1, r.rate)) + " s of it so far)");
             }
             if (r.failed) return null;
             int rate = r.rate;
@@ -195,7 +207,19 @@ final class BookAudio {
         Rec r = rec(ctx, ch);
         if (r == null) return null;
         return r.who + (r.failed ? " (it couldn't be played: the voice reads instead)"
-            : r.sid >= 0 && r.sid != sid ? " (another voice than the one chosen now, so it isn't used)" : "");
+            : r.sid >= 0 && r.sid != sid ? " (another voice than the one chosen now, so it isn't used)" : "") + unpacking(r);
+    }
+
+    /** How the recording's decoding went, for "Which voice?" (a slow start may be waiting for it). */
+    static String unpacking(Rec r) {
+        if (r.failed || !r.started) return "";
+        String w = r.waitedMs > 1000 ? String.format(java.util.Locale.US, "; a sentence waited %.1f s for it", r.waitedMs / 1000.0) : "";
+        long d = r.decodeMs;
+        if (r.done && d == 0) return ". Unpacked before (ready at once)" + w;
+        if (r.done && d > 0) return String.format(java.util.Locale.US, ". Unpacked in %.1f s (%d min of sound)", d / 1000.0, r.frames / Math.max(1, r.rate) / 60) + w;
+        long so = r.rate > 0 ? r.frames / r.rate : 0;
+        long took = r.decodeFrom > 0 ? (System.currentTimeMillis() - r.decodeFrom) / 1000 : 0;
+        return String.format(java.util.Locale.US, ". Unpacking it now: %d:%02d of it in %d s", so / 60, so % 60, took) + w;
     }
 
     /** This chapter was made again (AheadMaker): looked up afresh next time. */
@@ -253,7 +277,7 @@ final class BookAudio {
         if (r.pcm.isFile() && ok.isFile()) {
             try {
                 r.rate = Integer.parseInt(new String(java.nio.file.Files.readAllBytes(ok.toPath())).trim());
-                r.frames = r.pcm.length() / 2; r.shift = shiftOf(ctx, r, r.frames, r.rate); r.done = true;
+                r.frames = r.pcm.length() / 2; r.shift = shiftOf(ctx, r, r.frames, r.rate); r.decodeMs = 0; r.done = true;
                 // (used now: trim keeps the newest files, and this one, decoded long ago, was the oldest while it played)
                 r.pcm.setLastModified(System.currentTimeMillis());
                 return;
@@ -261,13 +285,14 @@ final class BookAudio {
         }
         Rec twin = decoding.get(name);
         if (twin != null) {
+            r.decodeFrom = twin.decodeFrom;
             // (the same recording, already being decoded for a Rec forgotten meanwhile: follow that one)
             Thread w = new Thread(() -> {
                 while (!twin.done && !twin.failed) {
                     r.rate = twin.rate; r.frames = twin.frames;
                     try { Thread.sleep(50); } catch (InterruptedException e) { return; }
                 }
-                r.rate = twin.rate; r.frames = twin.frames; r.shift = twin.shift; r.failed = twin.failed; r.done = twin.done;
+                r.rate = twin.rate; r.frames = twin.frames; r.shift = twin.shift; r.decodeMs = twin.decodeMs; r.failed = twin.failed; r.done = twin.done;
             }, "lb-bookaudio-twin");
             w.setDaemon(true);
             w.start();
@@ -275,6 +300,7 @@ final class BookAudio {
         }
         trim(d, name);
         decoding.put(name, r);
+        r.decodeFrom = System.currentTimeMillis();
         Thread th = new Thread(() -> {
             MediaExtractor ex = new MediaExtractor();
             MediaCodec dec = null;
@@ -340,9 +366,10 @@ final class BookAudio {
                 out.flush();
                 r.rate = rate;
                 r.shift = shiftOf(ctx, r, frames, rate);
+                r.decodeMs = Math.max(1, System.currentTimeMillis() - r.decodeFrom);
                 r.done = true;
                 try (FileOutputStream w = new FileOutputStream(ok)) { w.write(String.valueOf(rate).getBytes()); }
-                Log.i(TAG, "book: recording decoded (" + frames / Math.max(1, rate) + " s)");
+                Log.i(TAG, "book: recording decoded (" + frames / Math.max(1, rate) + " s of sound in " + r.decodeMs + " ms)");
             } catch (Exception e) {
                 Log.w(TAG, "book: decoding the recording", e);
                 r.failedAt = System.currentTimeMillis();

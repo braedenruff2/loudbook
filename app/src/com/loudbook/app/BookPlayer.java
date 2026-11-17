@@ -60,6 +60,9 @@ public final class BookPlayer extends Service {
     private SharedPreferences prefs;
     // (volatile: state() reads them on the page's thread)
     private volatile boolean prepared, playing;
+    /** When the chapter playing was opened, and how long it took to be ready to play there (ms; -1: not yet), for "Voice". */
+    private long openedAt;
+    private volatile long openMs = -1;
     private boolean pausedForFocus, foreground;
     private volatile String book = "";
     private volatile List<Books.Chapter> chapters;
@@ -116,7 +119,7 @@ public final class BookPlayer extends Service {
             Books.Chapter c = list.get(k);
             o.put("book", p.book).put("ch", k).put("file", c.json).put("title", c.title).put("playing", p.playing)
                 .put("ms", p.posMs()).put("dur", p.durMs(c))
-                .put("ready", p.prepared);
+                .put("ready", p.prepared).put("openMs", p.openMs);
         } catch (Exception ignored) { }
         return o.toString();
     }
@@ -234,6 +237,7 @@ public final class BookPlayer extends Service {
         }
         startAt = ms;
         prepared = false;
+        openedAt = System.currentTimeMillis(); openMs = -1;
         mp = new MediaPlayer();
         mp.setWakeMode(this, PowerManager.PARTIAL_WAKE_LOCK);
         mp.setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build());
@@ -243,7 +247,12 @@ public final class BookPlayer extends Service {
             prepared = true;
             int d = m.getDuration();
             if (startAt < 0) startAt = Math.max(0, d + startAt);       // (from the end: back over a chapter's start)
-            if (startAt > 0 && startAt < d - 500) m.seekTo(startAt);
+            boolean seeking = startAt > 0 && startAt < d - 500;
+            if (seeking) {
+                // (how long opening took, seek included: a slow chapter start shows in "Voice")
+                m.setOnSeekCompleteListener(s -> { if (s == mp && openMs < 0) opened(); });
+                m.seekTo(startAt);
+            } else opened();
             applySpeed();
             // (what's wanted now, not when it was opened: paused while opening (headphones out, the reader's voice
             //  started) stays paused; Play pressed while opening plays)
@@ -275,6 +284,11 @@ public final class BookPlayer extends Service {
         }
         playing = go;                                     // (shown as playing while it opens)
         update();
+    }
+
+    private void opened() {
+        openMs = System.currentTimeMillis() - openedAt;
+        Log.i("LoudbookTest", "book: chapter " + (ch + 1) + " ready to play in " + openMs + " ms");
     }
 
     private void release() {
