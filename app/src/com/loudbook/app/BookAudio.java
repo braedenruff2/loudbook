@@ -90,9 +90,10 @@ final class BookAudio {
 
     /** A chapter was opened: its recording, if it has one on the phone, starts being unpacked now, so play finds it ready
      *  (opened part way in and played later, its first sentences came from the voice while it was unpacked). */
-    static void warm(Context ctx, Chapter ch) {
+    static void warm(Context ctx, Chapter ch, int sid) {
         Rec r = rec(ctx, ch);
-        if (r != null && !r.failed) decode(ctx, r);
+        // (not one made ahead in another voice than the one chosen now: it isn't played, and unpacking it cost battery)
+        if (r != null && !r.failed && (r.sid < 0 || r.sid == sid)) decode(ctx, r);
     }
 
     /** The chapter made ahead on the phone (AheadMaker), or null. */

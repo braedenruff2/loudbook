@@ -415,7 +415,7 @@ public class ReaderService extends Service {
         if (listener != null) listener.onSpeaking(chapter, pos);
         if (play) play(); else state();
         // (a chapter with a recording (the PC's, or made ahead) opened paused: it's unpacked meanwhile, ready for play)
-        if (!play && !"kindle".equals(ch.site)) waiters.submit(() -> { try { BookAudio.warm(this, ch); } catch (Throwable e) { Log.w(TAG, "book: warm", e); } return null; });
+        if (!play && !"kindle".equals(ch.site)) { final int want = sid; waiters.submit(() -> { try { BookAudio.warm(this, ch, want); } catch (Throwable e) { Log.w(TAG, "book: warm", e); } return null; }); }
         aheadAfter(ch);
     }
 
