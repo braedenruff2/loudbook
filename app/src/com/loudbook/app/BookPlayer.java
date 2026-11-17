@@ -225,6 +225,14 @@ public final class BookPlayer extends Service {
             ms = at != null && at.file.equals(list.get(chapter).json) ? (int) (at.sec * 1000) : 0;
         }
         open(ms, true);
+        if (sec < 0 && ms > 0) pausedSince = savedPause();
+    }
+
+    /** When it was paused by hand last (saved, as Android may close the player while it's paused: play the next day
+     *  then went on mid-word instead of going back a little); 0 if not known. */
+    private long savedPause() {
+        long t = prefs.getLong("bookPausedAt:" + book, 0);
+        return t > 0 && t <= System.currentTimeMillis() ? t : 0;
     }
 
     /** Opens chapter ch at ms; plays when ready if go. */
@@ -301,7 +309,7 @@ public final class BookPlayer extends Service {
 
     private void resume() {
         if (chapters == null) return;
-        if (mp == null) { open(Books.spotMs(prefs, book, chapters.get(ch)), true); return; }
+        if (mp == null) { int at = Books.spotMs(prefs, book, chapters.get(ch)); open(at, true); if (at > 0) pausedSince = savedPause(); return; }
         if (!prepared) { playing = true; update(); return; }        // (starts when ready)
         if (!requestFocus()) { error = "Another app is using the sound."; playing = false; update(); return; }
         applySpeed();
@@ -310,9 +318,12 @@ public final class BookPlayer extends Service {
         if (sleepAt > 0 && System.currentTimeMillis() >= sleepAt) { sleepAt = 0; sleepEnd = false; }
         long away = pausedSince > 0 ? System.currentTimeMillis() - pausedSince : 0;
         pausedSince = 0;
-        int back = Rewind.backMs(away, posMs());
+        prefs.edit().remove("bookPausedAt:" + book).apply();
+        // (just opened at a place: the seek there may not have finished, so go back from that place, not from 0)
+        int here = openMs < 0 && startAt > 0 ? startAt : posMs();
+        int back = Rewind.backMs(away, here);
         if (back > 0) {
-            try { mp.seekTo(posMs() - back); } catch (Exception e) { Log.w(TAG, "book: back", e); }
+            try { mp.seekTo(here - back); } catch (Exception e) { Log.w(TAG, "book: back", e); }
             Log.i("LoudbookTest", "book: paused " + away / 1000 + " s: back " + back / 1000 + " s");
         }
         try { mp.start(); } catch (Exception e) { Log.w(TAG, "book: start", e); }
@@ -357,7 +368,7 @@ public final class BookPlayer extends Service {
 
     private void pause() {
         if (mp != null && prepared) { try { mp.pause(); } catch (Exception ignored) { } }
-        if (playing || pausedSince == 0) pausedSince = System.currentTimeMillis();
+        if (playing || pausedSince == 0) { pausedSince = System.currentTimeMillis(); prefs.edit().putLong("bookPausedAt:" + book, pausedSince).apply(); }
         playing = false;
         save();
         letGo();
@@ -369,6 +380,7 @@ public final class BookPlayer extends Service {
 
     private void seek(int ms) {
         pausedSince = 0;                                  // (a place chosen by hand is where play starts)
+        prefs.edit().remove("bookPausedAt:" + book).apply();
         if (mp == null || !prepared) { startAt = Math.max(0, ms); return; }
         int d = mp.getDuration();
         if (ms >= d - 300) {                              // (forward past the end: the next chapter)

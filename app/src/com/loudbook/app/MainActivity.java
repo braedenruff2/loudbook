@@ -380,7 +380,16 @@ public class MainActivity extends Activity implements ReaderService.Listener {
             Log.i("LoudbookTest", "book: test book \"" + bk + "\" has " + cs.size() + " chapters, " + Books.audioHere(this, bk).size() + " recordings");
             if (!cs.isEmpty()) {
                 if (i.getBooleanExtra("booksleepend", false)) { i.removeExtra("booksleepend"); BookPlayer.setSleep(0, true); }
-                BookPlayer.play(getApplicationContext(), bk, 0, 0);
+                if (i.getBooleanExtra("bookresumelong", false)) {
+                    // (chapter-test: left 3 s into chapter 1 two minutes ago, the player closed meanwhile; play where it was
+                    //  left goes back a little first, Rewind)
+                    i.removeExtra("bookresumelong");
+                    android.content.SharedPreferences lp = getSharedPreferences("lb", MODE_PRIVATE);
+                    Books.saveSpot(lp, bk, cs.get(0).json, 3.0);
+                    lp.edit().putLong("bookPausedAt:" + bk, System.currentTimeMillis() - 120_000).commit();
+                    Log.i("LoudbookTest", "test: book left at 3 s two minutes ago");
+                    BookPlayer.play(getApplicationContext(), bk, 0, -1);
+                } else BookPlayer.play(getApplicationContext(), bk, 0, 0);
                 web.loadUrl(booksUrl() + "&b=" + Uri.encode(bk) + "&f=" + Uri.encode(cs.get(0).json));
             }
             return true;

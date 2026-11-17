@@ -163,6 +163,16 @@ sed -n '/=== audiobook sleep timer ===/,$p' logcat.txt > sleep-log.txt
 { grep -a -q "book: sleep timer: paused at the end of chapter 1" sleep-log.txt && ! grep -a -q "book: playing chapter 2" sleep-log.txt \
     && echo "audiobook: sleep timer at the chapter's end pauses there: yes" \
     || { echo "audiobook: sleep timer at the chapter's end pauses there: NO"; grep -a -E "book" sleep-log.txt | tail -6 | sed 's/^/  /'; }; } >> book.txt
+# play where an audiobook was left, two minutes after its pause, the player closed meanwhile (Android closes a paused one):
+# it goes back 3 s first (Rewind; the pause time is saved, 2026-11-17: it was only kept while the player stayed open)
+adb shell log -t LoudbookTest "=== audiobook resume after a pause ==="
+adb shell am start -n com.loudbook.app/.MainActivity --es bookplay "'Test Book'" --ez bookresumelong true > resume-start.txt 2>&1
+sleep 10
+snap
+sed -n '/=== audiobook resume after a pause ===/,$p' logcat.txt > resume-log.txt
+{ grep -a -q "book: paused 1[0-9][0-9] s: back 3 s" resume-log.txt \
+    && echo "audiobook: play where it was left after a pause goes back 3 s (player closed meanwhile): yes" \
+    || { echo "audiobook: play where it was left after a pause goes back 3 s (player closed meanwhile): NO"; grep -a -E "book" resume-log.txt | tail -6 | sed 's/^/  /'; }; } >> book.txt
 # "Make audio now" (AheadMaker, 2026-11-15): a text book of two short chapters, as the PC sends them (.text.json), made
 # ahead on the phone with its voice; then the Audiobooks list must say "made on phone" for both
 adb shell log -t LoudbookTest "=== make audio now ==="

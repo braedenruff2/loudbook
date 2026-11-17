@@ -1,3 +1,4 @@
+Audiobooks: going back a few seconds after a pause now also works when you come back the next day (Android had closed the paused player, and play went on mid-word).
 Audiobooks list: each book now says how much listening is left at your speed ("2 h 10 min left").
 Audiobooks: press play after a pause of a minute or more and it goes back a few seconds first (3 s; 5 s after five minutes; 10 s after half an hour), so you pick the thread up again. Web chapters and books do the same: after a minute or more paused, play starts the sentence again from its beginning (and after half an hour, the one before it too).
 PC-recorded chapters opened part way in start at once: the phone's voice reads the first sentences while the recording is unpacked up to there (it was silent for up to half a minute), and unpacking is faster.
