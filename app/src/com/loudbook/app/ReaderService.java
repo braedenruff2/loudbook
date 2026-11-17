@@ -676,6 +676,8 @@ public class ReaderService extends Service {
     private volatile int quickNext = -1;
     /** A sentence made in pieces: its clip in clips is the first piece; these are the rest, played straight after it. */
     private final Map<Integer, java.util.List<Future<Voice.Clip>>> rests = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Letters in sentence i's first piece, or dflt (read once: dropClips may clear the map meanwhile, on the main thread). */
+    private int headLetters(int i, int dflt) { java.util.List<String> t = restText.get(i); return t != null && !t.isEmpty() ? t.get(0).length() : dflt; }
     /** Such a sentence's pieces of text (its mark is stretched over the rest by letters until the rest is made). */
     private final Map<Integer, java.util.List<String>> restText = new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -693,12 +695,23 @@ public class ReaderService extends Service {
         boolean whole = true;
         java.util.List<String> texts = restText.get(i);
         int n = 0;
-        for (Future<Voice.Clip> f : more) {
+        for (Future<Voice.Clip> f0 : more) {
             n++;
+            Future<Voice.Clip> f = f0;
             Voice.Clip c = null;
+            boolean again = false;
             while (gen == myGen) {
                 try { c = f.get(20, java.util.concurrent.TimeUnit.MILLISECONDS); break; }
                 catch (java.util.concurrent.TimeoutException te) { heard(ch, marks, myGen); }
+                catch (java.util.concurrent.CancellationException ce) {
+                    // (dropped while this sentence played, with reading going on (a pronunciation update or Gemini switched
+                    //  while paused): the piece is made again, as the loop does for a whole sentence; it was skipped)
+                    String piece = texts != null && n < texts.size() ? texts.get(n) : null;
+                    if (again || piece == null) break;
+                    again = true;
+                    final int want = sid; final float sp = speed;
+                    f = synth.submit(() -> learned(makeHere(piece, want, sp), want));
+                }
                 catch (Exception e) { Log.w(TAG, "quick start: a piece failed", e); break; }
             }
             if (gen != myGen) return false;
@@ -1447,11 +1460,13 @@ public class ReaderService extends Service {
                 Log.i("LoudbookTest", "gemini: the stream's audio came all at once (first audio " + made.firstAudioMs / 1000 + " s, all in " + made.totalMs / 1000 + " s): whole recordings for today");
             }
             if (cutOff || burst) prefs.edit().putString("gemNoStream", today).apply();
-            else if (made.streamed && !short_ && !made.broke) prefs.edit().putString("gemStreamOk", today).apply();
             // how much a request can hold: when Google stops one early, that's the most (a little
             // less, to be safe); when a long one comes back whole, it can hold at least that much
             else if (short_ && !made.broke && made.chars > 3000) prefs.edit().putInt("gemCapChars", Math.max(4000, made.chars * 95 / 100)).apply();
             else if (!short_ && made.chars > capChars() * 0.85) prefs.edit().putInt("gemCapChars", Math.min(60000, made.chars * 115 / 100)).apply();
+            // (a stream that came as a stream: from now on today, streamed requests are as big as Google allows (sizeFor). Its
+            //  own step: put in the chain above, it kept the size from growing)
+            if (!cutOff && !burst && made.streamed && !short_ && !made.broke) prefs.edit().putString("gemStreamOk", today).apply();
             if (pace[0] > 0) prefs.edit().putFloat("gemPace:" + cVoice(), (float) pace[0]).apply();
             learnSpeed(made, short_);
             noteTiming(made, short_, cutOff || burst);
@@ -2065,7 +2080,7 @@ public class ReaderService extends Service {
                     //  on the whole sentence once the rest is made; streamRest)
                     if (pieces) timings.remove(next);
                     long[] hm = new long[]{framesWritten, next, c.samples.length, 1};   // (1: a whole clip, timed by its sound)
-                    if (pieces) { int letters = ch.chunks.get(next).say.length(), first = Math.max(1, restText.containsKey(next) ? restText.get(next).get(0).length() : letters); hm[2] = (long) c.samples.length * Math.max(letters, first) / first; hm[3] = 0; }
+                    if (pieces) { int letters = ch.chunks.get(next).say.length(), first = Math.max(1, headLetters(next, letters)); hm[2] = (long) c.samples.length * Math.max(letters, first) / first; hm[3] = 0; }
                     marks.add(hm);
                     if (!stream(t, c, myGen, ch, marks)) return;
                     if (pieces && !streamRest(next, c, hm, t, myGen, ch, marks)) return;
