@@ -203,11 +203,13 @@ sed -n '/=== made chapter played ===/,$p' logcat.txt > made-log.txt
 } >> ahead.txt
 # how fast the phone unpacks a long PC recording (BookAudio.decodeInto: a chapter's sentences wait for it; 2026-11-17, his
 # "a new chapter took ~30 s to start"): 20-minute MP3s as the PC makes them (mono 24 kHz) and a typical stereo audiobook
-if command -v ffmpeg >/dev/null; then
+command -v lame >/dev/null || { sudo apt-get install -y -qq lame || { sudo apt-get update -qq && sudo apt-get install -y -qq lame; }; } >/dev/null 2>&1 || true
+if command -v lame >/dev/null; then
   SP=/tmp/lbspeed; rm -rf $SP; mkdir -p $SP
-  ffmpeg -loglevel error -f lavfi -i "anoisesrc=d=1200:c=pink:a=0.1" -ac 1 -ar 24000 -b:a 48k $SP/mono24-cbr.mp3
-  ffmpeg -loglevel error -f lavfi -i "anoisesrc=d=1200:c=pink:a=0.1" -ac 1 -ar 24000 -q:a 5 $SP/mono24-vbr.mp3
-  ffmpeg -loglevel error -f lavfi -i "anoisesrc=d=1200:c=pink:a=0.1" -ac 2 -ar 44100 -b:a 128k $SP/stereo44-cbr.mp3
+  RAW="-r --bitwidth 16 --signed --little-endian --silent"
+  head -c $((1200 * 24000 * 2)) /dev/urandom | lame $RAW -s 24 -m m -b 48 - $SP/mono24-cbr.mp3
+  head -c $((1200 * 24000 * 2)) /dev/urandom | lame $RAW -s 24 -m m -V 5 - $SP/mono24-vbr.mp3
+  head -c $((1200 * 44100 * 4)) /dev/urandom | lame $RAW -s 44.1 -m j -b 128 - $SP/stereo44-cbr.mp3
   adb shell mkdir -p "$D/speed"
   for f in $SP/*.mp3; do adb push "$f" "$D/speed/" >/dev/null; done
   adb shell log -t LoudbookTest "=== decode speed ==="
@@ -216,5 +218,5 @@ if command -v ffmpeg >/dev/null; then
   sed -n '/=== decode speed ===/,$p' logcat.txt | grep -a -o 'decode speed [^ ]*: .*' > decode.txt
   [ -s decode.txt ] || echo "decode speed: no answer" > decode.txt
   adb shell rm -rf "$D/speed"
-else echo "decode speed: no ffmpeg on the runner" > decode.txt; fi
+else echo "decode speed: no MP3 encoder (lame) on the runner" > decode.txt; fi
 kill $LOGPID 2>/dev/null || true
