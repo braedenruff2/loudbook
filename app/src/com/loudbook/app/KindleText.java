@@ -211,7 +211,8 @@ final class KindleText {
     }
 
     private static final Pattern SENT_END = Pattern.compile("[.!?\u2026][\"\u201d\u2019)]?\\s+(?=[\"\u201c\u2018(]?\\p{Lu})");
-    private static final Pattern SHORT_WORD = Pattern.compile("(?:^|\\s)(?:Mr|Mrs|Ms|Dr|St|Jr|Sr|Prof|Capt|Lt|Col|Gen|Sgt|Mt|Ft|No|vs|etc|[A-Z])$");
+    // (in capitals too: a letter's heading "MY DEAR MR. SHERLOCK HOLMES" was cut after "MR.", said as a sentence of its own)
+    private static final Pattern SHORT_WORD = Pattern.compile("(?:^|\\s)(?:Mr|Mrs|Ms|Dr|St|Jr|Sr|Prof|Capt|Lt|Col|Gen|Sgt|Mt|Ft|No|vs|etc|MR|MRS|MS|DR|ST|JR|SR|PROF|CAPT|LT|COL|SGT|MT|[A-Z])$");
     /**
      * A web chapter's piece of text (up to ~200 letters of short sentences merged, see loudbook.js chunkBlocks) as its
      * sentences, for the quick start's ramp (Ramp.pieces). Not after "Mr." and the like, or a lone initial ("J. Smith").

@@ -2007,6 +2007,7 @@ public class ReaderService extends Service {
                 // this sentence first, then the ones after it; forget what's been played. (This used
                 // to drop the current sentence while reading ahead, so each one was made twice and
                 // waited behind the read-ahead: the pause at every sentence.)
+                if (gen != myGen) return;                      // (an old reading: it asked for the new chapter's sentences at its own place)
                 Future<Voice.Clip> f = clipFor(next);
                 for (int k = 1; k <= READ_AHEAD; k++) clipFor(next + k);
                 // Kindle: the rest of the page is all asked for: the next page's first words next (after them, on the same voice thread)

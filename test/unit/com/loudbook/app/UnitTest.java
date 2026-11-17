@@ -235,6 +235,7 @@ public class UnitTest {
             "[He ran., She followed, slowly., Mr. Hale waited by J. Smith's door!, \u201cGo.\u201d, Then quiet.]");
         check("no sentence end: the piece as it is", KindleText.sentencesIn("No end"), "[No end]");
         check("a decimal point isn't a sentence end", KindleText.sentencesIn("It cost 3.5 dollars. Fine."), "[It cost 3.5 dollars., Fine.]");
+        check("a title in capitals isn't a sentence end", KindleText.sentencesIn("MY DEAR MR. SHERLOCK HOLMES: Come at once. DR. WATSON TOO."), "[MY DEAR MR. SHERLOCK HOLMES: Come at once., DR. WATSON TOO.]");
         KindleText.Ramp rq = new KindleText.Ramp();
         rq.pieces(KindleText.sentencesIn("Chapter Nine: The Ford"));
         check("after a short title, a long piece is cut at its sentence end (made sooner)", rq.pieces(KindleText.sentencesIn(

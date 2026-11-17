@@ -751,6 +751,7 @@ function tidy(t) {
         : (t === 'Jr' ? /\p{Lu}[\p{L}'’-]*,?\s$/u : /\p{Lu}[\p{L}'’-]*\s+\p{Lu}[\p{L}'’-]*\s$/u).test(all.slice(Math.max(0, at - 40), at)) ? TITLES[t] + (/^\s+(?:Day|High)\b/.test(all.slice(at + m.length)) ? '' : '.')   // "John Smith Jr. He waved." keeps its full stop
         : t === 'Sr' ? (/^\s+(?:Engineer|Developer|Dev|Manager|Analyst|Director|VP|Vice|Partner|Consultant|Designer|Associate|Officer|Agent|Researcher|Scientist|Editor|Advisor|Architect|Accountant|Executive|Specialist|Technician|Programmer|Software|Product|Staff|Account|Sales|Marketing|Data|Project|Research|Instructor|Lecturer|Counsel|Attorney|Detective|Inspector|Analysts?)\b/.test(all.slice(at + m.length)) ? 'Senior' : 'Sister') : TITLES[t])   // Sr. Mary is a nun; "Sr. Engineer" is Senior
     .replace(/\b(Mr|Mrs|Ms|Dr)\.(?=\p{Lu}\p{Ll})/gu, (m, t) => TITLES[t] + ' ')   // Mr.Smith (no space)
+    .replace(/\b(MR|MRS|MS|DR)\.(?=\s+\p{Lu}{2})/gu, (m, t) => TITLES[t[0] + t.slice(1).toLowerCase()])   // a letter's heading in capitals: "MY DEAR MR. HOLMES"
     .replace(/\b(Mr|Mrs|Ms|Dr)(?=\s+(?:\p{Lu}\p{Ll}|(?:&|and)\s+(?:Mr|Mrs|Ms|Dr)\b))/gu, (m, t) => TITLES[t])   // Mr Smith, Mrs Jones (no dot, British style)
     // sums: "3 * 4 = 12" (the lone asterisk was dropped), "15 + 7 = 22"
     // a sum written out: "10-3=7", "3*4=12", "6/2=3" (was "ten to three", "three*four", "six of two")
