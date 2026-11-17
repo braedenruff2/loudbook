@@ -1400,7 +1400,13 @@ public class ReaderService extends Service {
         Chapter ch = first.ch; GeminiBook b = first.book;
         int from = first.from, to = first.to;
         if (b.has(from)) return;
-        cloudStatus = "Gemini is recording " + (from == 0 ? "the chapter" : "the rest of the chapter") + (plan.size() > 1 ? " and the start of the next" : "") + " (one request)\u2026";
+        // (how long the wait for its first sound should be, from how Google has been doing: streamed, its usual wait; whole,
+        //  the recording's length at Google's speed on top. A wait of half a minute or more with nothing said looked stuck)
+        int letters = 0;
+        for (GeminiBook.Span sp : plan) for (int k = sp.from; k < sp.to && k < sp.ch.size(); k++) letters += sp.ch.chunks.get(k).say.length() + 1;
+        long expect = Math.round(gemLatency() + (streamToday() ? 0 : letters * gemPace() / Math.max(0.3, gemRate())));
+        cloudStatus = "Gemini is recording " + (from == 0 ? "the chapter" : "the rest of the chapter") + (plan.size() > 1 ? " and the start of the next" : "") + " (one request)"
+            + (expect >= 10 ? ", about " + (expect < 60 ? (expect + 4) / 5 * 5 + " s" : (expect + 30) / 60 + " min") : "") + "\u2026";
         if (ch == chapter) main.post(() -> status(cloudStatus, false));
         long t0 = System.currentTimeMillis();
         int got;
