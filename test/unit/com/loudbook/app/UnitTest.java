@@ -230,6 +230,16 @@ public class UnitTest {
         check("a comma too near the end: cut before and instead", KindleText.quickStart("The night was cold and very long and nobody in the house could sleep at all through it, not even the dog."),
             "[The night was cold and very long, and nobody in the house could sleep at all through it, not even the dog.]");
         check("short sentence stays whole", KindleText.quickStart("Mara walked it every morning."), "[Mara walked it every morning.]");
+        // a web chapter's piece (short sentences merged up to ~200 letters) as its sentences, for the reader's quick start
+        check("sentences in a piece", KindleText.sentencesIn("He ran. She followed, slowly. Mr. Hale waited by J. Smith's door! \u201cGo.\u201d Then quiet."),
+            "[He ran., She followed, slowly., Mr. Hale waited by J. Smith's door!, \u201cGo.\u201d, Then quiet.]");
+        check("no sentence end: the piece as it is", KindleText.sentencesIn("No end"), "[No end]");
+        check("a decimal point isn't a sentence end", KindleText.sentencesIn("It cost 3.5 dollars. Fine."), "[It cost 3.5 dollars., Fine.]");
+        KindleText.Ramp rq = new KindleText.Ramp();
+        rq.pieces(KindleText.sentencesIn("Chapter Nine: The Ford"));
+        check("after a short title, a long piece is cut at its sentence end (made sooner)", rq.pieces(KindleText.sentencesIn(
+            "The riders came down from the hills in a long and slow line as the light failed. Their horses were tired, and their banners hung limp in the heavy air of the valley below them.")),
+            "[The riders came down from the hills in a long and slow line as the light failed., Their horses were tired, and their banners hung limp in the heavy air of the valley below them.]");
         check("no good place stays whole", KindleText.quickStart("Abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghij."),
             "[Abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghijklmnopqrstuvwxyz abcdefghij.]");
         KindleText kq = new KindleText("");

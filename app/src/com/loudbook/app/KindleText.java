@@ -210,6 +210,30 @@ final class KindleText {
         return new Chapter.Chunk(carryBlock, whole, say(whole));
     }
 
+    private static final Pattern SENT_END = Pattern.compile("[.!?\u2026][\"\u201d\u2019)]?\\s+(?=[\"\u201c\u2018(]?\\p{Lu})");
+    private static final Pattern SHORT_WORD = Pattern.compile("(?:^|\\s)(?:Mr|Mrs|Ms|Dr|St|Jr|Sr|Prof|Capt|Lt|Col|Gen|Sgt|Mt|Ft|No|vs|etc|[A-Z])$");
+    /**
+     * A web chapter's piece of text (up to ~200 letters of short sentences merged, see loudbook.js chunkBlocks) as its
+     * sentences, for the quick start's ramp (Ramp.pieces). Not after "Mr." and the like, or a lone initial ("J. Smith").
+     */
+    static List<String> sentencesIn(String s) {
+        List<String> out = new ArrayList<>();
+        Matcher m = SENT_END.matcher(s);
+        int from = 0;
+        while (m.find()) {
+            int dot = m.start();
+            if (dot <= from || !Character.isLetterOrDigit(s.charAt(dot - 1)) && s.charAt(dot - 1) != ')') continue;
+            if (s.charAt(dot) == '.' && SHORT_WORD.matcher(s.substring(from, dot)).find()) continue;
+            String t = s.substring(from, m.end()).trim();
+            if (!t.isEmpty()) out.add(t);
+            from = m.end();
+        }
+        String t = s.substring(from).trim();
+        if (!t.isEmpty()) out.add(t);
+        if (out.isEmpty()) out.add(s);
+        return out;
+    }
+
     private static final Pattern PAUSE = Pattern.compile("[,;:\u2014\u2013]\\s");
     private static final Pattern JOIN = Pattern.compile("\\s(?=(and|but|so|then|when|while|because|until|though|as|or|which|where)\\s)");
     /** A long sentence as a short first piece and the rest (in a few pieces if long), cut where a reader would breathe; else as it is. */
@@ -239,6 +263,8 @@ final class KindleText {
     static final class Ramp {
         private String last;                          // (the last piece so far; null before the first sentence)
         private int said;                             // (letters in the sentences so far)
+        /** Letters said so far: past about 200 the voice is far enough ahead, and nothing more needs cutting. */
+        int said() { return said; }
         List<String> pieces(List<String> ss) {
             List<String> out = new ArrayList<>();
             for (String s : ss) {
