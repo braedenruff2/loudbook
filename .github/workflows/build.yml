@@ -41,6 +41,7 @@ jobs:
           python3 -m pip install --quiet --break-system-packages cryptography numpy soundfile
           bash pc-server/test/ahead.sh
           python3 pc-server/test/studio_test.py
+          python3 pc-server/test/job_edit_test.py
       - name: Build the APK
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}

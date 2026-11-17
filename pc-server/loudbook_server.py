@@ -912,6 +912,22 @@ class Books:
         return f
 
     @classmethod
+    def dest_now(cls, n, ch, dest):
+        """Where chapter ch (of job file n) is to be written now: the job is read again (it may have been edited while the
+        chapter was recorded). dest if it's unchanged; the chapter's new place if it moved; None if it's gone from the job
+        (or the job is), or its new place is recorded already."""
+        for name, j in cls.jobs():
+            if name != n: continue
+            for k2, c in enumerate(j["chapters"]):
+                if c.get("file") == ch.get("file") and c.get("name", "") == ch.get("name", ""):
+                    d2 = cls.chapter_path(j, k2)
+                    if d2 == dest: return dest
+                    return None if os.path.exists(d2 + ".mp3") else d2
+            return None
+        # (the job file there but not readable just now (being saved): written where it was going, as before)
+        return dest if os.path.exists(os.path.join(BOOKS, n)) else None
+
+    @classmethod
     def make_chapter(cls, b, n, job, k):
         """Records chapter k with the best voice into <chapter>.mp3 (+ .json of where each sentence is). False if it
         stopped part-way to let the phone's sentences go first (it's picked up again, sentences made so far kept)."""
@@ -968,6 +984,13 @@ class Books:
                     d, t = cls.progress()
                     cls.status(f"{job.get('title', n)}: chapter {k + 1} of {len(job['chapters'])} ({ch.get('name', '')}), sentence {done} of {total}. "
                                f"{d} of {t} chapters done. Recording at {sp:.2f}x reading speed.")
+        # (the job may have been edited while this chapter was recorded: a chapter removed before it moved it up one, and the
+        #  file named by the old place was left beside the right one, then the chapter was recorded again there; a job
+        #  removed (cancelled) still had this chapter written. Written where the chapter is now, or not at all)
+        dest = cls.dest_now(n, ch, dest)
+        if dest is None:
+            print(f"Loudbook PC voice: audiobook chapter {ch.get('name', '')} of {job.get('title', n)} was taken out of its job while it was recorded: not written", flush=True)
+            return True
         import soundfile as sf
         audio = np.concatenate(parts) if parts else np.zeros(rate, dtype="<i2")
         with sf.SoundFile(dest + ".part.mp3", "w", rate, 1, format="MP3") as out: out.write(audio.astype(np.int16))
